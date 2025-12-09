@@ -1,0 +1,134 @@
+
+
+.chat-footer {
+  position: relative !important;
+  z-index: 5 !important;
+  overflow: visible !important;
+}
+
+.epr-main,
+.epr-emoji-variation-picker,
+.dropdown-menu,
+.reactions-popover,
+.emoji-picker {
+  position: absolute !important;
+  z-index: 9999 !important;
+  overflow: visible !important;
+}
+
+/* Header (buscador) */
+.epr-header {
+  background: #f0f2f5; /* gris clarito estilo WhatsApp */
+  border-bottom: 1px solid #ddd;
+  padding: 8px;
+  border-radius: 12px 12px 0 0;
+}
+
+/* Barra de categorías */
+.epr-category-nav {
+  border-top: 1px solid #eee;
+  border-bottom: 1px solid #eee;
+  background: #f0f2f5;
+}
+
+/* Cada emoji */
+.epr-emoji {
+  border-radius: 6px;
+  padding: 4px;
+  transition: background 0.2s ease;
+}
+
+.epr-emoji:hover {
+  background: #e4e6eb; /* hover estilo WhatsApp Web */
+}
+
+/* Scroll suave */
+.epr-body {
+  scrollbar-width: thin;
+  scrollbar-color: #ccc transparent;
+}
+
+.epr-body::-webkit-scrollbar {
+  width: 6px;
+}
+
+.epr-body::-webkit-scrollbar-thumb {
+  background: #bbb;
+  border-radius: 3px;
+}
+
+/* 📌 Cada categoría de emojis */
+.epr-emoji-category {
+  margin-bottom: 12px;
+}
+
+/* 📌 Etiqueta de categoría ("Frecuentes", "Caras", etc.) */
+.epr-emoji-category-label {
+  font-size: 13px;
+  font-weight: bold;
+  color: #667781; /* gris WhatsApp */
+  margin: 6px 0;
+  padding-left: 5px;
+  text-transform: uppercase;
+}
+
+/* 📌 Lista de emojis (la grilla) */
+.epr-emoji-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, 36px);
+  gap: 6px;
+}
+
+/* 📌 Cada emoji */
+.epr-emoji {
+  font-size: 22px;
+  cursor: pointer;
+  border-radius: 6px;
+  text-align: center;
+  transition: background 0.2s ease;
+}
+
+.epr-emoji:hover {
+  background: #e4e6eb; /* hover gris clarito */
+}
+
+/* 📌 Picker de variaciones (tonos de piel) */
+.epr-emoji-variation-picker {
+  background: #fff;
+  border-radius: 8px;
+  padding: 6px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+  display: flex;
+  gap: 4px;
+}
+.epr-emoji-variation-picker .epr-emoji {
+  font-size: 20px;
+}
+
+
+/* Botón de emoji */
+.epr-btn.epr-emoji {
+  border-radius: 6px;
+  padding: 4px;
+  transition: background 0.2s ease;
+}
+
+.epr-btn.epr-emoji:hover {
+  background: #e4e6eb;
+}
+
+/* Imagen del emoji */
+.epr-emoji-img {
+  width: 24px;
+  height: 24px;
+  object-fit: contain;
+}
+
+/* Picker de variaciones (tonos de piel) */
+.epr-emoji-variation-picker {
+  background: #fff;
+  border: 1px solid #ddd;
+  padding: 6px;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+}
