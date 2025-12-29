@@ -1,18 +1,18 @@
 import React, { useState, useRef, forwardRef, useImperativeHandle } from "react";
 import "../css/emoji.css";
 
-const ChatInput = forwardRef(({ onSend }, ref) => {
+const ChatInput = forwardRef(({ onSend, onPasteFiles }, ref) => {
   const [value, setValue] = useState("");
   const textareaRef = useRef(null);
 
   useImperativeHandle(ref, () => ({
     reset: () => setValue(""),
     send: () => {
-      if (value.trim()) {
-        onSend(value);
-        setValue("");
-        if (textareaRef.current) textareaRef.current.style.height = "auto";
+      if (typeof onSend === "function") {
+        onSend(value);          // 👈 siempre mandamos el valor, aunque esté vacío
       }
+      setValue("");
+      if (textareaRef.current) textareaRef.current.style.height = "auto";
     },
     insertEmoji: (emoji) => {
       if (!textareaRef.current) return;
@@ -46,12 +46,42 @@ const ChatInput = forwardRef(({ onSend }, ref) => {
   const handleKeyDown = (e) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
-      if (value.trim()) {
-        onSend(value);
-        setValue("");
-        if (textareaRef.current) textareaRef.current.style.height = "auto";
+      if (typeof onSend === "function") {
+        onSend(value);           // 👈 mandamos texto (aunque esté vacío)
       }
+      setValue("");
+      if (textareaRef.current) textareaRef.current.style.height = "auto";
     }
+  };
+
+  // 👇 AQUÍ ES DONDE SE CAPTURAN LAS IMÁGENES PEGADAS (Ctrl+V)
+  const handlePaste = (e) => {
+    const cd = e.clipboardData;
+    if (!cd) return;
+
+    // 1️⃣ primero intentamos con cd.files
+    const filesFromFiles = Array.from(cd.files || []).filter((f) =>
+      f.type.startsWith("image/")
+    );
+
+    // 2️⃣ si no viene nada en files, probamos con items
+    let imageFiles = filesFromFiles;
+    if (!imageFiles.length && cd.items) {
+      imageFiles = Array.from(cd.items || [])
+        .filter((item) => item.kind === "file" && item.type.startsWith("image/"))
+        .map((item) => item.getAsFile())
+        .filter(Boolean);
+    }
+
+    console.log("📋 PASTE - imágenes detectadas:", imageFiles);
+
+    if (imageFiles.length && typeof onPasteFiles === "function") {
+      e.preventDefault();          // evita que pegue "blob:..." en el textarea
+      onPasteFiles(imageFiles);    // solo se envía una vez
+      return;
+    }
+
+    // si no hay imágenes, se comporta como pegado normal de texto
   };
 
   return (
@@ -62,6 +92,7 @@ const ChatInput = forwardRef(({ onSend }, ref) => {
       value={value}
       onChange={handleChange}
       onKeyDown={handleKeyDown}
+      onPaste={handlePaste}     // 👈 importante
       placeholder="Escribe un mensaje..."
       style={{
         overflow: "hidden",

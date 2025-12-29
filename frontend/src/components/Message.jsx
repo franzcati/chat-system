@@ -35,7 +35,10 @@ const Message = ({
   const [duracionFijado, setDuracionFijado] = useState("24h");
   const [showReplaceModal, setShowReplaceModal] = useState(false);
   const [mensajePendienteFijar, setMensajePendienteFijar] = useState(null); 
-  const [imagenAmpliada, setImagenAmpliada] = useState(null);
+  // 🎞️ Galería tipo WhatsApp
+  const [galeriaAbierta, setGaleriaAbierta] = useState(false);
+  const [galeriaImagenes, setGaleriaImagenes] = useState([]); // urls normalizadas
+  const [galeriaIndice, setGaleriaIndice] = useState(0);
   
   const isMine = esGrupo
   ? mensaje.usuario_id === miUsuario?.id
@@ -73,6 +76,30 @@ const Message = ({
     setShowReactions(false);
   };
 
+  // Normaliza URLs de imágenes para evitar http / mixed content
+  const normalizarUrlImagen = (rawUrl) => {
+    let finalUrl = rawUrl || "";
+
+    if (finalUrl.startsWith("http://quickchat.click")) {
+      finalUrl = finalUrl.replace("http://quickchat.click", "https://quickchat.click");
+    } else if (finalUrl.startsWith("http://")) {
+      try {
+        const u = new URL(finalUrl);
+        finalUrl = `https://${u.host}${u.pathname}${u.search}`;
+      } catch (e) {}
+    }
+
+    return finalUrl;
+  };
+
+  const abrirGaleria = (imagenes, indiceInicial = 0) => {
+    if (!imagenes || !imagenes.length) return;
+    const normalizadas = imagenes.map(normalizarUrlImagen);
+    setGaleriaImagenes(normalizadas);
+    setGaleriaIndice(indiceInicial);
+    setGaleriaAbierta(true);
+  };
+
   // Cerrar al hacer click fuera
   useEffect(() => {
     const handleClickOutside = (event) => {
@@ -94,13 +121,29 @@ const Message = ({
 
 
   //EFECTO PARA AMPLIAR IMAGEN
+  // 🎹 Navegación de galería con teclado
   useEffect(() => {
-    const handleEsc = (e) => {
-      if (e.key === "Escape") setImagenAmpliada(null);
+    const handleKey = (e) => {
+      if (!galeriaAbierta || galeriaImagenes.length === 0) return;
+
+      if (e.key === "Escape") {
+        setGaleriaAbierta(false);
+      }
+      if (e.key === "ArrowRight") {
+        setGaleriaIndice((prev) =>
+          (prev + 1) % galeriaImagenes.length
+        );
+      }
+      if (e.key === "ArrowLeft") {
+        setGaleriaIndice((prev) =>
+          prev - 1 < 0 ? galeriaImagenes.length - 1 : prev - 1
+        );
+      }
     };
-    window.addEventListener("keydown", handleEsc);
-    return () => window.removeEventListener("keydown", handleEsc);
-  }, []);
+
+    window.addEventListener("keydown", handleKey);
+    return () => window.removeEventListener("keydown", handleKey);
+  }, [galeriaAbierta, galeriaImagenes.length]);
 
   // 👉 Al reaccionar: actualiza UI y (opcional) guarda en backend
   const handleReaction = async (emoji) => {
@@ -587,6 +630,114 @@ const Message = ({
               ) : (
                 // Texto normal, stickers, imágenes, etc.
                 (() => {
+                  // 🧩 0️⃣ MENSAJE CON VARIAS IMÁGENES + CAPTION (tipo WhatsApp)
+                  if (Array.isArray(mensajeData.imagenes) && mensajeData.imagenes.length > 0) {
+                    const MAX_VISIBLE = 4;                          // 👈 solo 4 miniaturas
+                    const total = mensajeData.imagenes.length;
+                    const visibles = mensajeData.imagenes.slice(0, MAX_VISIBLE);
+                    const todasNormalizadas = mensajeData.imagenes.map(normalizarUrlImagen);
+
+                    // 🔎 Detectar si el "mensaje" son solo IDs (como los que te salen ahora)
+                    const esSoloIds =
+                      typeof mensajeData.mensaje === "string" &&
+                      mensajeData.mensaje.trim() !== "" &&
+                      mensajeData.mensaje
+                        .split("\n")
+                        .every((line) =>
+                          /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+                            line.trim()
+                          )
+                        );
+
+                    // 👇 Solo mostramos caption si NO son esos ids feos
+                    const caption =
+                      mensajeData.mensaje && !esSoloIds ? mensajeData.mensaje : "";
+
+                    return (
+                      <div className="d-flex flex-column">
+                        {/* GRID 2x2 tipo WhatsApp */}
+                        <div
+                          style={{
+                            display: "grid",
+                            gridTemplateColumns:
+                              total === 1 ? "1fr" : "repeat(2, minmax(0, 1fr))",
+                            gap: "4px",
+                            maxWidth: total === 1 ? "260px" : "240px",
+                          }}
+                        >
+                          {visibles.map((rawUrl, idx) => {
+                            let finalUrl = todasNormalizadas[idx];
+
+                            // Normalizar http -> https (igual que hacías antes)
+                            if (finalUrl?.startsWith("http://quickchat.click")) {
+                              finalUrl = finalUrl.replace(
+                                "http://quickchat.click",
+                                "https://quickchat.click"
+                              );
+                            } else if (finalUrl?.startsWith("http://")) {
+                              try {
+                                const u = new URL(finalUrl);
+                                finalUrl = `https://${u.host}${u.pathname}${u.search}`;
+                              } catch (e) {}
+                            }
+
+                            const isLastVisible = idx === visibles.length - 1;
+                            const showMoreBadge = isLastVisible && total > MAX_VISIBLE;
+                            const extraCount = total - MAX_VISIBLE + 1; // 👈 los que no se ven
+
+                            return (
+                              <div
+                                key={idx}
+                                className="position-relative"
+                                style={{
+                                  borderRadius: 12,
+                                  overflow: "hidden",
+                                  cursor: "pointer",
+                                }}
+                                onClick={() => abrirGaleria(todasNormalizadas, idx)}
+                              >
+                                <img
+                                  src={finalUrl}
+                                  alt={`imagen-${idx}`}
+                                  style={{
+                                    width: "100%",
+                                    height: total === 1 ? "auto" : 120,
+                                    objectFit: "cover",
+                                    display: "block",
+                                  }}
+                                />
+
+                                {/* 🔵 Overlay +N en la última */}
+                                {showMoreBadge && (
+                                  <div
+                                    className="d-flex align-items-center justify-content-center"
+                                    style={{
+                                      position: "absolute",
+                                      inset: 0,
+                                      backgroundColor: "rgba(0,0,0,0.45)",
+                                      color: "#fff",
+                                      fontSize: 24,
+                                      fontWeight: 600,
+                                    }}
+                                  >
+                                    +{extraCount}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+
+                        {/* Caption (solo si NO son los ids) */}
+                        {caption && (
+                          <p className="mt-2 break-words whitespace-pre-wrap">
+                            {renderTextoConLinks(caption)}
+                          </p>
+                        )}
+                      </div>
+                    );
+                  }
+
                   // 🧩 1️⃣ Stickers
                   if (mensajeData.mensaje?.startsWith("[sticker]")) {
                     const stickerUrl = mensajeData.mensaje.replace("[sticker]", "");
@@ -601,31 +752,104 @@ const Message = ({
                   }
 
                   // 🧩 2️⃣ Archivos enviados (desde backend o mensaje)
-                  const urlArchivo = mensajeData.archivo_url || mensajeData.mensaje;
+                  let urlArchivo = mensajeData.archivo_url || mensajeData.mensaje;
                   const tipo = mensajeData.tipo_archivo || "";
-                  const nombre = mensajeData.nombre_archivo || urlArchivo?.split("/").pop() || "archivo";
+                  const nombre =
+                    mensajeData.nombre_archivo || urlArchivo?.split("/").pop() || "archivo";
                   const tamano = mensajeData.tamano || 0;
+                  
+                  urlArchivo = normalizarUrlImagen(urlArchivo);
+
+                  // Si por alguna razón llega con http:// otro host, intenta forzar https
+                  if (urlArchivo?.startsWith("http://")) {
+                    try {
+                      const u = new URL(urlArchivo);
+                      urlArchivo = `https://${u.host}${u.pathname}${u.search}`;
+                    } catch (e) {
+                      // si no es URL válida, lo dejamos tal cual
+                    }
+                  }
 
                   if (urlArchivo) {
                     // Detectar si es imagen (png, jpg, jpeg, webp, gif)
-                    const esImagen = /\.(jpe?g|png|webp|gif)$/i.test(urlArchivo);
+                    const esImagen =
+                    /\.(jpe?g|png|webp|gif)$/i.test(urlArchivo) ||
+                    (tipo && tipo.startsWith("image/"));
 
                     if (esImagen) {
-                      // 🖼️ Imagen o GIF
+                      const estado = mensajeData.estado;      // "subiendo" | "enviado" | "error"
+                      const progreso = mensajeData.progreso;  // 0 - 100 (opcional)
+
                       return (
-                        <img
-                          src={urlArchivo}
-                          alt={nombre}
-                          className="rounded-lg cursor-pointer transition-transform hover:scale-105"
-                          style={{ maxWidth: "200px" }}
-                          onClick={() => setImagenAmpliada(urlArchivo)}
-                        />
+                        <div style={{ position: "relative", display: "inline-block" }}>
+                          <img
+                            src={urlArchivo}
+                            alt={nombre}
+                            className="rounded-lg cursor-pointer transition-transform hover:scale-105"
+                            style={{
+                              maxWidth: "200px",
+                              opacity: estado === "subiendo" ? 0.8 : 1,
+                            }}
+                            onClick={() =>
+                              estado !== "subiendo" && abrirGaleria([urlArchivo], 0)
+                            }
+                          />
+
+                          {/* ⭕ Ruedita mientras sube */}
+                          {estado === "subiendo" && (
+                            <div
+                              style={{
+                                position: "absolute",
+                                inset: 0,
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "center",
+                                backgroundColor: "rgba(0,0,0,0.35)",
+                                borderRadius: "12px",
+                              }}
+                            >
+                              <div
+                                className="spinner-border text-light"
+                                role="status"
+                                style={{ width: "28px", height: "28px", borderWidth: "3px" }}
+                              />
+                            </div>
+                          )}
+
+                          {/* ❌ Estado error */}
+                          {estado === "error" && (
+                            <div
+                              style={{
+                                position: "absolute",
+                                inset: 0,
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "center",
+                                backgroundColor: "rgba(0,0,0,0.45)",
+                                borderRadius: "12px",
+                                color: "#fff",
+                                fontSize: "24px",
+                                fontWeight: "bold",
+                              }}
+                            >
+                              ×
+                            </div>
+                          )}
+                        </div>
                       );
                     }
 
 
-                    // Detectar si es archivo descargable (pdf, docx, zip, etc.)
-                    const esArchivo = /\.(pdf|docx?|xlsx?|zip|rar|txt)$/i.test(urlArchivo);
+                    // Detectar si es archivo descargable (pdf, docx, zip, exe, etc.)
+                    const esArchivo =
+                      !esImagen &&
+                      (
+                        // extensiones conocidas
+                        /\.(pdf|docx?|xlsx?|pptx?|zip|rar|7z|txt|csv|exe|msi|apk)$/i.test(urlArchivo) ||
+                        // si viene de un upload (tiene archivo_url) o tiene mimetype no imagen
+                        !!mensajeData.archivo_url ||
+                        (!!tipo && !tipo.startsWith("image/"))
+                      );
                     if (esArchivo) {
                       // 🧹 Limpiar el nombre del archivo (eliminar el prefijo numérico antes del "_")
                       const nombreLimpio = (nombre || "").replace(/^\d+_/, ""); // elimina "1760449641479_" del inicio
@@ -1622,37 +1846,91 @@ const Message = ({
         )}
 
         {/* 👇 Imagen ampliada */}
-        {imagenAmpliada && (
+        {/* 🎞️ Visor de galería tipo WhatsApp */}
+        {galeriaAbierta && galeriaImagenes.length > 0 && (
           <div
-            className="fixed inset-0 bg-black bg-opacity-80 flex justify-center items-center z-[9999]"
-            onClick={() => setImagenAmpliada(null)}
+            className="position-fixed top-0 start-0 w-100 h-100 d-flex align-items-center justify-content-center"
             style={{
-              position: "fixed",
-              top: 0,
-              left: 0,
-              right: 0,
-              bottom: 0,
-              display: "flex",
-              justifyContent: "center",
-              alignItems: "center",
+              backgroundColor: "rgba(0,0,0,0.9)",
+              zIndex: 9999,
               cursor: "zoom-out",
-              animation: "fadeIn 0.2s ease-in-out",
             }}
+            onClick={() => setGaleriaAbierta(false)}
           >
+            {/* Botón cerrar */}
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setGaleriaAbierta(false);
+              }}
+              className="btn btn-link text-white position-absolute top-0 start-0 m-3"
+              style={{ fontSize: 24 }}
+            >
+              ✕
+            </button>
+
+            {/* Flecha izquierda */}
+            {galeriaImagenes.length > 1 && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setGaleriaIndice((prev) =>
+                    prev - 1 < 0 ? galeriaImagenes.length - 1 : prev - 1
+                  );
+                }}
+                className="btn btn-link text-white position-absolute start-0 ms-3"
+                style={{ fontSize: 40 }}
+              >
+                ‹
+              </button>
+            )}
+
+            {/* Imagen central */}
             <img
-              src={imagenAmpliada}
+              src={galeriaImagenes[galeriaIndice]}
               alt="vista ampliada"
+              onClick={(e) => e.stopPropagation()} // no cerrar al hacer clic en la imagen
               style={{
                 maxWidth: "90%",
                 maxHeight: "90%",
                 borderRadius: "12px",
-                boxShadow: "0 0 20px rgba(255,255,255,0.2)",
-                transition: "transform 0.2s ease-in-out",
+                boxShadow: "0 0 20px rgba(0,0,0,0.6)",
               }}
             />
+
+            {/* Flecha derecha */}
+            {galeriaImagenes.length > 1 && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setGaleriaIndice((prev) =>
+                    (prev + 1) % galeriaImagenes.length
+                  );
+                }}
+                className="btn btn-link text-white position-absolute end-0 me-3"
+                style={{ fontSize: 40 }}
+              >
+                ›
+              </button>
+            )}
+
+            {/* Indicador 1/4 */}
+            {galeriaImagenes.length > 1 && (
+              <div
+                className="position-absolute bottom-0 mb-3 px-3 py-1 rounded-pill text-white"
+                style={{
+                  backgroundColor: "rgba(0,0,0,0.5)",
+                  fontSize: 12,
+                }}
+              >
+                {galeriaIndice + 1} / {galeriaImagenes.length}
+              </div>
+            )}
           </div>
         )}
-              
 
       </div>
     </div>

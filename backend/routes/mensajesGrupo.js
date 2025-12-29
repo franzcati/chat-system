@@ -83,6 +83,7 @@ router.get("/:grupoId", async (req, res) => {
         mg.eliminado,
         mg.fecha_envio,
         mg.editado,
+        mg.lote_id,
         u.nombre,
         u.apellido,
         u.url_imagen,
@@ -213,7 +214,7 @@ router.get("/:grupoId", async (req, res) => {
 // Enviar mensaje a un grupo
 // =======================
 router.post("/", async (req, res) => {
-  const { grupoId, usuarioId, mensaje } = req.body;
+  const { grupoId, usuarioId, mensaje, loteId } = req.body; // 👈 leemos loteId OPCIONAL
 
   if (!grupoId || !usuarioId || !mensaje) {
     return res.status(400).json({ error: "Faltan campos obligatorios" });
@@ -228,9 +229,9 @@ router.post("/", async (req, res) => {
 
   try {
     const [result] = await db.query(
-      `INSERT INTO mensajes_grupo (grupo_id, usuario_id, mensaje, fecha_envio)
-       VALUES (?, ?, ?, ?)`,
-      [grupoId, usuarioId, mensaje, fechaEnvioMySQL]
+      `INSERT INTO mensajes_grupo (grupo_id, usuario_id, mensaje, fecha_envio, lote_id)
+      VALUES (?, ?, ?, ?, ?)`,
+      [grupoId, usuarioId, mensaje, fechaEnvioMySQL, loteId || null]  // 👈 puede ser null
     );
 
     const [usuarioInfo] = await db.query(
@@ -239,7 +240,7 @@ router.post("/", async (req, res) => {
     );
     const usuario = usuarioInfo[0];
 
-     const nuevoMensaje = {
+    const nuevoMensaje = {
       id: result.insertId,
       grupo_id: grupoId,
       usuario_id: usuarioId,
@@ -248,6 +249,7 @@ router.post("/", async (req, res) => {
       fecha_envio: fechaEnvioISO,
       editado: 0,
       correo: usuario.correo,
+      lote_id: loteId || null,  // 👈 MUY IMPORTANTE
       ...usuario,
     };
 
@@ -792,13 +794,19 @@ router.get("/fijados/:grupoId", async (req, res) => {
 });
 
 // =======================
+// =======================
 // 📤 Subir archivo a un grupo (con subcarpetas dinámicas)
 // =======================
 router.post("/archivo", upload.single("archivo"), async (req, res) => {
   try {
-    // ✅ Asegurar que grupo_id y usuario_id existan y sean números
     const grupo_id = Number(req.body.grupo_id || req.query.grupo_id);
     const usuario_id = Number(req.body.usuario_id || req.query.usuario_id);
+    const loteId =
+      req.body.loteId ||
+      req.body.lote_id ||
+      req.query.loteId ||
+      req.query.lote_id ||
+      null;
 
     if (!grupo_id || !usuario_id || isNaN(grupo_id) || isNaN(usuario_id)) {
       console.error("❌ grupo_id o usuario_id inválido:", grupo_id, usuario_id);
@@ -810,49 +818,58 @@ router.post("/archivo", upload.single("archivo"), async (req, res) => {
       return res.status(400).json({ error: "No se recibió ningún archivo" });
     }
 
-    // =============================
-    // 📁 Determinar ruta pública real
-    // =============================
-    // Ejemplo: uploads/grupo_10/imagenes/1733978271234_gato.png
+    // 📁 Ruta relativa final tipo: /uploads/grupo_51/imagenes/....
     const relativePath = path.relative(
       path.join(__dirname, "../uploads"),
       file.path
     );
+    const urlArchivo = `/uploads/${relativePath.replace(/\\/g, "/")}`;
 
-    const urlArchivo = `${req.protocol}://${req.get("host")}/uploads/${relativePath.replace(/\\/g, "/")}`;
+    // 1️⃣ Crear mensaje en mensajes_grupo (mensaje = ruta de la imagen)
+    const [resultadoMsg] = await db.query(
+      `INSERT INTO mensajes_grupo (grupo_id, usuario_id, mensaje, fecha_envio, lote_id)
+      VALUES (?, ?, ?, NOW(), ?)`,
+      [grupo_id, usuario_id, urlArchivo, loteId || null]   // 👈 usamos el lote
+    );
+    const mensajeId = resultadoMsg.insertId;
 
-    // =============================
-    // 🗄️ Guardar en la base de datos
-    // =============================
-    const [resultado] = await db.query(
+    // 2️⃣ Guardar metadatos en mensajes_grupo_archivos
+    await db.query(
       `INSERT INTO mensajes_grupo_archivos 
         (grupo_id, usuario_id, archivo_url, tipo_archivo, nombre_archivo, tamano, fecha_envio)
-      VALUES (?, ?, ?, ?, ?, ?, NOW())`,
+       VALUES (?, ?, ?, ?, ?, ?, NOW())`,
       [grupo_id, usuario_id, urlArchivo, file.mimetype, file.originalname, file.size]
     );
 
-    // 🧍 Info del usuario que envió el archivo
+    // 3️⃣ Info del usuario
     const [[usuarioInfo]] = await db.query(
       "SELECT nombre, apellido, correo, url_imagen, background FROM usuario WHERE id = ?",
       [usuario_id]
     );
 
-    // 🧩 Crear objeto mensaje
+    // 4️⃣ Objeto mensaje que entiende el front
     const mensaje = {
-      id: resultado.insertId,
+      id: mensajeId,
       grupo_id,
       usuario_id,
+      mensaje: urlArchivo,
       archivo_url: urlArchivo,
       tipo_archivo: file.mimetype,
       nombre_archivo: file.originalname,
       tamano: file.size,
-      mensaje: "",
       eliminado: 0,
       editado: 0,
+      fijado: 0,
       fecha_envio: new Date().toISOString(),
+      lote_id: loteId || null,       // 👈 AQUÍ
       ...usuarioInfo,
     };
 
+    // 5️⃣ Emitir por socket a todos los del grupo
+    const io = req.app.get("io");
+    if (io) {
+      io.to(`grupo_${grupo_id}`).emit("nuevoMensajeGrupo", mensaje);
+    }
 
     res.json({ success: true, mensaje });
   } catch (err) {

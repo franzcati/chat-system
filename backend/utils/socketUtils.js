@@ -6,7 +6,7 @@ function initSocket(server) {
   const { Server } = require("socket.io");
   const io = new Server(server, {
     cors: {
-      origin: ["https://chatvista.click","https://www.chatvista.click"],
+      origin: ["https://quickchat.click","https://www.quickchat.click"],
       methods: ["GET", "POST"],
       credentials: true,
     },

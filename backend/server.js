@@ -15,10 +15,10 @@ const mensajesGruposRoutes = require("./routes/mensajesGrupo");
 
 // 🔹 Configuración CORS para producción
 const allowedOrigins = [
-  "http://chatvista.click",
-  "https://chatvista.click",
-  "http://www.chatvista.click",
-  "https://www.chatvista.click"
+  "http://quickchat.click",
+  "https://quickchat.click",
+  "http://www.quickchat.click",
+  "https://www.quickchat.click"
 ];
 
 app.use(cors({
@@ -73,7 +73,7 @@ async function startServer() {
 
     server.listen(PORT, () => {
       logDev(`🚀 Servidor corriendo en puerto ${PORT}`);
-      logDev(`🌐 Accesible desde chatvista.click`);
+      logDev(`🌐 Accesible desde quickchat.click`);
     });
 
     // 🔁 Limpieza automática de mensajes fijados expirados (cada hora)

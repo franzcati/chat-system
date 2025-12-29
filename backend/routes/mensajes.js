@@ -45,6 +45,7 @@ router.get("/", async (req, res) => {
         m.usuario_envia_id,
         m.usuario_recibe_id,
         m.mensaje,
+        m.lote_id,
         m.fecha_envio,
         m.eliminado,
         m.editado,
@@ -135,7 +136,7 @@ router.get("/", async (req, res) => {
 // Enviar un nuevo mensaje (con nombre, avatar y background)
 // =======================
 router.post("/", async (req, res) => {
-  const { senderId, receiverId, message } = req.body;
+  const { senderId, receiverId, message, loteId } = req.body;
   logDev("📤 [POST] Datos recibidos:", req.body);
 
   if (!senderId || !receiverId || !message) {
@@ -157,9 +158,10 @@ router.post("/", async (req, res) => {
   try {
     // Guardar en DB
     const [result] = await db.query(
-      `INSERT INTO mensajes (usuario_envia_id, usuario_recibe_id, mensaje, fecha_envio, fijado)
-       VALUES (?, ?, ?, ?, 0)`,
-      [senderId, receiverId, message, fechaEnvioMySQL]
+      `INSERT INTO mensajes 
+        (usuario_envia_id, usuario_recibe_id, mensaje, lote_id, fecha_envio, fijado)
+      VALUES (?, ?, ?, ?, ?, 0)`,
+      [senderId, receiverId, message, loteId || null, fechaEnvioMySQL]
     );
 
     // Info del emisor
@@ -182,6 +184,7 @@ router.post("/", async (req, res) => {
       usuario_envia_id: senderId,
       usuario_recibe_id: receiverId,
       mensaje: message,
+      lote_id: loteId || null,
       fecha_envio: fechaEnvioISO, // 👈 ISO UTC → el frontend sabrá convertirlo
       fecha_envio_db: fechaEnvioMySQL, // opcional si quieres guardarlo también
       editado: 0,
@@ -704,12 +707,16 @@ router.get("/fijados", async (req, res) => {
 });
 
 // =======================
-// 📤 Subir archivo en chat individual (solo guarda metadatos)
+// 📤 Subir archivo en chat individual
+//  - Guarda en mensajes_archivos
+//  - También crea un registro en mensajes
+//  - Emite "nuevoMensaje" por socket
 // =======================
 router.post("/archivo", upload.single("archivo"), async (req, res) => {
   try {
-    const sender_id = Number(req.body.sender_id || req.query.sender_id);
+    const sender_id   = Number(req.body.sender_id || req.query.sender_id);
     const receiver_id = Number(req.body.receiver_id || req.query.receiver_id);
+    const loteId      = req.body.loteId || req.query.loteId || null;
 
     if (!sender_id || !receiver_id || isNaN(sender_id) || isNaN(receiver_id)) {
       console.error("❌ sender_id o receiver_id inválido:", sender_id, receiver_id);
@@ -728,38 +735,107 @@ router.post("/archivo", upload.single("archivo"), async (req, res) => {
       path.join(__dirname, "../uploads"),
       file.path
     );
-    const urlArchivo = `${req.protocol}://${req.get("host")}/uploads/${relativePath.replace(/\\/g, "/")}`;
+
+    // 👉 Guardamos SOLO la ruta relativa, sin http/https ni dominio
+    const urlArchivo = `/uploads/${relativePath.replace(/\\/g, "/")}`;
 
     // =============================
-    // 🗄️ Guardar solo en mensajes_archivos (no en mensajes)
+    // 🕒 Fechas
     // =============================
-    const [resultado] = await db.query(
+    const fechaUTC       = new Date();
+    const fechaEnvioMySQL = formatDateToMySQL(fechaUTC);
+    const fechaEnvioISO   = fechaUTC.toISOString();
+
+    // =============================
+    // 1️⃣ Guardar metadatos en mensajes_archivos
+    // =============================
+    const [resultadoArchivo] = await db.query(
       `INSERT INTO mensajes_archivos 
-        (sender_id, receiver_id, archivo_url, tipo_archivo, nombre_archivo, tamano, fecha_envio)
-      VALUES (?, ?, ?, ?, ?, ?, NOW())`,
-      [sender_id, receiver_id, urlArchivo, file.mimetype, file.originalname, file.size]
+        (sender_id, receiver_id, archivo_url, tipo_archivo, nombre_archivo, tamano, fecha_envio, lote_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [sender_id, receiver_id, urlArchivo, file.mimetype, file.originalname, file.size, fechaEnvioMySQL, loteId]
     );
 
-    // 🧍 Info del usuario que subió el archivo (opcional)
-    const [[usuarioInfo]] = await db.query(
+    // =============================
+    // 2️⃣ Crear mensaje "visible" en mensajes
+    //     - mensaje = url del archivo
+    //     - mismo lote_id
+    // =============================
+    const [resultadoMensaje] = await db.query(
+      `INSERT INTO mensajes 
+        (usuario_envia_id, usuario_recibe_id, mensaje, lote_id, fecha_envio, fijado)
+       VALUES (?, ?, ?, ?, ?, 0)`,
+      [sender_id, receiver_id, urlArchivo, loteId || null, fechaEnvioMySQL]
+    );
+
+    // =============================
+    // 3️⃣ Info de emisor y receptor
+    // =============================
+    const [[emisor]] = await db.query(
       "SELECT nombre, apellido, correo, url_imagen, background FROM usuario WHERE id = ?",
       [sender_id]
     );
 
-    // 🧩 Respuesta al frontend
+    const [[receptor]] = await db.query(
+      "SELECT nombre, apellido, correo, url_imagen, background FROM usuario WHERE id = ?",
+      [receiver_id]
+    );
+
+    // =============================
+    // 4️⃣ Armar objeto mensaje igual al POST "/"
+    //     + datos extra de archivo
+    // =============================
     const mensaje = {
-      id: resultado.insertId,
-      sender_id,
-      receiver_id,
+      id: resultadoMensaje.insertId,
+      usuario_envia_id: sender_id,
+      usuario_recibe_id: receiver_id,
+      mensaje: urlArchivo,
+      lote_id: loteId || null,
+      fecha_envio: fechaEnvioISO,
+      editado: 0,
+      eliminado: 0,
+      visto: 0,
+      fijado: false,
+      // archivo
       archivo_url: urlArchivo,
       tipo_archivo: file.mimetype,
       nombre_archivo: file.originalname,
       tamano: file.size,
-      fecha_envio: new Date().toISOString(),
-      ...usuarioInfo,
+      // emisor
+      emisor_nombre: emisor.nombre,
+      emisor_apellido: emisor.apellido,
+      emisor_correo: emisor.correo,
+      emisor_avatar: emisor.url_imagen,
+      emisor_background: emisor.background,
+      // receptor
+      receptor_nombre: receptor.nombre,
+      receptor_apellido: receptor.apellido,
+      receptor_correo: receptor.correo,
+      receptor_avatar: receptor.url_imagen,
+      receptor_background: receptor.background,
+      // reacciones
+      reacciones: [],
     };
 
-    res.json({ success: true, mensaje });
+    // =============================
+    // 5️⃣ Emitir por socket a emisor y receptor
+    // =============================
+    const io = req.app.get("io");
+    const { usuariosConectados, enviarEventoAlUsuario } = req.app.get("socketUtils");
+
+    if (io && enviarEventoAlUsuario) {
+      enviarEventoAlUsuario(io, usuariosConectados, sender_id,   "nuevoMensaje", mensaje);
+      enviarEventoAlUsuario(io, usuariosConectados, receiver_id, "nuevoMensaje", mensaje);
+    }
+
+    // =============================
+    // 6️⃣ Respuesta al frontend
+    // =============================
+    res.json({
+      success: true,
+      mensaje,
+      archivo_id: resultadoArchivo.insertId, // por si luego quieres usarlo
+    });
   } catch (err) {
     console.error("❌ Error al subir archivo privado:", err);
     res.status(500).json({ success: false, error: "Error al subir archivo" });

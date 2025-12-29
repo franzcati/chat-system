@@ -4,17 +4,48 @@ import { toLocalDate } from "../utils/date"; // 👈 importa tu función
 const VerArchivos = ({ chat, visible, onClose }) => {
   const [tabActiva, setTabActiva] = useState("multimedia");
   const [seleccionados, setSeleccionados] = useState([]);
-  // 🔹 Ajustar URL para rutas relativas
-  const fixUrl = (url) => url.startsWith("http") ? url : `/api${url.startsWith("/") ? "" : "/"}${url}`;
 
-  const imagenes = chat.archivos?.filter((a) =>
-    /\.(jpg|jpeg|png|gif)$/i.test(a.archivo_url)
-  ) || [];
+  // 🔹 Normalizar URL de archivos
+  const fixUrl = (url = "") => {
+    if (!url) return "";
+
+    // 1) URLs absolutas
+    if (url.startsWith("https://")) return url;
+
+    if (url.startsWith("http://")) {
+      // Forzar https para evitar mixed content
+      return url.replace("http://", "https://");
+    }
+
+    // 2) Viejas rutas con /api/uploads → quitar /api
+    if (url.startsWith("/api/uploads/")) {
+      return url.replace("/api", ""); // => /uploads/...
+    }
+
+    // 3) Ruta correcta /uploads/...
+    if (url.startsWith("/uploads/")) {
+      return url; // el navegador la resolverá como https://quickchat.click/uploads/...
+    }
+
+    // 4) Ruta sin slash inicial: "uploads/..."
+    if (url.startsWith("uploads/")) {
+      return `/${url}`;
+    }
+
+    // 5) Cualquier otro caso raro, la devolvemos tal cual
+    return url;
+  };
+
+  const imagenes =
+    chat.archivos?.filter((a) =>
+      /\.(jpg|jpeg|png|gif)$/i.test(a.archivo_url)
+    ) || [];
 
   // 🔹 Filtrar solo archivos tipo documento (no imágenes ni videos)
-  const documentos = chat.archivos?.filter((a) =>
-    /\.(pdf|docx?|xlsx?|zip|rar|txt)$/i.test(a.archivo_url)
-  ) || [];
+  const documentos =
+    chat.archivos?.filter((a) =>
+      /\.(pdf|docx?|xlsx?|zip|rar|txt)$/i.test(a.archivo_url)
+    ) || [];
 
    // 🔹 Obtener nombre del mes (en español) o “ESTE MES”
   const getMesNombre = (fechaEnvio) => {

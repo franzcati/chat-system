@@ -18,6 +18,12 @@ import "../css/emoji.css";
 const ChatBox = ({ chat, user, setChat, onVerPerfil }) => {
 
   const [messages, setMessages] = useState([]);
+
+    // 👇 NUEVO
+  const [pendingImages, setPendingImages] = useState([]); // {id, file, preview}
+  const [activeImageIndex, setActiveImageIndex] = useState(0); // 👈 NUEVO
+  const [isDragOver, setIsDragOver] = useState(false);
+
   const [showEmojiPicker, setShowEmojiPicker] = useState(false); // 👈 control del picker
   const [offcanvasGrupo, setOffcanvasGrupo] = useState(null);
   const [mostrarInfoGrupo, setMostrarInfoGrupo] = useState(false);
@@ -43,7 +49,39 @@ const ChatBox = ({ chat, user, setChat, onVerPerfil }) => {
     "../assets/stickers/perro.png",
   ]);
 
-  
+  const crearLoteId = () =>
+  `lote-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+
+  const clearPendingImages = () => {
+    setPendingImages([]);      // 👈 solo limpiamos el estado
+    setActiveImageIndex(0);
+  };
+
+  useEffect(() => {
+    const handleKey = (e) => {
+      if (!pendingImages.length) return;
+
+      if (e.key === "Escape") {
+        clearPendingImages();
+        return;
+      }
+
+      if (e.key === "ArrowRight") {
+        setActiveImageIndex((prev) =>
+          (prev + 1) % pendingImages.length
+        );
+      }
+
+      if (e.key === "ArrowLeft") {
+        setActiveImageIndex((prev) =>
+          prev - 1 < 0 ? pendingImages.length - 1 : prev - 1
+        );
+      }
+    };
+
+    window.addEventListener("keydown", handleKey);
+    return () => window.removeEventListener("keydown", handleKey);
+  }, [pendingImages.length]);
 
   // 👇 Nueva función para agregar mensaje de grupo al estado (reutilizable)
   const agregarMensajeGrupo = (msg) => {
@@ -57,15 +95,30 @@ const ChatBox = ({ chat, user, setChat, onVerPerfil }) => {
       visto: 0,
     };
 
-    setMessages(prev => {
-      const mapPrev = new Map(prev.map(m => [m.id, m]));
-      const mensajePrev = mapPrev.get(msg.id);
+    setMessages((prev) => {
+      const existente = prev.find((m) => m.id === msg.id);
+
+      if (existente) {
+        // Ya lo teníamos (por el envío local / actualización),
+        // solo mergeamos datos nuevos
+        return prev.map((m) =>
+          m.id === msg.id
+            ? {
+                ...m,
+                ...mensajeTransformado,
+                reacciones: m.reacciones || mensajeTransformado.reacciones || [],
+              }
+            : m
+        );
+      }
+
+      // Primer vez que lo vemos ⇒ lo añadimos
       return [
         ...prev,
         {
           ...mensajeTransformado,
-          reacciones: mensajePrev?.reacciones || mensajeTransformado.reacciones || [],
-        }
+          reacciones: mensajeTransformado.reacciones || [],
+        },
       ];
     });
   };
@@ -361,16 +414,29 @@ const ChatBox = ({ chat, user, setChat, onVerPerfil }) => {
           (msg.usuario_envia_id === chat.usuario_id && msg.usuario_recibe_id === user.id) ||
           (msg.usuario_envia_id === user.id && msg.usuario_recibe_id === chat.usuario_id)
         ) {
-          setMessages(prev => {
-            // 🔹 Verificar si el mensaje ya existía (por si hubo reacciones)
-            const mapPrev = new Map(prev.map(m => [m.id, m]));
-            const mensajePrev = mapPrev.get(msg.id);
+          setMessages((prev) => {
+            const existente = prev.find((m) => m.id === msg.id);
+
+            if (existente) {
+              // Ya lo tenemos, solo actualizamos
+              return prev.map((m) =>
+                m.id === msg.id
+                  ? {
+                      ...m,
+                      ...msg,
+                      reacciones: m.reacciones || msg.reacciones || [],
+                    }
+                  : m
+              );
+            }
+
+            // Mensaje nuevo
             return [
               ...prev,
               {
                 ...msg,
-                reacciones: mensajePrev?.reacciones || msg.reacciones || [],
-              }
+                reacciones: msg.reacciones || [],
+              },
             ];
           });
         }
@@ -545,26 +611,164 @@ const ChatBox = ({ chat, user, setChat, onVerPerfil }) => {
       document.removeEventListener("keydown", handleEsc);
     };
   }, []);
+
   // Función para enviar mensaje
   const handleSendMessage = async (messageText) => {
-    if (!messageText.trim()) return;
-    console.log("📝 Enviando mensaje:", { chat, user, messageText });
+    const text = (messageText || "").trim();
+    const hayTexto = !!text;
+    const hayImagenes = pendingImages.length > 0;
+
+    if (!hayTexto && !hayImagenes) return;
+
+    // 👇 Un id de lote SOLO cuando hay imágenes
+    const loteId = hayImagenes ? crearLoteId() : null;
+
     try {
-      if (chat.tipo === "grupo") {
-        // 🔹 Grupo
-        await axios.post("/api/mensajes/grupo", {
-          grupoId: chat.grupo_id,
-          usuarioId: user.id,
-          mensaje: messageText,
-        });
-      } else {
-        // 🔹 Privado
-        await axios.post("/api/mensajes", {
-          senderId: user.id,
-          receiverId: chat.usuario_id,
-          message: messageText,
-        });
+      // 1️⃣ Imágenes → mensajes temporales con estado "subiendo"
+      if (hayImagenes) {
+        for (const img of pendingImages) {
+          const tempId = `temp-${Date.now()}-${Math.random()}`;
+
+          const baseTemp = {
+            id: tempId,
+            mensaje: "",
+            archivo_url: img.preview,
+            tipo_archivo: img.file.type,
+            nombre_archivo: img.file.name,
+            tamano: img.file.size,
+            eliminado: 0,
+            editado: 0,
+            fijado: 0,
+            fecha_envio: new Date().toISOString(),
+            estado: "subiendo",
+            progreso: 0,
+            lote_id: loteId,
+          };
+
+          let tempMsg;
+
+          if (chat.tipo === "grupo") {
+            tempMsg = {
+              ...baseTemp,
+              grupo_id: chat.grupo_id,
+              usuario_id: user.id,
+              nombre: user.nombre,
+              apellido: user.apellido,
+              url_imagen: user.url_imagen,
+              background: user.background,
+              correo: user.correo,
+            };
+          } else {
+            tempMsg = {
+              ...baseTemp,
+              usuario_envia_id: user.id,
+              usuario_recibe_id: chat.usuario_id,
+              emisor_nombre: user.nombre,
+              emisor_apellido: user.apellido,
+              emisor_avatar: user.url_imagen,
+              emisor_background: user.background,
+              emisor_correo: user.correo,
+              receptor_nombre: chat.usuario_nombre,
+              receptor_apellido: "",
+              receptor_avatar: chat.url_imagen,
+              receptor_background: chat.background,
+              receptor_correo: chat.usuario_correo,
+            };
+          }
+
+          // Añadimos el mensaje temporal al chat
+          setMessages((prev) => [...prev, tempMsg]);
+
+          // Subimos la imagen de verdad
+          uploadImageMessage(img.file, loteId, (percent) => {
+            setMessages((prev) =>
+              prev.map((m) =>
+                m.id === tempId ? { ...m, progreso: percent } : m
+              )
+            );
+          })
+            .then((mensajeServidor) => {
+              if (!mensajeServidor) {
+                // marcar error si no hay respuesta
+                setMessages((prev) =>
+                  prev.map((m) =>
+                    m.id === tempId ? { ...m, estado: "error" } : m
+                  )
+                );
+                return;
+              }
+
+              // aseguramos que el lote se mantiene
+              const msgSrv = {
+                ...mensajeServidor,
+                lote_id: mensajeServidor.lote_id || loteId,
+              };
+
+              setMessages((prev) => {
+                // ¿Ya entró el mensaje real por socket?
+                const yaExisteReal = prev.find((m) => m.id === msgSrv.id);
+
+                if (yaExisteReal) {
+                  // llegó por socket: actualizamos ese y borramos el temporal
+                  return prev
+                    .filter((m) => m.id !== tempId)
+                    .map((m) =>
+                      m.id === msgSrv.id
+                        ? {
+                            ...m,
+                            ...msgSrv,
+                            estado: "enviado",
+                            progreso: 100,
+                          }
+                        : m
+                    );
+                }
+
+                // aún no entró por socket: reemplazamos el temporal
+                return prev.map((m) =>
+                  m.id === tempId
+                    ? {
+                        ...m,
+                        ...msgSrv,
+                        estado: "enviado",
+                        progreso: 100,
+                      }
+                    : m
+                );
+              });
+            })
+            .catch((err) => {
+              console.error("❌ Error subiendo imagen:", err);
+              setMessages((prev) =>
+                prev.map((m) =>
+                  m.id === tempId ? { ...m, estado: "error" } : m
+                )
+              );
+            });
+        }
       }
+
+      // 2️⃣ Si hay texto, lo enviamos (como caption si hay loteId)
+      if (hayTexto) {
+        if (chat.tipo === "grupo") {
+          await axios.post("/api/mensajes/grupo", {
+            grupoId: chat.grupo_id,
+            usuarioId: user.id,
+            mensaje: text,
+            loteId, // 👈 va al backend SOLO si hay imágenes
+          });
+        } else {
+          await axios.post("/api/mensajes", {
+            senderId: user.id,
+            receiverId: chat.usuario_id,
+            message: text,
+            loteId,
+          });
+        }
+      }
+
+      // 3️⃣ Limpiar previews
+      setPendingImages([]);
       inputRef.current?.reset();
     } catch (err) {
       console.error("❌ Error enviando mensaje:", err);
@@ -639,53 +843,176 @@ const ChatBox = ({ chat, user, setChat, onVerPerfil }) => {
     }
   };
 
-  const handleArchivoSeleccionado = async (e) => {
-    const archivo = e.target.files[0];
-    if (!archivo) return;
+  const handleArchivoSeleccionado = (e) => {
+    const files = e.target.files;
+    if (!files || !files.length) return;
 
-    if (archivo.size > 70 * 1024 * 1024) {
-      alert("⚠️ El archivo supera los 70 MB permitidos.");
-      return;
+    // 👇 Ahora manejamos imágenes + documentos + lo que sea
+    handleFilesSeleccionados(files);
+
+    e.target.value = "";
+  };
+
+  // Maneja CUALQUIER tipo de archivo seleccionado / arrastrado
+  const handleFilesSeleccionados = (fileList) => {
+    const filesArray = Array.from(fileList || []);
+    if (!filesArray.length) return;
+
+    // 1) Imágenes → van a la cola de preview
+    const imageFiles = filesArray.filter((f) => f.type.startsWith("image/"));
+
+    if (imageFiles.length) {
+      addImagesToPending(imageFiles);
+    }
+
+    // 2) Otros archivos (Word, Excel, ZIP, EXE, etc.) → subir directo
+    const otherFiles = filesArray.filter((f) => !f.type.startsWith("image/"));
+
+    otherFiles.forEach(async (file) => {
+      try {
+        // loteId = null, y no necesitamos barra de progreso aquí
+        await uploadImageMessage(file, null, null);
+        console.log("📁 Archivo subido correctamente:", file.name);
+        // El mensaje aparecerá cuando llegue el evento socket "nuevoMensaje" / "nuevoMensajeGrupo"
+      } catch (err) {
+        console.error("❌ Error subiendo archivo:", file.name, err);
+        alert(`Error al subir el archivo: ${file.name}`);
+      }
+    });
+  };
+
+   // 👇 centralizamos cómo añadimos imágenes a la “cola” tipo WhatsApp
+  const addImagesToPending = (fileList) => {
+    const imageFiles = Array.from(fileList).filter((f) =>
+      f.type.startsWith("image/")
+    );
+    if (!imageFiles.length) return;
+
+    const mapped = imageFiles.map((file) => ({
+      id: `${file.name}-${file.lastModified}-${Math.random()}`,
+      file,
+      preview: URL.createObjectURL(file),
+    }));
+
+    setPendingImages((prev) => {
+      const next = [...prev, ...mapped];
+      setActiveImageIndex(0);       // 👈 siempre empezamos por la primera
+      return next;
+    });
+  };
+
+  // 👇 sube UNA imagen y devuelve el objeto mensaje del backend
+  const uploadImageMessage = async (file, loteId, onProgress) => {
+    if (file.size > 100 * 1024 * 1024) {
+      alert("⚠️ El archivo supera los 100 MB permitidos.");
+      return null;
     }
 
     const formData = new FormData();
-    formData.append("archivo", archivo);
+    formData.append("archivo", file);
+    if (loteId) formData.append("loteId", loteId); // 👈 importante
 
-    try {
-      let res;
+    let lastPercent = 0;
+    let res;
 
-      if (chat.tipo === "grupo") {
-        // 🔹 Subida para grupo
-        res = await axios.post(
-          `/api/mensajes/grupo/archivo?grupo_id=${chat.grupo_id}&usuario_id=${user.id}`,
-          formData,
-          { headers: { "Content-Type": "multipart/form-data" } }
-        );
-      } else {
-        // 🔹 Subida para chat individual
-        res = await axios.post(
-          `/api/mensajes/archivo?sender_id=${user.id}&receiver_id=${chat.usuario_id}`,
-          formData,
-          { headers: { "Content-Type": "multipart/form-data" } }
-        );
-      }
+    if (chat.tipo === "grupo") {
+      res = await axios.post(
+        `/api/mensajes/grupo/archivo?grupo_id=${chat.grupo_id}&usuario_id=${user.id}`,
+        formData,
+        {
+          headers: { "Content-Type": "multipart/form-data" },
+          onUploadProgress: (e) => {
+            if (onProgress && e.total) {
+              const percent = Math.round((e.loaded * 100) / e.total);
+              if (percent === 100 || percent - lastPercent >= 10) {
+                lastPercent = percent;
+                onProgress(percent);
+              }
+            }
+          },
+        }
+      );
+    } else {
+      res = await axios.post(
+        `/api/mensajes/archivo?sender_id=${user.id}&receiver_id=${chat.usuario_id}`,
+        formData,
+        {
+          headers: { "Content-Type": "multipart/form-data" },
+          onUploadProgress: (e) => {
+            if (onProgress && e.total) {
+              const percent = Math.round((e.loaded * 100) / e.total);
+              if (percent === 100 || percent - lastPercent >= 10) {
+                lastPercent = percent;
+                onProgress(percent);
+              }
+            }
+          },
+        }
+      );
+    }
 
-      console.log("📁 Archivo subido:", res.data);
+    console.log("📁 Imagen subida:", res.data);
 
-      if (res.data.success && res.data.mensaje) {
-        const archivoMsg = `${res.data.mensaje.archivo_url}`;
-        await handleSendMessage(archivoMsg);
-      }
-    } catch (err) {
-      console.error("❌ Error subiendo archivo:", err);
-      alert("Error al subir archivo");
-    } finally {
-      e.target.value = "";
+    const mensaje = res.data?.mensaje;
+    if (!mensaje) return null;
+
+    // devolvemos SIEMPRE el objeto mensaje
+    return {
+      ...mensaje,
+      lote_id: mensaje.lote_id || loteId, // 👈 forzamos a que venga el lote
+    };
+  };
+
+  const dragDepth = useRef(0);
+
+  const isFileDrag = (e) =>
+    e.dataTransfer && Array.from(e.dataTransfer.types || []).includes("Files");
+
+  const handleDragEnter = (e) => {
+    e.preventDefault();
+    if (!isFileDrag(e)) return;
+    dragDepth.current += 1;
+    setIsDragOver(true);
+  };
+
+  const handleDragOver = (e) => {
+    e.preventDefault();
+    if (!isFileDrag(e)) return;
+  };
+
+  const handleDragLeave = (e) => {
+    e.preventDefault();
+    if (!isFileDrag(e)) return;
+
+    dragDepth.current -= 1;
+    if (dragDepth.current <= 0) {
+      dragDepth.current = 0;
+      setIsDragOver(false);
+    }
+  };
+
+  const handleDrop = (e) => {
+    e.preventDefault();
+    if (!isFileDrag(e)) return;
+
+    dragDepth.current = 0;
+    setIsDragOver(false);
+
+    if (e.dataTransfer?.files?.length) {
+      handleFilesSeleccionados(e.dataTransfer.files);
     }
   };
 
   return (
-    <main className="main is-visible" data-dropzone-area="">
+    <main
+      className="main is-visible"
+      data-dropzone-area=""
+      // 👇 drag & drop de archivos
+      onDragEnter={handleDragEnter}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+    >
       <div className="container h-100">
         <div 
           className={`d-flex flex-column h-100 position-relativetransition-all duration-300 ${
@@ -1081,56 +1408,134 @@ const ChatBox = ({ chat, user, setChat, onVerPerfil }) => {
 
           {/* Cuerpo del chat */}
           <div className="chat-body hide-scrollbar flex-1 overflow-auto">
-            <div className="chat-body-inner h-100" >
-                {messages.length === 0 ? (
-                  <>
-                  <div className="d-flex flex-column align-items-center justify-content-center h-100">
-                      {/* iniciar Conversacion*/}
-                      <div className="text-center mb-6">
-                        <span className="icon icon-xl text-muted">
-                          <svg
-                            xmlns="http://www.w3.org/2000/svg"
-                            width="24"
-                            height="24"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth="2"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            className="feather feather-send"
-                          >
-                            <line x1="22" y1="2" x2="11" y2="13"></line>
-                            <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
-                          </svg>
-                        </span>
-                      </div>
+            {pendingImages.length > 0 ? (
+              // 👇 MODO PREVIEW TIPO WHATSAPP
+              <div className="h-100 d-flex flex-column">
+                {/* Imagen grande + botón cerrar */}
+                <div className="flex-grow-1 d-flex align-items-center justify-content-center bg-light position-relative">
+                  {/* Botón X para cerrar preview */}
+                  <button
+                    type="button"
+                    className="btn btn-light btn-sm position-absolute top-0 end-0 m-3 rounded-circle shadow-sm"
+                    onClick={clearPendingImages}
+                    title="Cerrar vista previa"
+                  >
+                    <span style={{ fontSize: 16, lineHeight: 1 }}>×</span>
+                  </button>
 
-  
-                      <p className="text-center text-muted">
-                        Aún no hay mensajes, <br /> ¡inicia la conversación!
-                      </p>
-                    </div>
-                  </>
-                ) : (
-                  <div className="d-flex flex-column justify-content-center">
-                      <ChatBody
-                        messages={messages}
-                        user={user}
-                        chat={chat}   // 👈 aquí ya está el "tipo"
-                        tipo={chat.tipo} // 👈 pasamos el tipo directamente
-                        socket={socket}   // 👈 ahora sí lo pasamos
-                        onVerPerfil={onVerPerfil}  // 👈 usamos el callback del padre
+                  <img
+                    src={pendingImages[activeImageIndex]?.preview}
+                    alt="preview-grande"
+                    style={{
+                      maxWidth: "80%",     // 👈 no ocupa todo el ancho
+                      maxHeight: "70vh",   // 👈 no ocupa toda la altura
+                      objectFit: "contain",
+                      borderRadius: "16px",
+                      boxShadow: "0 4px 16px rgba(0,0,0,0.15)",
+                    }}
+                  />
+                </div>
+
+                {/* Miniaturas abajo */}
+                <div
+                  className="d-flex flex-row gap-2 p-3"
+                  style={{
+                    overflowX: "auto",    // 👈 solo horizontal
+                    overflowY: "hidden",  // 👈 sin scroll vertical
+                  }}
+                >
+                  {pendingImages.map((img, idx) => (
+                    <div
+                      key={img.id}
+                      className="position-relative"
+                      style={{
+                        width: 80,
+                        height: 80,
+                        cursor: "pointer",
+                        borderRadius: "12px",
+                        overflow: "hidden",
+                        border:
+                          idx === activeImageIndex ? "2px solid #0d6efd" : "1px solid #ddd",
+                      }}
+                      onClick={() => setActiveImageIndex(idx)}
+                    >
+                      <img
+                        src={img.preview}
+                        alt="preview"
+                        className="w-100 h-100"
+                        style={{ objectFit: "cover" }}
                       />
-                  </div>
-                )}
-            </div>
-          </div>
+                      <button
+                        type="button"
+                        className="btn btn-sm btn-light position-absolute top-0 end-0 m-1 p-0 rounded-circle"
+                        style={{ width: 20, height: 20, lineHeight: "18px" }}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          //URL.revokeObjectURL(img.preview);
+                          setPendingImages((prev) => prev.filter((p) => p.id !== img.id));
+                          setActiveImageIndex((prevIndex) =>
+                            prevIndex >= pendingImages.length - 1 ? 0 : prevIndex
+                          );
+                        }}
+                      >
+                        ×
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              // 👇 MODO NORMAL (mensajes)
+              <div className="chat-body-inner h-100" >
+                  {messages.length === 0 ? (
+                    <>
+                    <div className="d-flex flex-column align-items-center justify-content-center h-100">
+                        {/* iniciar Conversacion*/}
+                        <div className="text-center mb-6">
+                          <span className="icon icon-xl text-muted">
+                            <svg
+                              xmlns="http://www.w3.org/2000/svg"
+                              width="24"
+                              height="24"
+                              viewBox="0 0 24 24"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="2"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              className="feather feather-send"
+                            >
+                              <line x1="22" y1="2" x2="11" y2="13"></line>
+                              <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+                            </svg>
+                          </span>
+                        </div>
 
+    
+                        <p className="text-center text-muted">
+                          Aún no hay mensajes, <br /> ¡inicia la conversación!
+                        </p>
+                      </div>
+                    </>
+                  ) : (
+                    <div className="d-flex flex-column justify-content-center">
+                        <ChatBody
+                          messages={messages}
+                          user={user}
+                          chat={chat}   // 👈 aquí ya está el "tipo"
+                          tipo={chat.tipo} // 👈 pasamos el tipo directamente
+                          socket={socket}   // 👈 ahora sí lo pasamos
+                          onVerPerfil={onVerPerfil}  // 👈 usamos el callback del padre
+                        />
+                    </div>
+                  )}
+              </div>
+            )}
+          </div>
+          
           {/* Input del chat */}
           <div className="chat-footer pb-3 pb-lg-7">
-    
-
+            
             {/* Chat: Form */}
             <form
               className="chat-form rounded-pill bg-dark"
@@ -1176,9 +1581,8 @@ const ChatBox = ({ chat, user, setChat, onVerPerfil }) => {
                     <div style={{ display: "flex", flex: 1 }}>
                       <ChatInput
                         ref={inputRef}
-                        onSend={(msg) => {
-                          handleSendMessage(msg);
-                        }}
+                        onSend={(msg) => handleSendMessage(msg)}
+                        onPasteFiles={(files) => handleFilesSeleccionados(files)}   // 👈 AHORA
                       />
                     </div>
 
@@ -1507,6 +1911,20 @@ const ChatBox = ({ chat, user, setChat, onVerPerfil }) => {
         visible={mostrarVerArchivos}
         onClose={() => setMostrarVerArchivos(false)}
       />
+      {isDragOver && (
+        <div
+          className="position-fixed top-0 start-0 w-100 h-100 d-flex align-items-center justify-content-center"
+          style={{
+            background: "rgba(0,0,0,0.4)",
+            zIndex: 2000,
+            pointerEvents: "none",  // 👈 clave
+          }}
+        >
+          <div className="bg-white rounded-3 px-4 py-3 shadow">
+            Suelta las imágenes o Archivos para adjuntarlas
+          </div>
+        </div>
+      )}
       
     </main>
   );

@@ -4,6 +4,8 @@ const express = require('express');
 const cors = require('cors');
 const app = express();
 
+app.set("trust proxy", true);
+
 const signupRoutes = require('./routes/signup'); // ⬅️ Importa las rutas
 
 app.use(cors());
