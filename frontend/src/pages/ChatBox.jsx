@@ -5,6 +5,7 @@ import MiembrosGrupos from "../components/MiembrosGrupos";
 import VerInfoGrupo from "../components/VerInfoGrupo";
 import VerArchivos from "../components/VerArchivos";
 import ProfileModal from "../components/ProfileModal";
+import { useTheme } from "../context/ThemeContext";
 import socket from "../socket";
 import * as bootstrap from "bootstrap";
 import { logDev } from "../utils/logger";
@@ -41,13 +42,23 @@ const ChatBox = ({ chat, user, setChat, onVerPerfil }) => {
   const [showGifPicker, setShowGifPicker] = useState(false);
   const [gifSearch, setGifSearch] = useState(""); // texto a buscar
   const [gifResults, setGifResults] = useState([]); // resultados de la API
+  const { theme } = useTheme();
+  const emojiTheme = theme === "dark" ? "dark" : "light";
+
   // STICKER
   const [showStickerPicker, setShowStickerPicker] = useState(false);
-  const [stickers, setStickers] = useState([
-    // stickers predeterminados (puedes reemplazar con tus URLs)
-    "../assets/stickers/chanclaso.png",
-    "../assets/stickers/perro.png",
-  ]);
+
+  // pestaña activa: "todos" o "favoritos" (si luego quieres más)
+  const [stickerTab, setStickerTab] = useState("todos");
+
+  // Catálogo completo
+  const [stickersTodos, setStickersTodos] = useState([]);
+
+  // Solo favoritos del usuario
+  const [stickersFavoritos, setStickersFavoritos] = useState([]);
+
+  const listaStickers =
+  stickerTab === "favoritos" ? stickersFavoritos : stickersTodos;
 
   const crearLoteId = () =>
   `lote-${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -214,6 +225,71 @@ const ChatBox = ({ chat, user, setChat, onVerPerfil }) => {
 
     cargarMensajes();
   }, [chat, user]);
+
+  // Cargar stickers (catálogo + favoritos) al cargar usuario
+  useEffect(() => {
+    if (!user?.id) return;
+
+    const cargarStickers = async () => {
+      try {
+        const [resTodos, resFav] = await Promise.all([
+          axios.get("/api/stickers/todos"),
+          axios.get("/api/stickers", { params: { usuarioId: user.id } }),
+        ]);
+
+        setStickersTodos(resTodos.data?.stickers || []);
+        setStickersFavoritos(resFav.data?.stickers || []);
+      } catch (err) {
+        console.error("❌ Error cargando stickers:", err);
+      }
+    };
+
+    cargarStickers();
+  }, [user?.id]);
+
+  // Guardar como favorito un sticker (desde el mensaje)
+  const handleGuardarStickerFavorito = async (stickerUrl) => {
+    console.log("Añadir favorito, URL que mando:", stickerUrl); // 👈 LOG
+    if (!user?.id || !stickerUrl) return;
+
+    try {
+      const res = await axios.post("/api/stickers/favorito", {
+        usuarioId: user.id,
+        url: stickerUrl,
+      });
+
+      if (!res.data?.success || !res.data?.sticker) {
+        console.error("❌ Error respuesta /api/stickers/favorito:", res.data);
+        return;
+      }
+
+      const sticker = res.data.sticker; // {id, url, nombre_archivo_original, ...}
+
+      setStickersFavoritos((prev) => {
+        const existe = prev.some((s) => s.id === sticker.id);
+        if (existe) return prev;
+        return [sticker, ...prev];
+      });
+    } catch (err) {
+      console.error("❌ Error guardando sticker favorito:", err);
+    }
+  };
+
+  // 🔹 Eliminar un sticker favorito (por URL)
+  const handleEliminarStickerFavorito = async (stickerUrl) => {
+    if (!user?.id || !stickerUrl) return;
+
+    try {
+      await axios.delete("/api/stickers/favorito", {
+        data: { usuarioId: user.id, url: stickerUrl },
+      });
+
+      // 👇 aquí debe ser stickersFavoritos
+      setStickersFavoritos((prev) => prev.filter((s) => s.url !== stickerUrl));
+    } catch (err) {
+      console.error("❌ Error eliminando sticker favorito:", err);
+    }
+  };
 
   // Escuchar nuevos mensajes en tiempo real
   useEffect(() => {
@@ -813,18 +889,46 @@ const ChatBox = ({ chat, user, setChat, onVerPerfil }) => {
     }
   };
 
-  // 👇 Subir Sticker
-  const handleStickerUpload = (file) => {
-    if (!file) return;
+  // 👇 Subir Sticker (catálogo, NO favorito)
+  const handleStickerUpload = async (file) => {
+    if (!file || !user?.id) return;
 
-    const url = URL.createObjectURL(file); // temporal, cambia por URL del servidor si lo subes a backend
+    try {
+      const formData = new FormData();
+      // 👈 nombre DEL CAMPO que espera multer: "archivo"
+      formData.append("archivo", file);
 
-    // agregar al catálogo
-    setStickers((prev) => [url, ...prev]);
+      // 👈 nombre DEL CAMPO que lee tu backend: "usuarioId"
+      formData.append("usuarioId", user.id);
 
-    // enviar mensaje
-    handleSendMessage(`[sticker]${url}`);
-    setShowStickerPicker(false);
+      // opcional, si luego quieres usarlo en la BD
+      // formData.append("nombre", nombreSticker || file.name);
+
+      const res = await axios.post(`/api/stickers?usuarioId=${user.id}`, formData, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+
+      if (!res.data?.success || !res.data?.sticker) {
+        console.error("❌ Respuesta inesperada /api/stickers:", res.data);
+        return;
+      }
+
+      const sticker = res.data.sticker; // { id, url, nombre_archivo_original, ... }
+
+      // 1️⃣ Añadir al catálogo local (pestaña "Todos")
+      setStickersTodos((prev) => [sticker, ...prev]);
+
+      // 2️⃣ Enviar mensaje con ese sticker
+      await handleSendMessage(`[sticker]${sticker.url}`);
+
+      setShowStickerPicker(false);
+    } catch (err) {
+      console.error("❌ Error subiendo sticker:", {
+        status: err.response?.status,
+        data: err.response?.data,
+        headers: err.response?.headers,
+      });
+    }
   };
 
   // 👉 Función para sacar inicial (si no hay avatar)
@@ -1412,7 +1516,7 @@ const ChatBox = ({ chat, user, setChat, onVerPerfil }) => {
               // 👇 MODO PREVIEW TIPO WHATSAPP
               <div className="h-100 d-flex flex-column">
                 {/* Imagen grande + botón cerrar */}
-                <div className="flex-grow-1 d-flex align-items-center justify-content-center bg-light position-relative">
+                <div className="flex-grow-1 d-flex align-items-center justify-content-center chat-preview-stage position-relative">
                   {/* Botón X para cerrar preview */}
                   <button
                     type="button"
@@ -1455,7 +1559,9 @@ const ChatBox = ({ chat, user, setChat, onVerPerfil }) => {
                         borderRadius: "12px",
                         overflow: "hidden",
                         border:
-                          idx === activeImageIndex ? "2px solid #0d6efd" : "1px solid #ddd",
+                          idx === activeImageIndex
+                            ? "2px solid var(--bs-primary)"
+                            : "1px solid var(--border-color)",
                       }}
                       onClick={() => setActiveImageIndex(idx)}
                     >
@@ -1526,6 +1632,7 @@ const ChatBox = ({ chat, user, setChat, onVerPerfil }) => {
                           tipo={chat.tipo} // 👈 pasamos el tipo directamente
                           socket={socket}   // 👈 ahora sí lo pasamos
                           onVerPerfil={onVerPerfil}  // 👈 usamos el callback del padre
+                          onGuardarStickerFavorito={handleGuardarStickerFavorito} // 👈 aquí lo conectas
                         />
                     </div>
                   )}
@@ -1696,7 +1803,7 @@ const ChatBox = ({ chat, user, setChat, onVerPerfil }) => {
                       onEmojiSelect={(emoji) => handleEmojiClick({ emoji: emoji.native })}
                       previewPosition="none"   // sin preview abajo
                       skinTonePosition="search" // tonos arriba al lado del buscador
-                      theme="light"
+                      theme={emojiTheme}     // ✅ antes: "light"
                       locale="es"               // idioma español
                       style={{ width: "350px", height: "450px" }}
                     />
@@ -1748,109 +1855,143 @@ const ChatBox = ({ chat, user, setChat, onVerPerfil }) => {
                   {/* Sticker / GIF Picker */}
                   {showStickerPicker && (
                     <div
-                      ref={stickerRef}  // 👈 contenedor con ref
+                      ref={stickerRef}
                       style={{
                         position: "absolute",
                         bottom: "60px",
                         right: "100px",
                         zIndex: 1000,
-                        width: "300px",
-                        background: "white",
-                        border: "1px solid #ddd",
-                        padding: "10px",
-                        maxHeight: "400px",
-                        overflow: "auto",
+                        width: "320px",
+                        background: "#fff",
+                        borderRadius: "16px",
+                        boxShadow: "0 4px 16px rgba(0,0,0,0.15)",
+                        border: "1px solid #e5e5e5",
+                        padding: "10px 10px 6px",
+                        maxHeight: "420px",
+                        display: "flex",
+                        flexDirection: "column",
                       }}
                     >
+                      {/* Pestañas arriba */}
+                      <div className="d-flex mb-2">
+                        <button
+                          type="button"
+                          className={`flex-fill btn btn-sm ${
+                            stickerTab === "todos" ? "btn-primary" : "btn-light"
+                          }`}
+                          onClick={() => setStickerTab("todos")}
+                        >
+                          Todos
+                        </button>
+                        <button
+                          type="button"
+                          className={`flex-fill btn btn-sm ms-2 ${
+                            stickerTab === "favoritos" ? "btn-primary" : "btn-light"
+                          }`}
+                          onClick={() => setStickerTab("favoritos")}
+                        >
+                          Favoritos
+                        </button>
+                      </div>
+
+                      {/* Grid de stickers */}
                       <div
                         style={{
-                          display: "grid",
-                          gridTemplateColumns: "repeat(3, 1fr)", // 👈 3 por fila
-                          gap: "10px",
+                          flex: 1,
+                          overflowY: "auto",
+                          paddingTop: "4px",
                         }}
                       >
-                        {/* Botón Crear */}
                         <div
                           style={{
-                            display: "flex",
-                            flexDirection: "column",
-                            alignItems: "center",
-                            gap: "6px",
+                            display: "grid",
+                            gridTemplateColumns: "repeat(3, 1fr)",
+                            gap: "8px",
                           }}
                         >
-                          <button
-                            style={{
-                              width: "70px",
-                              height: "70px",
-                              display: "flex",
-                              alignItems: "center",
-                              justifyContent: "center",
-                              borderRadius: "16px",
-                              border: "1px solid #ddd",
-                              background: "#fff",
-                              cursor: "pointer",
-                              transition: "all 0.2s ease",
-                            }}
-                            onMouseEnter={(e) => (e.currentTarget.style.background = "#f0f0f0")}
-                            onMouseLeave={(e) => (e.currentTarget.style.background = "#fff")}
-                            onClick={() => {
-                              const input = document.createElement("input");
-                              input.type = "file";
-                              input.accept = "image/*,video/gif";
-                              input.onchange = (e) => {
-                                const file = e.target.files[0];
-                                if (file) {
-                                  const url = URL.createObjectURL(file);
-                                  handleSendMessage(`[sticker]${url}`);
-                                  setShowStickerPicker(false);
-                                }
-                              };
-                              input.click();
-                            }}
-                          >
-                            <svg
-                              xmlns="http://www.w3.org/2000/svg"
-                              width="28"
-                              height="28"
-                              viewBox="0 0 24 24"
-                              fill="none"
-                              stroke="#a7a7a6"
-                              strokeWidth="2.5"
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                            >
-                              <line x1="12" y1="5" x2="12" y2="19"></line>
-                              <line x1="5" y1="12" x2="19" y2="12"></line>
-                            </svg>
-                            
-                          </button>
-                          
-                        </div>
-
-                        {/* Stickers */}
-                        {stickers.map((sticker, idx) => (
+                          {/* Botón Crear */}
                           <div
-                            key={idx}
-                            style={{ display: "flex", justifyContent: "center" }}
+                            style={{
+                              display: "flex",
+                              flexDirection: "column",
+                              alignItems: "center",
+                              gap: "6px",
+                            }}
                           >
-                            <img
-                              src={sticker.url}
-                              alt="sticker"
+                            <button
                               style={{
-                                width: "70px",
-                                height: "70px",
-                                borderRadius: "16px",
-                                objectFit: "cover",
-                                /*border: "1px solid #ddd",*/
+                                width: "80px",
+                                height: "80px",
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "center",
+                                borderRadius: "20px",
+                                border: "1px dashed #ccc",
+                                background: "#fafafa",
                                 cursor: "pointer",
+                                transition: "all 0.2s ease",
                               }}
+                              onMouseEnter={(e) =>
+                                (e.currentTarget.style.background = "#f0f0f0")
+                              }
+                              onMouseLeave={(e) =>
+                                (e.currentTarget.style.background = "#fafafa")
+                              }
                               onClick={() => {
-                                handleSendMessage(`[sticker]${sticker.url}`);
-                                setShowStickerPicker(false);
+                                const input = document.createElement("input");
+                                input.type = "file";
+                                input.accept = "image/*,image/gif";
+                                input.onchange = async (e) => {
+                                  const file = e.target.files[0];
+                                  if (file) {
+                                    await handleStickerUpload(file); // ✅ ahora sí lo sube al servidor
+                                  }
+                                };
+                                input.click();
                               }}
-                            />
+                            >
+                              <svg
+                                xmlns="http://www.w3.org/2000/svg"
+                                width="28"
+                                height="28"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="#a7a7a6"
+                                strokeWidth="2.5"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                              >
+                                <line x1="12" y1="5" x2="12" y2="19"></line>
+                                <line x1="5" y1="12" x2="19" y2="12"></line>
+                              </svg>
+                            </button>
                           </div>
-                        ))}
+
+                          {/* Stickers según pestaña */}
+                          {listaStickers.map((sticker) => (
+                            <div
+                              key={sticker.id || sticker.url}
+                              style={{ position: "relative", display: "flex", justifyContent: "center" }}
+                            >
+                              <img
+                                src={sticker.url}
+                                alt="sticker"
+                                style={{
+                                  width: "80px",
+                                  height: "80px",
+                                  borderRadius: "20px",
+                                  objectFit: "cover",
+                                  cursor: "pointer",
+                                  backgroundColor: "#f5f5f5",
+                                }}
+                                onClick={() => {
+                                  handleSendMessage(`[sticker]${sticker.url}`);
+                                  setShowStickerPicker(false);
+                                }}
+                              />
+                            </div>
+                          ))}
+                        </div>
                       </div>
                     </div>
                   )}

@@ -230,7 +230,7 @@ router.post("/", async (req, res) => {
   try {
     const [result] = await db.query(
       `INSERT INTO mensajes_grupo (grupo_id, usuario_id, mensaje, fecha_envio, lote_id)
-      VALUES (?, ?, ?, ?, ?)`,
+      VALUES (?, ?, ?, UTC_TIMESTAMP(3), ?)`,
       [grupoId, usuarioId, mensaje, fechaEnvioMySQL, loteId || null]  // 👈 puede ser null
     );
 
@@ -828,7 +828,7 @@ router.post("/archivo", upload.single("archivo"), async (req, res) => {
     // 1️⃣ Crear mensaje en mensajes_grupo (mensaje = ruta de la imagen)
     const [resultadoMsg] = await db.query(
       `INSERT INTO mensajes_grupo (grupo_id, usuario_id, mensaje, fecha_envio, lote_id)
-      VALUES (?, ?, ?, NOW(), ?)`,
+      VALUES (?, ?, ?, UTC_TIMESTAMP(3), ?)`,
       [grupo_id, usuario_id, urlArchivo, loteId || null]   // 👈 usamos el lote
     );
     const mensajeId = resultadoMsg.insertId;
@@ -837,7 +837,7 @@ router.post("/archivo", upload.single("archivo"), async (req, res) => {
     await db.query(
       `INSERT INTO mensajes_grupo_archivos 
         (grupo_id, usuario_id, archivo_url, tipo_archivo, nombre_archivo, tamano, fecha_envio)
-       VALUES (?, ?, ?, ?, ?, ?, NOW())`,
+       VALUES (?, ?, ?, ?, ?, ?, UTC_TIMESTAMP(3))`,
       [grupo_id, usuario_id, urlArchivo, file.mimetype, file.originalname, file.size]
     );
 

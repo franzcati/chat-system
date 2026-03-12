@@ -47,6 +47,10 @@ app.use("/api/roles_permisos", require("./routes/roles_permisos"));
 const gruposRoutes = require("./routes/grupos");
 app.use("/api/grupos", gruposRoutes);
 
+//STICKERS
+const stickersRoutes = require("./routes/stickers");
+app.use("/api/stickers", stickersRoutes);
+
 const path = require("path");
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 

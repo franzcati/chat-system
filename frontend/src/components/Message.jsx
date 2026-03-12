@@ -1,24 +1,27 @@
 // src/components/Message.jsx
 import React, { useState, useRef, useEffect } from "react";
 import { getAvatarUrl } from "../utils/url";
-import data from '@emoji-mart/data';
-import Picker from '@emoji-mart/react';
+import data from "@emoji-mart/data";
+import Picker from "@emoji-mart/react";
 import twemoji from "twemoji";
 import { formatChatTimeOnly, formatChatDate } from "../utils/date";
+import { useTheme } from "../context/ThemeContext";
 
 const reactions = ["👍", "❤️", "😂", "😮", "😢", "🙏"];
 
-
 const Message = ({
-  id, // 👈 ID del mensaje
+  id,
   mensaje,
   hora,
   enviadoPorMi,
   usuario,
   miUsuario,
-  reacciones: reaccionesDB = [], // 👈 reacciones que vienen del backend
-  esGrupo, // 👈 nuevo prop
-  onVerPerfil, // 👈 nuevo prop
+  reacciones: reaccionesDB = [],
+  esGrupo,
+  onVerPerfil,
+  onGuardarStickerFavorito,
+  onEliminarStickerFavorito,   // 👈 nuevo
+  esStickerFavorito = false,    // 👈 nuevo
 }) => {
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [showReactions, setShowReactions] = useState(false);
@@ -29,24 +32,34 @@ const Message = ({
   const [showHistorial, setShowHistorial] = useState(false);
   const [historial, setHistorial] = useState([]);
   const [openDirection, setOpenDirection] = useState("up"); // "up" o "down"
-  const messageRef = useRef(null);;
-  
+  const messageRef = useRef(null);
+
   const [showFijarModal, setShowFijarModal] = useState(false);
   const [duracionFijado, setDuracionFijado] = useState("24h");
   const [showReplaceModal, setShowReplaceModal] = useState(false);
-  const [mensajePendienteFijar, setMensajePendienteFijar] = useState(null); 
+  const [mensajePendienteFijar, setMensajePendienteFijar] = useState(null);
   // 🎞️ Galería tipo WhatsApp
   const [galeriaAbierta, setGaleriaAbierta] = useState(false);
   const [galeriaImagenes, setGaleriaImagenes] = useState([]); // urls normalizadas
   const [galeriaIndice, setGaleriaIndice] = useState(0);
-  
-  const isMine = esGrupo
-  ? mensaje.usuario_id === miUsuario?.id
-  : mensaje.usuario_envia_id === miUsuario?.id;
 
-  
-    
-   // 👉 Normalizamos mensaje
+  // 👇 AQUÍ pegamos lo del modal del sticker
+  const [showStickerModal, setShowStickerModal] = useState(false);
+  const [esFavLocal, setEsFavLocal] = useState(esStickerFavorito);
+
+  // version oscura de emoji
+  const { theme } = useTheme();
+  const emojiTheme = theme === "dark" ? "dark" : "light";
+
+  useEffect(() => {
+    setEsFavLocal(esStickerFavorito);
+  }, [esStickerFavorito]);
+
+  const isMine = esGrupo
+    ? mensaje.usuario_id === miUsuario?.id
+    : mensaje.usuario_envia_id === miUsuario?.id;
+
+  // 👉 Normalizamos mensaje
   const mensajeData =
     typeof mensaje === "string" ? { mensaje, eliminado: 0, editado: 0 } : mensaje;
 
@@ -55,11 +68,15 @@ const Message = ({
 
   const [estaFijado, setEstaFijado] = useState(mensajeData?.fijado || false);
 
+  const esSticker = mensajeData.mensaje?.startsWith("[sticker]");
+  const stickerUrl = esSticker
+    ? mensajeData.mensaje.replace("[sticker]", "")
+    : null;
+
   const puedeEditar =
     isMine &&
     !mensajeData.eliminado &&
     Date.now() - new Date(mensajeData.fecha_envio).getTime() < 15 * 60 * 1000;
-
 
   // 👇 estado local que parte de lo que vino del backend
   const [reacciones, setReacciones] = useState(reaccionesDB);
@@ -100,14 +117,14 @@ const Message = ({
     setGaleriaAbierta(true);
   };
 
-  // Cerrar al hacer click fuera
+  // Cerrar dropdown al hacer click fuera
   useEffect(() => {
     const handleClickOutside = (event) => {
       if (
         dropdownRef.current &&
         !dropdownRef.current.contains(event.target) &&
-        !event.target.closest(".reactions-popover") && // excepción
-        !event.target.closest(".emoji-picker")        // 👈 nueva excepción
+        !event.target.closest(".reactions-popover") &&
+        !event.target.closest(".emoji-picker")
       ) {
         setDropdownOpen(false);
         setShowEmojiPickerReactions(false);
@@ -119,8 +136,6 @@ const Message = ({
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-
-  //EFECTO PARA AMPLIAR IMAGEN
   // 🎹 Navegación de galería con teclado
   useEffect(() => {
     const handleKey = (e) => {
@@ -130,9 +145,7 @@ const Message = ({
         setGaleriaAbierta(false);
       }
       if (e.key === "ArrowRight") {
-        setGaleriaIndice((prev) =>
-          (prev + 1) % galeriaImagenes.length
-        );
+        setGaleriaIndice((prev) => (prev + 1) % galeriaImagenes.length);
       }
       if (e.key === "ArrowLeft") {
         setGaleriaIndice((prev) =>
@@ -145,7 +158,7 @@ const Message = ({
     return () => window.removeEventListener("keydown", handleKey);
   }, [galeriaAbierta, galeriaImagenes.length]);
 
-  // 👉 Al reaccionar: actualiza UI y (opcional) guarda en backend
+  // 👉 Al reaccionar: actualiza UI y guarda en backend
   const handleReaction = async (emoji) => {
     console.log("👉 [FRONT] handleReaction llamado con:", emoji, "para mensaje:", id);
 
@@ -223,7 +236,7 @@ const Message = ({
         : `/api/mensajes/${mensajeId}/eliminar`;
 
       const body = esGrupo
-        ? { usuarioId: miUsuario.id, grupoId: usuario?.grupo_id } // 👈 grupoId solo en grupos
+        ? { usuarioId: miUsuario.id, grupoId: usuario?.grupo_id }
         : { usuarioId: miUsuario.id };
 
       const res = await fetch(url, {
@@ -335,10 +348,8 @@ const Message = ({
         let endpoint = "";
 
         if (esGrupo) {
-          // Si el mensaje pertenece a un grupo, usa el ID del grupo del mensaje
           endpoint = `/api/mensajes/grupo/fijados/${mensaje.grupo_id}`;
         } else {
-          // Si es un chat privado, usamos los IDs de ambos usuarios
           const usuarioDestinoId =
             mensaje.usuario_envia_id === miUsuario.id
               ? mensaje.usuario_recibe_id
@@ -352,11 +363,9 @@ const Message = ({
         const fijadosActuales = data || [];
 
         if (fijadosActuales.length >= 3) {
-          // Mostrar modal de reemplazo
           setMensajePendienteFijar({ id: id, duracion: duracionFijado });
           setShowReplaceModal(true);
         } else {
-          // Mostrar modal normal de duración
           setShowFijarModal(true);
         }
       } catch (err) {
@@ -366,20 +375,17 @@ const Message = ({
     }
   };
 
-  // 👉 Confirmar Fijado (actualizado para nueva estructura de tabla)
+  // 👉 Confirmar Fijado
   const confirmarFijado = async (idOverride = id, duracionOverride = duracionFijado) => {
     try {
-      const endpoint = esGrupo
-        ? "/api/mensajes/grupo/fijar"
-        : "/api/mensajes/fijar";
+      const endpoint = esGrupo ? "/api/mensajes/grupo/fijar" : "/api/mensajes/fijar";
 
-      // 🔹 NUEVO: estructura correcta para grupos
       const body = esGrupo
         ? {
-            grupo_id: mensaje.grupo_id,   // ✅ el id del grupo
-            mensaje_id: idOverride,       // ✅ el id del mensaje
-            usuario_id: miUsuario.id,     // ✅ el usuario que fija
-            duracion: duracionOverride,   // ✅ duración elegida
+            grupo_id: mensaje.grupo_id,
+            mensaje_id: idOverride,
+            usuario_id: miUsuario.id,
+            duracion: duracionOverride,
           }
         : {
             mensajeId: idOverride,
@@ -409,12 +415,10 @@ const Message = ({
     }
   };
 
-  // 👉 Desfijar mensaje (actualizado solo para grupos)
+  // 👉 Desfijar mensaje
   const desFijarMensaje = async () => {
     try {
-      const endpoint = esGrupo
-        ? "/api/mensajes/grupo/fijar"
-        : "/api/mensajes/fijar";
+      const endpoint = esGrupo ? "/api/mensajes/grupo/fijar" : "/api/mensajes/fijar";
 
       const body = esGrupo
         ? {
@@ -444,8 +448,7 @@ const Message = ({
     }
   };
 
-
-  // 👉 Confirmar Reemplazo (solo línea del POST corregida)
+  // 👉 Confirmar Reemplazo
   const confirmarReemplazo = async () => {
     try {
       const endpointList = esGrupo
@@ -469,7 +472,6 @@ const Message = ({
         (a, b) => new Date(a.fecha_fijado) - new Date(b.fecha_fijado)
       )[0];
 
-      // 🔹 NUEVO POST: se desfija correctamente con grupo_id + mensaje_id
       if (esGrupo) {
         await fetch("/api/mensajes/grupo/fijar", {
           method: "POST",
@@ -491,7 +493,10 @@ const Message = ({
         });
       }
 
-      await confirmarFijado(mensajePendienteFijar?.id, mensajePendienteFijar?.duracion);
+      await confirmarFijado(
+        mensajePendienteFijar?.id,
+        mensajePendienteFijar?.duracion
+      );
       setShowReplaceModal(false);
     } catch (err) {
       console.error("❌ Error reemplazando mensaje fijado:", err);
@@ -499,11 +504,13 @@ const Message = ({
   };
 
   useEffect(() => {
-    if ((showEmojiPickerReactions || showReactions || dropdownOpen) && messageRef.current) {
+    if (
+      (showEmojiPickerReactions || showReactions || dropdownOpen) &&
+      messageRef.current
+    ) {
       const rect = messageRef.current.getBoundingClientRect();
       const windowHeight = window.innerHeight;
 
-      // Si el mensaje está en la mitad superior del viewport, abre hacia abajo
       if (rect.top < windowHeight / 2) {
         setOpenDirection("down");
       } else {
@@ -531,8 +538,8 @@ const Message = ({
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [showEmojiPickerEdit]);
 
-  // 🧩 3️⃣ Texto normal con detección de enlaces
-  const renderTextoConLinks = (texto) => {
+  // 🧩 Texto normal con detección de enlaces
+  const renderTextoConLinks = (texto = "") => {
     const urlRegex = /(https?:\/\/[^\s]+)/g;
     const partes = texto.split(urlRegex);
 
@@ -544,7 +551,7 @@ const Message = ({
           target="_blank"
           rel="noopener noreferrer"
           style={{
-            color: "#1a73e8",        // azul Google-style
+            color: "var(--link-color)",
             textDecoration: "underline",
             wordBreak: "break-word",
           }}
@@ -557,9 +564,8 @@ const Message = ({
     );
   };
 
-
   return (
-    <div 
+    <div
       id={`mensaje-${id}`} // 👈 importante: para hacer scroll al fijado
       className={`message ${enviadoPorMi ? "message-out" : ""}`}
     >
@@ -567,13 +573,14 @@ const Message = ({
       <div
         className="avatar avatar-responsive"
         style={{ cursor: "pointer" }}
-        onClick={() => onVerPerfil(enviadoPorMi ? miUsuario : usuario)} // 👈 dispara modal
-        
+        onClick={() => onVerPerfil(enviadoPorMi ? miUsuario : usuario)}
       >
         {(enviadoPorMi ? miUsuario?.url_imagen : usuario?.url_imagen) ? (
           <img
             className="avatar-img"
-            src={getAvatarUrl(enviadoPorMi ? miUsuario.url_imagen : usuario.url_imagen)}
+            src={getAvatarUrl(
+              enviadoPorMi ? miUsuario.url_imagen : usuario.url_imagen
+            )}
             alt={(enviadoPorMi ? miUsuario?.nombre : usuario?.nombre) || "usuario"}
             style={{ width: "44px", height: "44px", objectFit: "cover" }}
           />
@@ -589,32 +596,32 @@ const Message = ({
               fontSize: "18px",
             }}
           >
-            {getInitial((enviadoPorMi ? miUsuario?.nombre : usuario?.nombre) || "U")}
+            {getInitial(
+              (enviadoPorMi ? miUsuario?.nombre : usuario?.nombre) || "U"
+            )}
           </div>
         )}
       </div>
-      
 
       <div ref={messageRef} className="message-inner" style={{ position: "relative" }}>
         <div className="message-body">
-          {/* 👉 Nombre + apellido arriba (solo si es grupo y no es tuyo) */}
-            {esGrupo && !enviadoPorMi && (
-              <div
-                className="fw-bold small text-muted"
-                style={{
-                  marginBottom: "4px",
-                  marginLeft: "6px",
-                }}
-              >
-                {`${usuario?.nombre || ""} ${usuario?.apellido || ""}`}
-              </div>
-            )}
+          {/* Nombre arriba si es grupo */}
+          {esGrupo && !enviadoPorMi && (
+            <div
+              className="fw-bold small text-muted"
+              style={{
+                marginBottom: "4px",
+                marginLeft: "6px",
+              }}
+            >
+              {`${usuario?.nombre || ""} ${usuario?.apellido || ""}`}
+            </div>
+          )}
+
           <div className="message-content">
-            
             <div className="message-text">
               {mensajeData.eliminado ? (
                 <div className="fst-italic text-muted d-flex align-items-center">
-                  {/* Icono de candado */}
                   <svg
                     xmlns="http://www.w3.org/2000/svg"
                     width="14"
@@ -628,16 +635,19 @@ const Message = ({
                   Se eliminó este mensaje
                 </div>
               ) : (
-                // Texto normal, stickers, imágenes, etc.
                 (() => {
-                  // 🧩 0️⃣ MENSAJE CON VARIAS IMÁGENES + CAPTION (tipo WhatsApp)
-                  if (Array.isArray(mensajeData.imagenes) && mensajeData.imagenes.length > 0) {
-                    const MAX_VISIBLE = 4;                          // 👈 solo 4 miniaturas
+                  // 🧩 0️⃣ Mensaje con varias imágenes + caption
+                  if (
+                    Array.isArray(mensajeData.imagenes) &&
+                    mensajeData.imagenes.length > 0
+                  ) {
+                    const MAX_VISIBLE = 4;
                     const total = mensajeData.imagenes.length;
                     const visibles = mensajeData.imagenes.slice(0, MAX_VISIBLE);
-                    const todasNormalizadas = mensajeData.imagenes.map(normalizarUrlImagen);
+                    const todasNormalizadas = mensajeData.imagenes.map(
+                      normalizarUrlImagen
+                    );
 
-                    // 🔎 Detectar si el "mensaje" son solo IDs (como los que te salen ahora)
                     const esSoloIds =
                       typeof mensajeData.mensaje === "string" &&
                       mensajeData.mensaje.trim() !== "" &&
@@ -649,13 +659,11 @@ const Message = ({
                           )
                         );
 
-                    // 👇 Solo mostramos caption si NO son esos ids feos
                     const caption =
                       mensajeData.mensaje && !esSoloIds ? mensajeData.mensaje : "";
 
                     return (
                       <div className="d-flex flex-column">
-                        {/* GRID 2x2 tipo WhatsApp */}
                         <div
                           style={{
                             display: "grid",
@@ -668,7 +676,6 @@ const Message = ({
                           {visibles.map((rawUrl, idx) => {
                             let finalUrl = todasNormalizadas[idx];
 
-                            // Normalizar http -> https (igual que hacías antes)
                             if (finalUrl?.startsWith("http://quickchat.click")) {
                               finalUrl = finalUrl.replace(
                                 "http://quickchat.click",
@@ -682,8 +689,9 @@ const Message = ({
                             }
 
                             const isLastVisible = idx === visibles.length - 1;
-                            const showMoreBadge = isLastVisible && total > MAX_VISIBLE;
-                            const extraCount = total - MAX_VISIBLE + 1; // 👈 los que no se ven
+                            const showMoreBadge =
+                              isLastVisible && total > MAX_VISIBLE;
+                            const extraCount = total - MAX_VISIBLE + 1;
 
                             return (
                               <div
@@ -694,7 +702,9 @@ const Message = ({
                                   overflow: "hidden",
                                   cursor: "pointer",
                                 }}
-                                onClick={() => abrirGaleria(todasNormalizadas, idx)}
+                                onClick={() =>
+                                  abrirGaleria(todasNormalizadas, idx)
+                                }
                               >
                                 <img
                                   src={finalUrl}
@@ -707,7 +717,6 @@ const Message = ({
                                   }}
                                 />
 
-                                {/* 🔵 Overlay +N en la última */}
                                 {showMoreBadge && (
                                   <div
                                     className="d-flex align-items-center justify-content-center"
@@ -728,7 +737,6 @@ const Message = ({
                           })}
                         </div>
 
-                        {/* Caption (solo si NO son los ids) */}
                         {caption && (
                           <p className="mt-2 break-words whitespace-pre-wrap">
                             {renderTextoConLinks(caption)}
@@ -738,50 +746,163 @@ const Message = ({
                     );
                   }
 
-                  // 🧩 1️⃣ Stickers
+                  // 🧩 1️⃣ Stickers tipo WhatsApp con modal de detalle
                   if (mensajeData.mensaje?.startsWith("[sticker]")) {
-                    const stickerUrl = mensajeData.mensaje.replace("[sticker]", "");
+                    const raw = mensajeData.mensaje.replace("[sticker]", "");
+                    const stickerUrl = normalizarUrlImagen(raw);
+
+                    // Nombre del sticker sacado del archivo
+                    const nombreArchivoSticker = (() => {
+                      try {
+                        const partes = stickerUrl.split("/");
+                        const nombre = partes.pop() || "Sticker";
+                        return decodeURIComponent(nombre.replace(/\.\w+$/, ""));
+                      } catch {
+                        return "Sticker";
+                      }
+                    })();
+
+                    // Nombre del usuario que lo envió
+                    const creadorNombre =
+                      `${usuario?.nombre || ""} ${usuario?.apellido || ""}`.trim() ||
+                      "Desconocido";
+
+                    const handleFavClick = async (e) => {
+                      e.stopPropagation();
+
+                      try {
+                        if (esFavLocal) {
+                          // Eliminar de favoritos
+                          if (onEliminarStickerFavorito) {
+                            await onEliminarStickerFavorito(stickerUrl);
+                          }
+                          setEsFavLocal(false);
+                        } else {
+                          // Añadir a favoritos
+                          if (onGuardarStickerFavorito) {
+                            await onGuardarStickerFavorito(stickerUrl);
+                          }
+                          setEsFavLocal(true);
+                        }
+                      } catch (err) {
+                        console.error("❌ Error al cambiar favorito:", err);
+                      }
+                    };
+
                     return (
-                      <img
-                        src={stickerUrl}
-                        alt="sticker"
-                        className="rounded-xl"
-                        style={{ width: "120px", height: "120px", objectFit: "contain" }}
-                      />
+                      <>
+                        {/* Sticker dentro del chat */}
+                        <div
+                          className="position-relative d-inline-block"
+                          style={{
+                            borderRadius: 18,
+                            overflow: "hidden",
+                            backgroundColor: "var(--surface-2)",
+                            padding: 6,
+                            cursor: "pointer",
+                          }}
+                          onClick={() => setShowStickerModal(true)} // 👈 al hacer click, abrimos modal
+                        >
+                          <img
+                            src={stickerUrl}
+                            alt="sticker"
+                            style={{
+                              width: 120,
+                              height: 120,
+                              objectFit: "contain",
+                              display: "block",
+                            }}
+                          />
+
+                          {/* Estrellita pequeña arriba (opcional) */}
+                          {esFavLocal && (
+                            <span
+                              className="position-absolute top-0 end-0 m-1"
+                              style={{ fontSize: 16 }}
+                            >
+                              ⭐
+                            </span>
+                          )}
+                        </div>
+
+                        {/* Modal estilo WhatsApp */}
+                        {showStickerModal && (
+                          <div
+                            className="position-fixed top-0 start-0 w-100 h-100 d-flex align-items-center justify-content-center"
+                            style={{ backgroundColor: "rgba(0,0,0,0.6)", zIndex: 6000 }}
+                            onClick={() => setShowStickerModal(false)}
+                          >
+                            <div
+                              className="bg-white rounded-4 shadow p-4 text-center"
+                              style={{ maxWidth: "360px", width: "90%" }}
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <img
+                                src={stickerUrl}
+                                alt={nombreArchivoSticker}
+                                style={{
+                                  width: 240,
+                                  height: 240,
+                                  objectFit: "contain",
+                                  borderRadius: "24px",
+                                }}
+                              />
+
+                              {/* 👇 Aquí va exactamente lo que querías */}
+                              <div className="mt-3 small text-muted">
+                                <strong>{nombreArchivoSticker}</strong> · by {creadorNombre}
+                              </div>
+
+                              <button
+                                type="button"
+                                className={`btn mt-3 ${
+                                  esFavLocal ? "btn-outline-danger" : "btn-success"
+                                }`}
+                                onClick={handleFavClick}
+                              >
+                                {esFavLocal ? "Eliminar de favoritos" : "Añadir a favoritos"}
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                      </>
                     );
                   }
 
-                  // 🧩 2️⃣ Archivos enviados (desde backend o mensaje)
+                  // 🧩 2️⃣ Archivos / imágenes sueltas
                   let urlArchivo = mensajeData.archivo_url || mensajeData.mensaje;
                   const tipo = mensajeData.tipo_archivo || "";
                   const nombre =
-                    mensajeData.nombre_archivo || urlArchivo?.split("/").pop() || "archivo";
+                    mensajeData.nombre_archivo ||
+                    urlArchivo?.split("/").pop() ||
+                    "archivo";
                   const tamano = mensajeData.tamano || 0;
-                  
+
                   urlArchivo = normalizarUrlImagen(urlArchivo);
 
-                  // Si por alguna razón llega con http:// otro host, intenta forzar https
                   if (urlArchivo?.startsWith("http://")) {
                     try {
                       const u = new URL(urlArchivo);
                       urlArchivo = `https://${u.host}${u.pathname}${u.search}`;
-                    } catch (e) {
-                      // si no es URL válida, lo dejamos tal cual
-                    }
+                    } catch (e) {}
                   }
 
                   if (urlArchivo) {
-                    // Detectar si es imagen (png, jpg, jpeg, webp, gif)
                     const esImagen =
-                    /\.(jpe?g|png|webp|gif)$/i.test(urlArchivo) ||
-                    (tipo && tipo.startsWith("image/"));
+                      /\.(jpe?g|png|webp|gif)$/i.test(urlArchivo) ||
+                      (tipo && tipo.startsWith("image/"));
 
                     if (esImagen) {
-                      const estado = mensajeData.estado;      // "subiendo" | "enviado" | "error"
-                      const progreso = mensajeData.progreso;  // 0 - 100 (opcional)
+                      const estado = mensajeData.estado;
+                      const progreso = mensajeData.progreso;
 
                       return (
-                        <div style={{ position: "relative", display: "inline-block" }}>
+                        <div
+                          style={{
+                            position: "relative",
+                            display: "inline-block",
+                          }}
+                        >
                           <img
                             src={urlArchivo}
                             alt={nombre}
@@ -795,7 +916,6 @@ const Message = ({
                             }
                           />
 
-                          {/* ⭕ Ruedita mientras sube */}
                           {estado === "subiendo" && (
                             <div
                               style={{
@@ -811,12 +931,15 @@ const Message = ({
                               <div
                                 className="spinner-border text-light"
                                 role="status"
-                                style={{ width: "28px", height: "28px", borderWidth: "3px" }}
+                                style={{
+                                  width: "28px",
+                                  height: "28px",
+                                  borderWidth: "3px",
+                                }}
                               />
                             </div>
                           )}
 
-                          {/* ❌ Estado error */}
                           {estado === "error" && (
                             <div
                               style={{
@@ -839,37 +962,29 @@ const Message = ({
                       );
                     }
 
-
-                    // Detectar si es archivo descargable (pdf, docx, zip, exe, etc.)
                     const esArchivo =
                       !esImagen &&
-                      (
-                        // extensiones conocidas
-                        /\.(pdf|docx?|xlsx?|pptx?|zip|rar|7z|txt|csv|exe|msi|apk)$/i.test(urlArchivo) ||
-                        // si viene de un upload (tiene archivo_url) o tiene mimetype no imagen
+                      (/\.(pdf|docx?|xlsx?|pptx?|zip|rar|7z|txt|csv|exe|msi|apk)$/i.test(
+                        urlArchivo
+                      ) ||
                         !!mensajeData.archivo_url ||
-                        (!!tipo && !tipo.startsWith("image/"))
-                      );
-                    if (esArchivo) {
-                      // 🧹 Limpiar el nombre del archivo (eliminar el prefijo numérico antes del "_")
-                      const nombreLimpio = (nombre || "").replace(/^\d+_/, ""); // elimina "1760449641479_" del inicio
+                        (!!tipo && !tipo.startsWith("image/")));
 
-                      // ✅ Función para forzar descarga
+                    if (esArchivo) {
+                      const nombreLimpio = (nombre || "").replace(/^\d+_/, "");
+
                       const handleDescargar = async () => {
                         try {
                           const response = await fetch(urlArchivo);
                           const blob = await response.blob();
                           const url = window.URL.createObjectURL(blob);
 
-                          // ✅ Crear link temporal que ABRE el diálogo de "Guardar como"
                           const a = document.createElement("a");
                           a.href = url;
-                          a.download = nombreLimpio; // Esto hace que el navegador abra el cuadro de guardar
+                          a.download = nombreLimpio;
                           document.body.appendChild(a);
                           a.click();
                           document.body.removeChild(a);
-
-                          // Limpieza
                           window.URL.revokeObjectURL(url);
                         } catch (error) {
                           console.error("❌ Error al descargar:", error);
@@ -881,13 +996,13 @@ const Message = ({
                         <div className="flex items-center gap-2 mt-2">
                           <a
                             onClick={(e) => {
-                              e.preventDefault(); // evita abrir una nueva pestaña
+                              e.preventDefault();
                               handleDescargar();
                             }}
                             href={urlArchivo}
                             className="flex items-center justify-center bg-white text-gray-700 border border-gray-300 rounded-full shadow-sm hover:bg-gray-100 transition-all cursor-pointer"
                             style={{
-                              width: "28px", // círculo compacto
+                              width: "28px",
                               height: "28px",
                             }}
                             title={`Descargar ${nombreLimpio}`}
@@ -909,8 +1024,7 @@ const Message = ({
                               <line x1="12" y1="15" x2="12" y2="3" />
                             </svg>
                           </a>
-                            
-                          {/* 🧾 Nombre limpio del archivo */}
+
                           <span
                             className="text-sm truncate"
                             style={{ maxWidth: "180px" }}
@@ -922,18 +1036,16 @@ const Message = ({
                     }
                   }
 
+                  // 🧩 Texto normal
                   return (
-                    // 🧩 3️⃣ Texto normal
-                    <p
-                      className="break-words whitespace-pre-wrap"
-                    >
+                    <p className="break-words whitespace-pre-wrap">
                       {renderTextoConLinks(mensajeData.mensaje)}
                     </p>
                   );
                 })()
               )}
-              
-              {/* Footer con hora + botón */}
+
+              {/* Footer con hora + acciones pequeñas */}
               <div className="message-footer">
                 {mensajeData.eliminado === 1 && isMine && (
                   <button
@@ -944,7 +1056,7 @@ const Message = ({
                     Deshacer
                   </button>
                 )}
-                {/* 👉 Mostrar si el mensaje fue editado */}
+
                 {mensajeData.editado === 1 && (
                   <button
                     type="button"
@@ -952,7 +1064,6 @@ const Message = ({
                     style={{
                       fontSize: "10px",
                       fontStyle: "italic",
-
                     }}
                     onClick={() => handleVerHistorial(id)}
                   >
@@ -970,25 +1081,26 @@ const Message = ({
                 >
                   {hora}
                   {isMine && (
-                    <span className="ms-2" style={{ fontSize: "0.65rem", opacity: 0.9 }}>
+                    <span
+                      className="ms-2"
+                      style={{ fontSize: "0.65rem", opacity: 0.9 }}
+                    >
                       {mensajeData.visto === 0 ? (
                         <span className="svg15 double-check"></span>
-                        ) : (
+                      ) : (
                         <span className="svg15 double-check-blue"></span>
                       )}
                     </span>
                   )}
-
                 </span>
               </div>
             </div>
 
-            {/* <!-- Dropdown -->*/}
+            {/* Dropdown de acciones */}
             <div className="message-action" ref={dropdownRef}>
               <div className={`dropdown ${dropdownOpen ? "show" : ""}`}>
                 <a
                   className="icon text-muted"
-                  
                   href="#"
                   role="button"
                   aria-expanded={dropdownOpen ? "true" : "false"}
@@ -1023,7 +1135,6 @@ const Message = ({
                     transform: "translateX(-50%)",
                     zIndex: 9999,
                   }}
-                  //onClick={() => setDropdownOpen(false)} // 👈 cualquier click dentro lo cierra
                 >
                   <li>
                     <a
@@ -1032,14 +1143,14 @@ const Message = ({
                       onClick={(e) => {
                         e.preventDefault();
                         setShowReactions(!showReactions);
-                        setDropdownOpen(false); // 👈 si quieres cerrar el menú
+                        setDropdownOpen(false);
                       }}
                     >
-                      <span className="me-auto">Reaccionar</span>
-                      😀
+                      <span className="me-auto">Reaccionar</span> 😀
                     </a>
                   </li>
-                  {isMine && puedeEditar &&(
+
+                  {isMine && puedeEditar && (
                     <li>
                       <a
                         className="dropdown-item d-flex align-items-center"
@@ -1047,7 +1158,7 @@ const Message = ({
                         onClick={(e) => {
                           e.preventDefault();
                           setIsEditing(true);
-                          setEditText(mensajeData.mensaje); // texto actual
+                          setEditText(mensajeData.mensaje);
                           setDropdownOpen(false);
                         }}
                       >
@@ -1071,6 +1182,7 @@ const Message = ({
                       </a>
                     </li>
                   )}
+
                   <li>
                     <a className="dropdown-item d-flex align-items-center" href="#">
                       <span className="me-auto">Responder</span>
@@ -1104,7 +1216,6 @@ const Message = ({
                         {estaFijado ? "Desfijar mensaje" : "Fijar mensaje"}
                       </span>
                       <div className="icon">
-                        {/* 📌 Icono de pin estilo WhatsApp */}
                         <svg
                           xmlns="http://www.w3.org/2000/svg"
                           width="20"
@@ -1126,47 +1237,66 @@ const Message = ({
                       </div>
                     </a>
                   </li>
+
                   {isMine && (
-                    <li>
-                      <hr className="dropdown-divider" />
-                    </li>
+                    <>
+                      <li>
+                        <hr className="dropdown-divider" />
+                      </li>
+                      <li>
+                        <a
+                          className="dropdown-item d-flex align-items-center text-danger"
+                          href="#"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            handleEliminar(id);
+                            setDropdownOpen(false);
+                          }}
+                        >
+                          <span className="me-auto">Eliminar</span>
+                          <div className="icon">
+                            <svg
+                              xmlns="http://www.w3.org/2000/svg"
+                              width="24"
+                              height="24"
+                              viewBox="0 0 24 24"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="2"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              className="feather feather-trash-2"
+                            >
+                              <polyline points="3 6 5 6 21 6"></polyline>
+                              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                              <line x1="10" y1="11" x2="10" y2="17"></line>
+                              <line x1="14" y1="11" x2="14" y2="17"></line>
+                            </svg>
+                          </div>
+                        </a>
+                      </li>
+                    </>
                   )}
-                  {isMine && (
+
+                  {esSticker && onGuardarStickerFavorito && (
                     <li>
                       <a
-                        className="dropdown-item d-flex align-items-center text-danger"
+                        className="dropdown-item d-flex align-items-center"
                         href="#"
                         onClick={(e) => {
                           e.preventDefault();
-                          handleEliminar(id);
+                          onGuardarStickerFavorito(stickerUrl);
                           setDropdownOpen(false);
                         }}
                       >
-                        <span className="me-auto">Eliminar</span>
-                        <div className="icon">
-                          <svg
-                            xmlns="http://www.w3.org/2000/svg"
-                            width="24"
-                            height="24"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth="2"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            className="feather feather-trash-2"
-                          >
-                            <polyline points="3 6 5 6 21 6"></polyline>
-                            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
-                            <line x1="10" y1="11" x2="10" y2="17"></line>
-                            <line x1="14" y1="11" x2="14" y2="17"></line>
-                          </svg>
-                        </div>
+                        <span className="me-auto">Guardar como sticker favorito</span>
+                        <span>⭐</span>
                       </a>
                     </li>
-                  )}  
+                  )}
                 </ul>
               </div>
+
               {/* Menú de reacciones rápidas */}
               {showReactions && (
                 <div
@@ -1174,14 +1304,14 @@ const Message = ({
                   style={{
                     position: "absolute",
                     ...(openDirection === "up"
-                      ? { bottom: "calc(100% + 6px)" }  // abre hacia arriba
-                      : { top: "calc(100% + 6px)" }),   // abre hacia abajo
+                      ? { bottom: "calc(100% + 6px)" }
+                      : { top: "calc(100% + 6px)" }),
                     left: "50%",
                     transform: isMine ? "translateX(-65%)" : "translateX(-30%)",
                     display: "flex",
                     alignItems: "center",
                     gap: "8px",
-                    backgroundColor: "#fff",
+                    backgroundColor: "var(--surface)",
                     boxShadow: "0 2px 8px rgba(0, 0, 0, 0.15)",
                     borderRadius: "9999px",
                     padding: "6px 10px",
@@ -1192,21 +1322,21 @@ const Message = ({
                 >
                   <div className="flex gap-2 mt-1">
                     {["👍", "❤️", "😂", "😮", "😢", "🙏"].map((emoji, idx) => {
-                      const isMine = reacciones.some(
+                      const esMia = reacciones.some(
                         (r) => r.usuario_id === miUsuario?.id && r.emoji === emoji
                       );
 
                       return (
                         <span
                           key={idx}
-                          onClick={() => handleReaction(emoji)} // 👉 toggle
+                          onClick={() => handleReaction(emoji)}
                           style={{
                             fontSize: "20px",
                             cursor: "pointer",
                             padding: "4px 6px",
                             borderRadius: "50%",
                             transition: "background 0.2s ease",
-                            backgroundColor: isMine ? "#e6e6e6" : "transparent",
+                            backgroundColor: esMia ? "#e6e6e6" : "transparent",
                           }}
                         >
                           {emoji}
@@ -1220,7 +1350,6 @@ const Message = ({
                     className="plus-btn"
                     onClick={(e) => {
                       e.stopPropagation();
-                      console.log("➕ Click en botón +");
                       setShowEmojiPickerReactions(true);
                       setShowReactions(false);
                     }}
@@ -1243,12 +1372,10 @@ const Message = ({
                       xmlns="http://www.w3.org/2000/svg"
                       aria-hidden="true"
                     >
-                      {/* círculo de fondo plomo claro */}
-                      <circle cx="12" cy="12" r="12" fill="#f0f2f5" />
-                      {/* símbolo + */}
+                      <circle cx="12" cy="12" r="12" fill="var(--surface-3)" />
                       <path
                         d="M12 7v10M7 12h10"
-                        stroke="#606770"
+                        stroke="var(--text-muted-2)"
                         strokeWidth="2"
                         strokeLinecap="round"
                         strokeLinejoin="round"
@@ -1258,15 +1385,10 @@ const Message = ({
                 </div>
               )}
             </div>
-            {/* <!---------------->*/}
           </div>
         </div>
 
-        {/* Contenedor relativo */}
-      
-        {/* Tu mensaje aquí */}
-
-        {/* Picker de emoji-mart */}
+        {/* Picker reacción extra */}
         {showEmojiPickerReactions && (
           <div
             className="emoji-picker"
@@ -1276,15 +1398,15 @@ const Message = ({
                 ? { bottom: "calc(100% + 8px)" }
                 : { top: "calc(100% + 8px)" }),
               left: "50%",
-              transform: isMine ? "translateX(-65%)": "translateX(-30%)",
-              zIndex: 9999,     // 👈 encima de todo
+              transform: isMine ? "translateX(-65%)" : "translateX(-30%)",
+              zIndex: 9999,
             }}
-            onClick={(e) => e.stopPropagation()} // 👈 evita que se cierre al hacer click dentro
+            onClick={(e) => e.stopPropagation()}
           >
             <Picker
               data={data}
               onEmojiSelect={(emoji) => handleReaction(emoji.native)}
-              theme="light"
+              theme={emojiTheme}
               previewPosition="none"
               searchPosition="top"
               locale="es"
@@ -1292,7 +1414,7 @@ const Message = ({
           </div>
         )}
 
-        {/* 👇 Mostrar reacciones agrupadas con contador */}
+        {/* Reacciones agrupadas */}
         {reacciones.length > 0 && (
           <div
             className="d-flex flex-row flex-wrap px-2 py-1 bg-light rounded-pill border"
@@ -1300,15 +1422,14 @@ const Message = ({
               fontSize: "10px",
               lineHeight: 1,
               cursor: "pointer",
-              marginTop: "-5px", // pequeño espacio opcional
-              alignSelf: "flex-start", // siempre debajo del mensaje
+              marginTop: "-5px",
+              alignSelf: "flex-start",
             }}
             onClick={() => {
               setSelectedEmoji("ALL");
               setShowReactionModal(true);
             }}
           >
-            {/* Mostrar todos los emojis una vez */}
             {Object.keys(
               reacciones.reduce((acc, r) => {
                 acc[r.emoji] = true;
@@ -1320,12 +1441,11 @@ const Message = ({
               </span>
             ))}
 
-            {/* Total de reacciones */}
             <span className="ms-1 fw-bold">{reacciones.length}</span>
           </div>
         )}
 
-        {/* Modal de detalle de reacciones */}
+        {/* Modal detalle reacciones */}
         {showReactionModal && (
           <div
             className="position-fixed top-0 start-0 w-100 h-100 d-flex align-items-center justify-content-center"
@@ -1337,9 +1457,7 @@ const Message = ({
               style={{ maxWidth: "420px", width: "100%" }}
               onClick={(e) => e.stopPropagation()}
             >
-              {/* Tabs de encabezado */}
               <div className="d-flex border-bottom mb-3">
-                {/* Tab "Total" */}
                 <div
                   onClick={() => setSelectedEmoji("ALL")}
                   className={`me-3 pb-2 ${
@@ -1352,7 +1470,6 @@ const Message = ({
                   Total {reacciones.length}
                 </div>
 
-                {/* Tabs por emoji */}
                 {Object.values(
                   reacciones.reduce((acc, r) => {
                     if (!acc[r.emoji]) {
@@ -1372,13 +1489,11 @@ const Message = ({
                     }`}
                     style={{ cursor: "pointer" }}
                   >
-                    {item.emoji}{" "}
-                    {item.count > 1 && item.count} {/* 👈 solo si es > 1 */}
+                    {item.emoji} {item.count > 1 && item.count}
                   </div>
                 ))}
               </div>
 
-              {/* Lista de usuarios que reaccionaron */}
               <ul className="list-unstyled m-0">
                 {reacciones
                   .filter(
@@ -1395,13 +1510,12 @@ const Message = ({
                         key={idx}
                         className="d-flex align-items-center justify-content-between mb-2 p-2 rounded hover-bg-light"
                       >
-                        {/* Avatar + nombre */}
                         <div
                           className="d-flex align-items-center"
                           style={{ cursor: "pointer" }}
                           onClick={() => {
                             if (!isMineReaction) {
-                              onVerPerfil(r.usuario); // abrir perfil
+                              onVerPerfil(r.usuario);
                               setShowReactionModal(false);
                             }
                           }}
@@ -1453,7 +1567,6 @@ const Message = ({
                           </div>
                         </div>
 
-                        {/* Emoji → reaccionar o eliminar */}
                         <span
                           style={{ fontSize: "22px", cursor: "pointer" }}
                           onClick={() => handleReaction(r.emoji)}
@@ -1526,7 +1639,10 @@ const Message = ({
                 >
                   Cancelar
                 </button>
-                <button className="btn btn-success" onClick={() => confirmarFijado()}>
+                <button
+                  className="btn btn-success"
+                  onClick={() => confirmarFijado()}
+                >
                   Fijar
                 </button>
               </div>
@@ -1534,7 +1650,7 @@ const Message = ({
           </div>
         )}
 
-        {/* Modal de reemplazo (WhatsApp style) */}
+        {/* Modal de reemplazo */}
         {showReplaceModal && (
           <div
             className="position-fixed top-0 start-0 w-100 h-100 d-flex align-items-center justify-content-center"
@@ -1546,7 +1662,9 @@ const Message = ({
               style={{ maxWidth: "360px", width: "90%" }}
               onClick={(e) => e.stopPropagation()}
             >
-              <h6 className="fw-bold mb-3">¿Deseas reemplazar el mensaje fijado más antiguo?</h6>
+              <h6 className="fw-bold mb-3">
+                ¿Deseas reemplazar el mensaje fijado más antiguo?
+              </h6>
               <p className="text-muted small mb-4">
                 Tu nuevo mensaje fijado reemplazará al más antiguo.
               </p>
@@ -1558,7 +1676,10 @@ const Message = ({
                 >
                   Cancelar
                 </button>
-                <button className="btn btn-success" onClick={() => confirmarReemplazo()}>
+                <button
+                  className="btn btn-success"
+                  onClick={() => confirmarReemplazo()}
+                >
                   Continuar
                 </button>
               </div>
@@ -1566,7 +1687,7 @@ const Message = ({
           </div>
         )}
 
-        {/* 👇 Modal de Edistar */}
+        {/* Modal de editar */}
         {isEditing && (
           <div
             className="position-fixed top-0 start-0 w-100 h-100 d-flex align-items-center justify-content-center"
@@ -1576,9 +1697,7 @@ const Message = ({
               className="bg-white rounded-4 shadow p-3 d-flex flex-column"
               style={{ maxWidth: "500px", width: "100%" }}
             >
-              {/* Header */}
               <div className="d-flex align-items-center mb-3">
-                {/* Botón cerrar (X) */}
                 <button
                   className="btn btn-link p-0 me-2"
                   onClick={() => setIsEditing(false)}
@@ -1601,7 +1720,6 @@ const Message = ({
                 <h6 className="m-0">Edita el mensaje</h6>
               </div>
 
-              {/* Vista previa del mensaje actual */}
               <div
                 className="p-2 mb-3"
                 style={{
@@ -1610,11 +1728,8 @@ const Message = ({
                   maxWidth: "80%",
                   alignSelf: "flex-end",
                 }}
-              > 
-                <div
-                  
-                  style={{color: "#ffffffff" }}
-                >
+              >
+                <div style={{ color: "#ffffffff" }}>
                   <span>{mensajeData.mensaje}</span>
                 </div>
                 <div
@@ -1625,21 +1740,20 @@ const Message = ({
                   <span className="me-2">
                     {mensajeData.visto === 0 ? (
                       <span className="svg15 double-check"></span>
-                      ) : (
+                    ) : (
                       <span className="svg15 double-check-blue"></span>
-                      )}
+                    )}
                   </span>
-                  
                 </div>
               </div>
 
-              {/* Área para editar */}
               <div className="d-flex align-items-end gap-2 mt-2">
-                {/* Botón emojis */}
                 <button
                   type="button"
                   className="btn btn-light p-2 d-flex align-items-center justify-content-center"
-                  onClick={() => setShowEmojiPickerEdit(!showEmojiPickerEdit)}
+                  onClick={() =>
+                    setShowEmojiPickerEdit(!showEmojiPickerEdit)
+                  }
                 >
                   <svg
                     xmlns="http://www.w3.org/2000/svg"
@@ -1659,24 +1773,23 @@ const Message = ({
                     <line x1="15" y1="9" x2="15.01" y2="9"></line>
                   </svg>
                 </button>
-                {/* Picker de emoji-mart SOLO para edición */}
+
                 {showEmojiPickerEdit && (
                   <div
                     ref={emojiPickerEditRef}
                     style={{
                       position: "absolute",
-                      bottom: "130px", // arriba del textarea
+                      bottom: "130px",
                       left: "420px",
                       zIndex: 9999,
                     }}
-                    
                   >
                     <Picker
                       data={data}
                       onEmojiSelect={(emoji) =>
                         setEditText((prev) => prev + emoji.native)
                       }
-                      theme="light"
+                      theme={emojiTheme}
                       previewPosition="none"
                       searchPosition="top"
                       locale="es"
@@ -1684,23 +1797,23 @@ const Message = ({
                   </div>
                 )}
 
-                {/* Textarea */}
                 <textarea
                   className="form-control flex-grow-1"
                   style={{
                     resize: "none",
                     minHeight: "40px",
-                    maxHeight: "100px", // 🔹 4 líneas aprox
+                    maxHeight: "100px",
                     overflowY: "auto",
                   }}
                   rows="1"
                   value={editText}
                   onChange={(e) => {
                     setEditText(e.target.value);
-
-                    // 🔹 Ajuste dinámico del alto
-                    e.target.style.height = "auto"; // reinicia
-                    e.target.style.height = `${Math.min(e.target.scrollHeight, 100)}px`; // crece hasta 100px (≈4 líneas)
+                    e.target.style.height = "auto";
+                    e.target.style.height = `${Math.min(
+                      e.target.scrollHeight,
+                      100
+                    )}px`;
                   }}
                   onKeyDown={(e) => {
                     if (e.key === "Enter" && !e.shiftKey) {
@@ -1710,25 +1823,24 @@ const Message = ({
                   }}
                 />
 
-
-                {/* Botón aceptar ✅ */}
                 <button
                   type="button"
                   className="rounded-circle d-flex align-items-center justify-content-center"
                   style={{
-                    width: "57px",          // 🔒 fijo en 44x44
+                    width: "57px",
                     height: "44px",
-                    padding: "0",                  // 🔥 nada de padding
-                    borderRadius: "150%",           // 🔥 círculo perfecto
-                    backgroundColor: "#25D366", // Verde WhatsApp
+                    padding: "0",
+                    borderRadius: "150%",
+                    backgroundColor: "#25D366",
                     border: "none",
-                    transition: "background-color 0.2s ease-in-out, transform 0.15s",
-                    boxShadow: "0 2px 6px rgba(0,0,0,0.2)", // sombra suave
+                    transition:
+                      "background-color 0.2s ease-in-out, transform 0.15s",
+                    boxShadow: "0 2px 6px rgba(0,0,0,0.2)",
                   }}
                   onClick={() => handleEditar(id, editText)}
                   onMouseEnter={(e) => {
-                    e.currentTarget.style.backgroundColor = "#20b955"; // Hover verde más oscuro
-                    e.currentTarget.style.transform = "scale(1.05)"; // pequeño efecto zoom
+                    e.currentTarget.style.backgroundColor = "#20b955";
+                    e.currentTarget.style.transform = "scale(1.05)";
                   }}
                   onMouseLeave={(e) => {
                     e.currentTarget.style.backgroundColor = "#25D366";
@@ -1739,8 +1851,8 @@ const Message = ({
                     xmlns="http://www.w3.org/2000/svg"
                     viewBox="0 0 24 24"
                     style={{
-                      width: "50%",   // 🔥 Escala dentro del botón
-                      height: "50%", // mantiene proporción
+                      width: "50%",
+                      height: "50%",
                     }}
                     fill="none"
                     stroke="white"
@@ -1752,14 +1864,14 @@ const Message = ({
                   </svg>
                 </button>
               </div>
-              
             </div>
           </div>
-        )}  
+        )}
 
+        {/* Modal historial de ediciones */}
         {showHistorial && (
-        <div
-          className="position-fixed top-0 start-0 w-100 h-100 d-flex align-items-center justify-content-center"
+          <div
+            className="position-fixed top-0 start-0 w-100 h-100 d-flex align-items-center justify-content-center"
             style={{ backgroundColor: "rgba(0,0,0,0.5)", zIndex: 5000 }}
             onClick={() => setShowHistorial(false)}
           >
@@ -1767,20 +1879,21 @@ const Message = ({
               className="bg-white rounded-4 shadow p-3"
               style={{ maxWidth: "420px", width: "100%" }}
               onClick={(e) => e.stopPropagation()}
-              >
+            >
               <div className="d-flex align-items-center mb-3">
-                {/* Botón de cerrar como WhatsApp */}
                 <button
                   className="btn btn-link p-0 me-2"
                   onClick={() => setShowHistorial(false)}
-                 >
-                ←
+                >
+                  ←
                 </button>
                 <h6 className="m-0">Historial de ediciones</h6>
               </div>
 
               {historial.length === 0 ? (
-                <p className="text-muted text-center">No hay ediciones registradas.</p>
+                <p className="text-muted text-center">
+                  No hay ediciones registradas.
+                </p>
               ) : (
                 <div className="d-flex flex-column gap-2">
                   {historial.map((h, index) => {
@@ -1791,8 +1904,8 @@ const Message = ({
 
                     return (
                       <div key={h.id} className="d-flex flex-column">
-                        {/* Cabecera sticky de fecha */}
-                        {index === 0 || formatChatDate(historial[index - 1].fecha) !== fecha ? (
+                        {index === 0 ||
+                        formatChatDate(historial[index - 1].fecha) !== fecha ? (
                           <div className="date-sticky-wrapper text-center my-2">
                             <span
                               className="date-chip px-2 py-1 rounded-pill"
@@ -1807,7 +1920,6 @@ const Message = ({
                           </div>
                         ) : null}
 
-                        {/* Mensaje */}
                         <div
                           className="p-2"
                           style={{
@@ -1818,10 +1930,8 @@ const Message = ({
                             color,
                           }}
                         >
-                          {/* Texto */}
                           <div>{h.texto_original}</div>
 
-                          {/* Hora + visto */}
                           <div
                             className="d-flex justify-content-end align-items-center"
                             style={{ fontSize: "0.65rem", opacity: 0.9 }}
@@ -1842,11 +1952,10 @@ const Message = ({
                 </div>
               )}
             </div>
-        </div>
+          </div>
         )}
 
-        {/* 👇 Imagen ampliada */}
-        {/* 🎞️ Visor de galería tipo WhatsApp */}
+        {/* Galería tipo WhatsApp */}
         {galeriaAbierta && galeriaImagenes.length > 0 && (
           <div
             className="position-fixed top-0 start-0 w-100 h-100 d-flex align-items-center justify-content-center"
@@ -1857,7 +1966,6 @@ const Message = ({
             }}
             onClick={() => setGaleriaAbierta(false)}
           >
-            {/* Botón cerrar */}
             <button
               type="button"
               onClick={(e) => {
@@ -1870,7 +1978,6 @@ const Message = ({
               ✕
             </button>
 
-            {/* Flecha izquierda */}
             {galeriaImagenes.length > 1 && (
               <button
                 type="button"
@@ -1887,11 +1994,10 @@ const Message = ({
               </button>
             )}
 
-            {/* Imagen central */}
             <img
               src={galeriaImagenes[galeriaIndice]}
               alt="vista ampliada"
-              onClick={(e) => e.stopPropagation()} // no cerrar al hacer clic en la imagen
+              onClick={(e) => e.stopPropagation()}
               style={{
                 maxWidth: "90%",
                 maxHeight: "90%",
@@ -1900,7 +2006,6 @@ const Message = ({
               }}
             />
 
-            {/* Flecha derecha */}
             {galeriaImagenes.length > 1 && (
               <button
                 type="button"
@@ -1917,7 +2022,6 @@ const Message = ({
               </button>
             )}
 
-            {/* Indicador 1/4 */}
             {galeriaImagenes.length > 1 && (
               <div
                 className="position-absolute bottom-0 mb-3 px-3 py-1 rounded-pill text-white"
@@ -1931,7 +2035,6 @@ const Message = ({
             )}
           </div>
         )}
-
       </div>
     </div>
   );

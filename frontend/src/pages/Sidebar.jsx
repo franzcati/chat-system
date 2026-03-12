@@ -1,11 +1,13 @@
 import { useState } from "react";
-import { UserPlus, Edit3, Users, MessageSquare, Bell, Grid, Sun, Settings } from 'feather-icons-react';
+import { UserPlus, Edit3, Users, MessageSquare, Bell, Grid, Sun, Moon, Settings } from 'feather-icons-react';
 import { logDev } from "../utils/logger";
 import ProfileModal from "../components/ProfileModal";
 import { getAvatarUrl } from "../utils/url";
+import { useTheme } from "../context/ThemeContext.jsx"; // ✅
 
 const Sidebar = ({ usuario, active, setActive }) => {
   const [showModal, setShowModal] = useState(false);
+  const { isDark, toggleTheme } = useTheme();
 
   const canCrearGrupo = Boolean(usuario?.permisos_chat?.crear_grupos);
   const canCrearUsuarios = usuario?.rol_permisos?.includes("crear_usuarios");
@@ -17,7 +19,7 @@ const Sidebar = ({ usuario, active, setActive }) => {
     //{ id: "users", icon: <Users /> },-
         
     // Crear Proyectos
-    ...(canCrearProyectos ? [{ id: "add-project", icon: <Grid /> }] : []),
+    //...(canCrearProyectos ? [{ id: "add-project", icon: <Grid /> }] : []),
     ...(canCrearUsuarios ? [{ id: "add-user", icon: <UserPlus /> }] : []),
     // Editar Usuarios
     ...(canEditarUsuarios ? [{ id: "edit-user", icon: <Users /> }] : []),
@@ -27,7 +29,7 @@ const Sidebar = ({ usuario, active, setActive }) => {
     { id: "chat", icon: <MessageSquare />, badge: null },
     //{ id: "notifications", icon: <Bell /> },
     //{ id: "grid", icon: <Grid /> },
-    { id: "sun", icon: <Sun /> },
+    { id: "theme", icon: isDark ? <Sun /> : <Moon /> },
     { id: "settings", icon: <Settings /> },
   ];
 
@@ -51,13 +53,21 @@ const Sidebar = ({ usuario, active, setActive }) => {
       {/* Íconos */}
       <div className="d-flex flex-column align-items-center gap-4 w-100 px-1">
         {icons.map(({ id, icon, badge }) => {
-          const isActive = active === id;
+          const isThemeBtn = id === "theme";
+          const isActive = !isThemeBtn && active === id;
           return (
             <div
               key={id}
               className={`nav-item ${isActive ? "active" : ""}`}
-              onClick={() => setActive(id)}
+              onClick={() => {
+                if (isThemeBtn) {
+                  toggleTheme();     // ✅ cambia tema
+                  return;            // ✅ NO cambia active
+                }
+                setActive(id);
+              }}
               style={{ cursor: "pointer" }}
+              title={isThemeBtn ? (isDark ? "Cambiar a modo claro" : "Cambiar a modo oscuro") : ""}
             >
               <div
                 className="icon icon-xl position-relative d-flex justify-content-center align-items-center"

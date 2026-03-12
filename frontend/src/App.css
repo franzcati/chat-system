@@ -1,4 +1,27 @@
 :root{
+  /* Para que inputs/scrollbars se vean correctos */
+  color-scheme: light;
+  /* Tokens semánticos */
+  --app-bg: #ffffff;
+  --surface: #ffffff;
+  --surface-2: #f6f9fb;
+  --surface-3: #ebf1f7;
+
+  --border-color: #e2ecf3;
+
+  /* 👇 Importante: texto por defecto MÁS oscuro (mejor contraste) */
+  --text: #293951;
+  --text-muted-2: #95aac9;
+  --text-soft: #bfccdf;
+
+  --link-color: #1a73e8;
+
+  --shadow-color: rgba(0, 0, 0, 0.15);
+
+  --input-bg: #ebf1f7;
+  --input-text: #293951;
+  --input-placeholder: #a0b3ce;
+
   --accent-color: #8672FF;
   --base-color: white;
   --text-color: #2E2B41;
@@ -56,6 +79,29 @@
   --bs-body-bg: #ffffff;
 }
 
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --app-bg: #0b1220;
+  --surface: #111827;
+  --surface-2: #0f172a;
+  --surface-3: #1f2937;
+
+  --border-color: rgba(255, 255, 255, 0.10);
+
+  --text: #e5e7eb;
+  --text-muted-2: #9ca3af;
+  --text-soft: #6b7280;
+
+  --link-color: #60a5fa;
+
+  --shadow-color: rgba(0, 0, 0, 0.45);
+
+  --input-bg: #0f172a;
+  --input-text: #e5e7eb;
+  --input-placeholder: #94a3b8;
+}
+
 #root {
   height: 100%;
 }
@@ -76,9 +122,9 @@ body {
   font-size: var(--bs-body-font-size);
   font-weight: var(--bs-body-font-weight);
   line-height: var(--bs-body-line-height);
-  color: var(--bs-body-color);
+  background-color: var(--app-bg) !important;
   text-align: var(--bs-body-text-align);
-  background-color: var(--bs-body-bg);
+  color: var(--text) !important;
   -webkit-text-size-adjust: 100%;
   -webkit-tap-highlight-color: transparent;
   letter-spacing: -.003125rem;
@@ -100,7 +146,76 @@ h5 {
 }
 
 .flex-1 {
-  background-color: white;
+  background-color: var(--surface) !important;
+}
+
+/* ==========================================
+   Bootstrap helpers (modo oscuro)
+   ========================================== */
+
+/* Fondos típicos */
+:root[data-theme="dark"] .bg-white { background-color: var(--surface) !important; }
+:root[data-theme="dark"] .bg-light { background-color: var(--surface-2) !important; }
+:root[data-theme="dark"] .bg-dark  { background-color: var(--surface-3) !important; color: var(--text) !important; }
+
+/* Textos típicos */
+:root[data-theme="dark"] .text-muted { color: var(--text-muted-2) !important; }
+:root[data-theme="dark"] .text-body  { color: var(--text) !important; }
+
+/* Bordes */
+:root[data-theme="dark"] .border,
+:root[data-theme="dark"] .border-top,
+:root[data-theme="dark"] .border-bottom,
+:root[data-theme="dark"] .border-start,
+:root[data-theme="dark"] .border-end {
+  border-color: var(--border-color) !important;
+}
+
+/* Dropdowns / modals / offcanvas */
+:root[data-theme="dark"] .dropdown-menu,
+:root[data-theme="dark"] .modal-content,
+:root[data-theme="dark"] .offcanvas {
+  background-color: var(--surface) !important;
+  color: var(--text) !important;
+  border-color: var(--border-color) !important;
+}
+
+/* Inputs */
+:root[data-theme="dark"] .form-control,
+:root[data-theme="dark"] .input-group-text {
+  background-color: var(--input-bg) !important;
+  color: var(--input-text) !important;
+  border-color: var(--border-color) !important;
+}
+
+:root[data-theme="dark"] .form-control::placeholder {
+  color: var(--input-placeholder) !important;
+}
+
+/* Botón light (lo usas en previews) */
+:root[data-theme="dark"] .btn-light {
+  background-color: var(--surface-3) !important;
+  border-color: var(--border-color) !important;
+  color: var(--text) !important;
+}
+
+/* Cards del ChatList */
+:root[data-theme="dark"] .card-list .card {
+  background-color: var(--surface) !important;
+  border-color: var(--border-color) !important;
+}
+:root[data-theme="dark"] .card-list .card:hover {
+  background-color: rgba(255, 255, 255, 0.04) !important;
+}
+:root[data-theme="dark"] .card-list h5 {
+  color: var(--text) !important;
+}
+
+/* Sidebar */
+:root[data-theme="dark"] .sidebar,
+:root[data-theme="dark"] .navigation,
+:root[data-theme="dark"] .main {
+  background-color: var(--app-bg) !important;
 }
 
 .container.h-100 {
@@ -674,13 +789,14 @@ h2 {
     font-weight: bold;
     unicode-bidi: isolate;
 }
+/* Títulos */
 
 .h1, .h2, .h3, .h4, .h5, .h6, h1, h2, h3, h4, h5, h6 {
   margin-top: 0;
   margin-bottom: .5rem;
   font-weight: 500;
   line-height: 1.5;
-  color: #293951;
+  color: var(--text) !important;
 }
 
 /* 🔹 Cambiar el fondo y borde de las cards del ChatList */

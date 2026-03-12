@@ -289,7 +289,7 @@ const CreateChat = ({ proyectoId, usuarioId }) => {
                                 type="text"
                                 className="form-control"
                                 id="chatName"
-                                placeholder="Enter a chat name"
+                                placeholder=""
                                 value={chatName}
                                 onChange={(e) => setChatName(e.target.value)}
                               />
@@ -300,7 +300,7 @@ const CreateChat = ({ proyectoId, usuarioId }) => {
                             <div className="form-floating">
                               <textarea
                                   className="form-control"
-                                  placeholder="Description"
+                                  placeholder=""
                                   id="chatDescription"
                                   rows="8"
                                   style={{ minHeight: "100px" }}

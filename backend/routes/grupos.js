@@ -392,15 +392,13 @@ router.get("/usuario/:userId", async (req, res) => {
       FROM grupos g
       JOIN usuario_grupo ug ON g.id = ug.grupo_id
       LEFT JOIN (
-        SELECT mg1.*
-        FROM mensajes_grupo mg1
-        INNER JOIN (
-          SELECT grupo_id, MAX(fecha_envio) AS ultima_fecha
+        SELECT mg.*
+        FROM mensajes_grupo mg
+        JOIN (
+          SELECT grupo_id, MAX(id) AS last_id
           FROM mensajes_grupo
           GROUP BY grupo_id
-        ) mg2 
-        ON mg1.grupo_id = mg2.grupo_id 
-        AND mg1.fecha_envio = mg2.ultima_fecha
+        ) t ON t.last_id = mg.id
       ) m ON g.id = m.grupo_id
       LEFT JOIN usuario u ON u.id = m.usuario_id
       LEFT JOIN chats_favoritos cf 

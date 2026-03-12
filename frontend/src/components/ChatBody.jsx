@@ -148,7 +148,16 @@ const agruparImagenesTipoWhatsApp = (items) => {
   return todos.map((x) => x.msg);
 };
 
-const ChatBody = ({ messages = [], user, socket, tipo, onVerPerfil }) => {
+const ChatBody = ({
+  messages = [],
+  user,
+  socket,
+  tipo,
+  onVerPerfil,
+  onGuardarStickerFavorito,
+  onEliminarStickerFavorito,
+  stickersFavoritos = [],
+}) => {
   const esGrupo = tipo === "grupo";
 
   const chatContainerRef = useRef(null);
@@ -246,6 +255,15 @@ const ChatBody = ({ messages = [], user, socket, tipo, onVerPerfil }) => {
                 ? msg.usuario_id === user.id
                 : msg.usuario_envia_id === user.id;
 
+              // 🔹 ¿Es este mensaje un sticker y además favorito?
+              let esStickerFavorito = false;
+              if (msg.mensaje?.startsWith?.("[sticker]")) {
+                const urlSticker = msg.mensaje.replace("[sticker]", "");
+                esStickerFavorito = stickersFavoritos.some(
+                  (s) => s.url === urlSticker && !s.esDefault
+                );
+              }
+
               return (
                 <Message
                   key={msg.id}
@@ -258,6 +276,9 @@ const ChatBody = ({ messages = [], user, socket, tipo, onVerPerfil }) => {
                   reacciones={msg.reacciones || []}
                   esGrupo={esGrupo}
                   onVerPerfil={onVerPerfil}
+                  onGuardarStickerFavorito={onGuardarStickerFavorito}
+                  onEliminarStickerFavorito={onEliminarStickerFavorito}   
+                  esStickerFavorito={esStickerFavorito}                    
                 />
               );
             })}

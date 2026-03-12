@@ -1,8 +1,41 @@
 :root{
+  --chat-bg: #0b1220;         /* si quieres fondo oscuro aun en light, cámbialo. Si no, pon #f6f9fb */
+  --chat-bg-light: #f6f9fb;   /* opcional */
+
+  --msg-in-bg: #ffffff;
+  --msg-in-text: #111827;
+  --msg-in-time: #6b7280;
+
+  --msg-out-bg: #2787F5;
+  --msg-out-text: #ffffff;
+  --msg-out-time: rgba(255,255,255,0.85);
+
+  --chip-bg: #e9ecef;
+  --chip-text: #6c757d;
+
   --bs-dark-rgb: 235,241,247;
   --bs-body-color-rgb: 149,170,201;
   --bs-body-bg-rgb: 255,255,255;
 
+}
+
+/* === Variables específicas del chat (DARK) === */
+:root[data-theme="dark"] {
+  --chat-bg: #0b1220;         /* fondo del chat (como WhatsApp dark) */
+
+  /* burbuja ENTRANTE (izquierda) */
+  --msg-in-bg: #111827;       /* 👈 ya NO blanca (mejor para dark) */
+  --msg-in-text: #e5e7eb;
+  --msg-in-time: #9ca3af;
+
+  /* burbuja SALIENTE (derecha) */
+  --msg-out-bg: #2787F5;      /* puedes dejar tu azul */
+  --msg-out-text: #ffffff;
+  --msg-out-time: rgba(255,255,255,0.85);
+
+  /* chips de fecha “Hoy / 10/01/2026” */
+  --chip-bg: rgba(255,255,255,0.10);
+  --chip-text: #e5e7eb;
 }
 
 textarea {
@@ -32,6 +65,8 @@ textarea {
     padding: 2px;
     white-space: pre-wrap;
 }
+
+
 
 .chat-row {
   display: flex;
@@ -989,6 +1024,15 @@ button:hover .lucide-star {
 .scrollbar-hide {
   -ms-overflow-style: none;  /* IE y Edge */
   scrollbar-width: none;     /* Firefox */
+}
+
+
+
+.chat-preview-stage {
+  background: var(--surface-2);
+}
+:root[data-theme="dark"] .chat-preview-stage {
+  background: #020617; /* más oscuro para ver mejor la imagen */
 }
 
 
