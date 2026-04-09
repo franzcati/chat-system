@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useEffect, useState } from "react";
 import { io } from "socket.io-client";
+import { logDev } from "../utils/logger";
 
 const SocketContext = createContext();
 export const useSocket = () => useContext(SocketContext);
@@ -23,19 +24,19 @@ export const SocketProvider = ({ user, children }) => {
 
     newSocket.on("connect", () => {
       setIsConnected(true);
-      console.log("🟢 Socket conectado:", newSocket.id, "Usuario:", user.email);
+      logDev("🟢 Socket conectado:", newSocket.id, "Usuario:", user.email);
     });
 
     newSocket.on("disconnect", () => {
       setIsConnected(false);
-      console.log("🔴 Socket desconectado");
+      logDev("🔴 Socket desconectado");
     });
 
     return () => {
       // 🔹 Desconectar socket anterior al cambiar de usuario o salir
       newSocket.disconnect();
       setIsConnected(false);
-      console.log("⚪ Socket limpiado");
+      logDev("⚪ Socket limpiado");
     };
   }, [user]);
 

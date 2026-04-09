@@ -48,6 +48,14 @@ const Message = ({
   const [showStickerModal, setShowStickerModal] = useState(false);
   const [esFavLocal, setEsFavLocal] = useState(esStickerFavorito);
 
+  const audioRef = useRef(null);
+  const progressRef = useRef(null);
+
+  const [audioPlaying, setAudioPlaying] = useState(false);
+  const [audioDuration, setAudioDuration] = useState(0);
+  const [audioCurrentTime, setAudioCurrentTime] = useState(0);
+  const [isHovered, setIsHovered] = useState(false);
+
   // version oscura de emoji
   const { theme } = useTheme();
   const emojiTheme = theme === "dark" ? "dark" : "light";
@@ -543,10 +551,56 @@ const Message = ({
     );
   };
 
+  //REPRODUCCION DE AUDIO 
+  const formatAudioTime = (seconds) => {
+    if (!seconds || Number.isNaN(seconds)) return "0:00";
+    const mins = Math.floor(seconds / 60);
+    const secs = Math.floor(seconds % 60);
+    return `${mins}:${String(secs).padStart(2, "0")}`;
+  };
+
+  const toggleAudio = () => {
+    if (!audioRef.current) return;
+
+    if (audioPlaying) {
+      audioRef.current.pause();
+    } else {
+      audioRef.current.play();
+    }
+  };
+
+  const handleLoadedMetadata = () => {
+    if (!audioRef.current) return;
+    setAudioDuration(audioRef.current.duration || 0);
+  };
+
+  const handleTimeUpdate = () => {
+    if (!audioRef.current) return;
+    setAudioCurrentTime(audioRef.current.currentTime || 0);
+  };
+
+  const handleAudioEnded = () => {
+    setAudioPlaying(false);
+  };
+
+  const handleSeekAudio = (e) => {
+    if (!progressRef.current || !audioRef.current || !audioDuration) return;
+
+    const rect = progressRef.current.getBoundingClientRect();
+    const clickX = e.clientX - rect.left;
+    const percent = Math.max(0, Math.min(1, clickX / rect.width));
+    const newTime = percent * audioDuration;
+
+    audioRef.current.currentTime = newTime;
+    setAudioCurrentTime(newTime);
+  };
+
   return (
     <div
-      id={`mensaje-${id}`} // 👈 importante: para hacer scroll al fijado
+      id={`mensaje-${id}`}
       className={`message ${enviadoPorMi ? "message-out" : ""}`}
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
     >
       {/* Avatar del que envió */}
       <div
@@ -587,10 +641,11 @@ const Message = ({
           {/* Nombre arriba si es grupo */}
           {esGrupo && !enviadoPorMi && (
             <div
-              className="fw-bold small text-muted"
+              className="fw-bold small"
               style={{
                 marginBottom: "4px",
                 marginLeft: "6px",
+                color: "#111827",
               }}
             >
               {`${usuario?.nombre || ""} ${usuario?.apellido || ""}`}
@@ -598,7 +653,287 @@ const Message = ({
           )}
 
           <div className="message-content">
-            <div className="message-text">
+            <div className="message-text position-relative">
+              <div className="message-action" ref={dropdownRef}>
+                <div className={`dropdown ${dropdownOpen ? "show" : ""}`}>
+                  <button
+                    type="button"
+                    className={`wa-message-menu-btn ${
+                      isHovered || dropdownOpen ? "visible" : ""
+                    } ${enviadoPorMi ? "out" : "in"}`}
+                    aria-expanded={dropdownOpen ? "true" : "false"}
+                    onClick={toggleDropdown}
+                  >
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      width="18"
+                      height="18"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
+                      <polyline points="7 10 12 15 17 10"></polyline>
+                    </svg>
+                  </button>
+
+                  <ul
+                    className={`dropdown-menu ${dropdownOpen ? "show" : ""}`}
+                    style={{
+                      position: "absolute",
+                      ...(openDirection === "up"
+                        ? { bottom: "calc(100% + 8px)" }
+                        : { top: "calc(100% + 8px)" }),
+                      right: "0",
+                      left: "auto",
+                      transform: "none",
+                      zIndex: 10000,
+                    }}
+                  >
+                    <li>
+                      <a
+                        className="dropdown-item d-flex align-items-center"
+                        href="#"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          setDropdownOpen(false);
+                          setShowEmojiPickerReactions(false);
+                          setShowReactions(true);
+                        }}
+                      >
+                        <span className="me-auto">Reaccionar</span> 😀
+                      </a>
+                    </li>
+
+                    {isMine && puedeEditar && (
+                      <li>
+                        <a
+                          className="dropdown-item d-flex align-items-center"
+                          href="#"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            setIsEditing(true);
+                            setEditText(mensajeData.mensaje);
+                            setDropdownOpen(false);
+                          }}
+                        >
+                          <span className="me-auto">Editar</span>
+                          <div className="icon">
+                            <svg
+                              xmlns="http://www.w3.org/2000/svg"
+                              width="20"
+                              height="20"
+                              viewBox="0 0 24 24"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="2"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              className="feather feather-edit-2"
+                            >
+                              <path d="M17 3a2.828 2.828 0 0 1 4 4L7 21H3v-4L17 3z"></path>
+                            </svg>
+                          </div>
+                        </a>
+                      </li>
+                    )}
+
+                    <li>
+                      <a className="dropdown-item d-flex align-items-center" href="#">
+                        <span className="me-auto">Responder</span>
+                        <div className="icon">
+                          <svg
+                            xmlns="http://www.w3.org/2000/svg"
+                            width="24"
+                            height="24"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            className="feather feather-corner-up-left"
+                          >
+                            <polyline points="9 14 4 9 9 4"></polyline>
+                            <path d="M20 20v-7a4 4 0 0 0-4-4H4"></path>
+                          </svg>
+                        </div>
+                      </a>
+                    </li>
+
+                    <li>
+                      <a
+                        className="dropdown-item d-flex align-items-center"
+                        href="#"
+                        onClick={(e) => handleFijar(e)}
+                      >
+                        <span className="me-auto">
+                          {estaFijado ? "Desfijar mensaje" : "Fijar mensaje"}
+                        </span>
+                        <div className="icon">
+                          <svg
+                            xmlns="http://www.w3.org/2000/svg"
+                            width="20"
+                            height="20"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            className="feather feather-pin"
+                            style={{
+                              transform: estaFijado ? "rotate(45deg)" : "none",
+                              transition: "transform 0.2s ease",
+                            }}
+                          >
+                            <path d="M12 2v7l-2 3v9l2-2 2 2v-9l-2-3V2z" />
+                          </svg>
+                        </div>
+                      </a>
+                    </li>
+
+                    {isMine && (
+                      <>
+                        <li>
+                          <hr className="dropdown-divider" />
+                        </li>
+                        <li>
+                          <a
+                            className="dropdown-item d-flex align-items-center text-danger"
+                            href="#"
+                            onClick={(e) => {
+                              e.preventDefault();
+                              handleEliminar(id);
+                              setDropdownOpen(false);
+                            }}
+                          >
+                            <span className="me-auto">Eliminar</span>
+                            <div className="icon">
+                              <svg
+                                xmlns="http://www.w3.org/2000/svg"
+                                width="24"
+                                height="24"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="2"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                className="feather feather-trash-2"
+                              >
+                                <polyline points="3 6 5 6 21 6"></polyline>
+                                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                                <line x1="10" y1="11" x2="10" y2="17"></line>
+                                <line x1="14" y1="11" x2="14" y2="17"></line>
+                              </svg>
+                            </div>
+                          </a>
+                        </li>
+                      </>
+                    )}
+
+                    {esSticker && onGuardarStickerFavorito && (
+                      <li>
+                        <a
+                          className="dropdown-item d-flex align-items-center"
+                          href="#"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            onGuardarStickerFavorito(stickerUrl);
+                            setDropdownOpen(false);
+                          }}
+                        >
+                          <span className="me-auto">Guardar como sticker favorito</span>
+                          <span>⭐</span>
+                        </a>
+                      </li>
+                    )}
+                  </ul>
+                  {showReactions && (
+                    <div
+                      className="reactions-popover"
+                      style={{
+                        position: "absolute",
+                        ...(openDirection === "up"
+                          ? { bottom: "calc(100% + 8px)" }
+                          : { top: "calc(100% + 8px)" }),
+                        right: "0",
+                        zIndex: 10001,
+                      }}
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <div className="reactions-popover-inner">
+                        {["👍", "❤️", "😂", "😮", "😢", "🙏"].map((emoji, idx) => {
+                          const esMia = reacciones.some(
+                            (r) => r.usuario_id === miUsuario?.id && r.emoji === emoji
+                          );
+
+                          return (
+                            <span
+                              key={idx}
+                              onClick={() => {
+                                handleReaction(emoji);
+                                setShowReactions(false);
+                              }}
+                              style={{
+                                fontSize: "20px",
+                                cursor: "pointer",
+                                padding: "4px 6px",
+                                borderRadius: "50%",
+                                backgroundColor: esMia ? "#e5e7eb" : "transparent",
+                              }}
+                            >
+                              {emoji}
+                            </span>
+                          );
+                        })}
+
+                        <button
+                          type="button"
+                          className="plus-btn"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setShowEmojiPickerReactions(true);
+                            setShowReactions(false);
+                          }}
+                          style={{
+                            width: "28px",
+                            height: "28px",
+                            border: "none",
+                            background: "none",
+                            cursor: "pointer",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            padding: 0,
+                          }}
+                        >
+                          <svg
+                            width="28"
+                            height="28"
+                            viewBox="0 0 24 24"
+                            xmlns="http://www.w3.org/2000/svg"
+                            aria-hidden="true"
+                          >
+                            <circle cx="12" cy="12" r="12" fill="var(--surface-3)" />
+                            <path
+                              d="M12 7v10M7 12h10"
+                              stroke="var(--text-muted-2)"
+                              strokeWidth="2"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                            />
+                          </svg>
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
               {mensajeData.eliminado ? (
                 <div className="fst-italic text-muted d-flex align-items-center">
                   <svg
@@ -871,6 +1206,14 @@ const Message = ({
                       /\.(jpe?g|png|webp|gif)$/i.test(urlArchivo) ||
                       (tipo && tipo.startsWith("image/"));
 
+                    const esAudio =
+                      (!!tipo && tipo.startsWith("audio/")) ||
+                      /\.(mp3|wav|ogg|m4a|aac|webm)$/i.test(urlArchivo);
+
+                    const esVideo =
+                      (!!tipo && tipo.startsWith("video/")) ||
+                      /\.(mp4|webm|ogg|mov)$/i.test(urlArchivo);
+
                     if (esImagen) {
                       const estado = mensajeData.estado;
                       const progreso = mensajeData.progreso;
@@ -937,6 +1280,149 @@ const Message = ({
                               ×
                             </div>
                           )}
+                        </div>
+                      );
+                    }
+
+                    if (esAudio) {
+                      const progressPercent =
+                        audioDuration > 0 ? (audioCurrentTime / audioDuration) * 100 : 0;
+
+                      const avatarAudio = enviadoPorMi
+                        ? getAvatarUrl(miUsuario?.url_imagen)
+                        : getAvatarUrl(usuario?.url_imagen);
+
+                      const bgAudio = enviadoPorMi
+                        ? miUsuario?.background || "#6c757d"
+                        : usuario?.background || "#6c757d";
+
+                      const initialAudio = enviadoPorMi
+                        ? getInitial(miUsuario?.nombre || "U")
+                        : getInitial(usuario?.nombre || "U");
+
+                      const colorTiempo = enviadoPorMi ? "rgba(255,255,255,0.92)" : "#111827";
+                      const colorBarraBase = enviadoPorMi ? "rgba(255,255,255,0.28)" : "#d1d5db";
+                      const colorBarraProgreso = enviadoPorMi ? "#7dd3fc" : "#22c55e";
+                      const colorBoton = enviadoPorMi ? "#ffffff" : "#111827";
+
+                      return (
+                        <div className={`wa-audio-player ${enviadoPorMi ? "out" : "in"}`}>
+                          <audio
+                            ref={audioRef}
+                            preload="metadata"
+                            onLoadedMetadata={handleLoadedMetadata}
+                            onTimeUpdate={handleTimeUpdate}
+                            onPlay={() => setAudioPlaying(true)}
+                            onPause={() => setAudioPlaying(false)}
+                            onEnded={handleAudioEnded}
+                            style={{ display: "none" }}
+                          >
+                            <source src={urlArchivo} type={tipo || "audio/mpeg"} />
+                            Tu navegador no soporta audio.
+                          </audio>
+
+                          <div className="wa-audio-avatar">
+                            {avatarAudio ? (
+                              <img
+                                src={avatarAudio}
+                                alt="avatar audio"
+                                style={{
+                                  width: "42px",
+                                  height: "42px",
+                                  borderRadius: "50%",
+                                  objectFit: "cover",
+                                  display: "block",
+                                }}
+                              />
+                            ) : (
+                              <div
+                                style={{
+                                  width: "42px",
+                                  height: "42px",
+                                  borderRadius: "50%",
+                                  backgroundColor: bgAudio,
+                                  color: "#fff",
+                                  display: "flex",
+                                  alignItems: "center",
+                                  justifyContent: "center",
+                                  fontWeight: "bold",
+                                }}
+                              >
+                                {initialAudio}
+                              </div>
+                            )}
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={toggleAudio}
+                            className="wa-audio-play"
+                            style={{ color: colorBoton }}
+                          >
+                            {audioPlaying ? (
+                              <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+                                <rect x="6" y="5" width="4" height="14" rx="1"></rect>
+                                <rect x="14" y="5" width="4" height="14" rx="1"></rect>
+                              </svg>
+                            ) : (
+                              <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+                                <path d="M8 5v14l11-7z"></path>
+                              </svg>
+                            )}
+                          </button>
+
+                          <div className="wa-audio-main">
+                            <div
+                              ref={progressRef}
+                              onClick={handleSeekAudio}
+                              className="wa-audio-progress"
+                              style={{ background: colorBarraBase }}
+                            >
+                              <div
+                                className="wa-audio-progress-fill"
+                                style={{
+                                  width: `${progressPercent}%`,
+                                  background: colorBarraProgreso,
+                                }}
+                              />
+                            </div>
+
+                            <div className="wa-audio-times" style={{ color: colorTiempo }}>
+                              <span>{formatAudioTime(audioCurrentTime)}</span>
+                              <span>{formatAudioTime(audioDuration)}</span>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    }
+
+                    if (esVideo) {
+                      return (
+                        <div
+                          style={{
+                            position: "relative",
+                            display: "inline-block",
+                            maxWidth: "280px",
+                            borderRadius: "14px",
+                            overflow: "hidden",
+                            backgroundColor: "#000",
+                          }}
+                        >
+                          <video
+                            controls
+                            playsInline
+                            preload="metadata"
+                            style={{
+                              width: "100%",
+                              maxHeight: "420px",
+                              display: "block",
+                              borderRadius: "14px",
+                              backgroundColor: "#000",
+                            }}
+                          >
+                            <source src={urlArchivo} type={tipo || "video/mp4"} />
+                            Tu navegador no soporta video.
+                          </video>
                         </div>
                       );
                     }
@@ -1073,296 +1559,6 @@ const Message = ({
                   )}
                 </span>
               </div>
-            </div>
-
-            {/* Dropdown de acciones */}
-            <div className="message-action" ref={dropdownRef}>
-              <div className={`dropdown ${dropdownOpen ? "show" : ""}`}>
-                <a
-                  className="icon text-muted"
-                  href="#"
-                  role="button"
-                  aria-expanded={dropdownOpen ? "true" : "false"}
-                  onClick={toggleDropdown}
-                >
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    width="24"
-                    height="24"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    className="feather feather-more-vertical"
-                  >
-                    <circle cx="12" cy="12" r="1"></circle>
-                    <circle cx="12" cy="5" r="1"></circle>
-                    <circle cx="12" cy="19" r="1"></circle>
-                  </svg>
-                </a>
-
-                <ul
-                  className={`dropdown-menu ${dropdownOpen ? "show" : ""}`}
-                  style={{
-                    position: "absolute",
-                    ...(openDirection === "up"
-                      ? { bottom: "calc(100% + 6px)" }
-                      : { top: "calc(100% + 6px)" }),
-                    left: "50%",
-                    transform: "translateX(-50%)",
-                    zIndex: 9999,
-                  }}
-                >
-                  <li>
-                    <a
-                      className="dropdown-item d-flex align-items-center"
-                      href="#"
-                      onClick={(e) => {
-                        e.preventDefault();
-                        setShowReactions(!showReactions);
-                        setDropdownOpen(false);
-                      }}
-                    >
-                      <span className="me-auto">Reaccionar</span> 😀
-                    </a>
-                  </li>
-
-                  {isMine && puedeEditar && (
-                    <li>
-                      <a
-                        className="dropdown-item d-flex align-items-center"
-                        href="#"
-                        onClick={(e) => {
-                          e.preventDefault();
-                          setIsEditing(true);
-                          setEditText(mensajeData.mensaje);
-                          setDropdownOpen(false);
-                        }}
-                      >
-                        <span className="me-auto">Editar</span>
-                        <div className="icon">
-                          <svg
-                            xmlns="http://www.w3.org/2000/svg"
-                            width="20"
-                            height="20"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth="2"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            className="feather feather-edit-2"
-                          >
-                            <path d="M17 3a2.828 2.828 0 0 1 4 4L7 21H3v-4L17 3z"></path>
-                          </svg>
-                        </div>
-                      </a>
-                    </li>
-                  )}
-
-                  <li>
-                    <a className="dropdown-item d-flex align-items-center" href="#">
-                      <span className="me-auto">Responder</span>
-                      <div className="icon">
-                        <svg
-                          xmlns="http://www.w3.org/2000/svg"
-                          width="24"
-                          height="24"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="2"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          className="feather feather-corner-up-left"
-                        >
-                          <polyline points="9 14 4 9 9 4"></polyline>
-                          <path d="M20 20v-7a4 4 0 0 0-4-4H4"></path>
-                        </svg>
-                      </div>
-                    </a>
-                  </li>
-
-                  <li>
-                    <a
-                      className="dropdown-item d-flex align-items-center"
-                      href="#"
-                      onClick={(e) => handleFijar(e)}
-                    >
-                      <span className="me-auto">
-                        {estaFijado ? "Desfijar mensaje" : "Fijar mensaje"}
-                      </span>
-                      <div className="icon">
-                        <svg
-                          xmlns="http://www.w3.org/2000/svg"
-                          width="20"
-                          height="20"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="2"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          className="feather feather-pin"
-                          style={{
-                            transform: estaFijado ? "rotate(45deg)" : "none",
-                            transition: "transform 0.2s ease",
-                          }}
-                        >
-                          <path d="M12 2v7l-2 3v9l2-2 2 2v-9l-2-3V2z" />
-                        </svg>
-                      </div>
-                    </a>
-                  </li>
-
-                  {isMine && (
-                    <>
-                      <li>
-                        <hr className="dropdown-divider" />
-                      </li>
-                      <li>
-                        <a
-                          className="dropdown-item d-flex align-items-center text-danger"
-                          href="#"
-                          onClick={(e) => {
-                            e.preventDefault();
-                            handleEliminar(id);
-                            setDropdownOpen(false);
-                          }}
-                        >
-                          <span className="me-auto">Eliminar</span>
-                          <div className="icon">
-                            <svg
-                              xmlns="http://www.w3.org/2000/svg"
-                              width="24"
-                              height="24"
-                              viewBox="0 0 24 24"
-                              fill="none"
-                              stroke="currentColor"
-                              strokeWidth="2"
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              className="feather feather-trash-2"
-                            >
-                              <polyline points="3 6 5 6 21 6"></polyline>
-                              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
-                              <line x1="10" y1="11" x2="10" y2="17"></line>
-                              <line x1="14" y1="11" x2="14" y2="17"></line>
-                            </svg>
-                          </div>
-                        </a>
-                      </li>
-                    </>
-                  )}
-
-                  {esSticker && onGuardarStickerFavorito && (
-                    <li>
-                      <a
-                        className="dropdown-item d-flex align-items-center"
-                        href="#"
-                        onClick={(e) => {
-                          e.preventDefault();
-                          onGuardarStickerFavorito(stickerUrl);
-                          setDropdownOpen(false);
-                        }}
-                      >
-                        <span className="me-auto">Guardar como sticker favorito</span>
-                        <span>⭐</span>
-                      </a>
-                    </li>
-                  )}
-                </ul>
-              </div>
-
-              {/* Menú de reacciones rápidas */}
-              {showReactions && (
-                <div
-                  className="reactions-popover d-flex align-items-center px-2 py-1 bg-white shadow rounded-pill"
-                  style={{
-                    position: "absolute",
-                    ...(openDirection === "up"
-                      ? { bottom: "calc(100% + 6px)" }
-                      : { top: "calc(100% + 6px)" }),
-                    left: "50%",
-                    transform: isMine ? "translateX(-65%)" : "translateX(-30%)",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "8px",
-                    backgroundColor: "var(--surface)",
-                    boxShadow: "0 2px 8px rgba(0, 0, 0, 0.15)",
-                    borderRadius: "9999px",
-                    padding: "6px 10px",
-                    zIndex: 99999,
-                    transition: "all 0.2s ease",
-                  }}
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  <div className="flex gap-2 mt-1">
-                    {["👍", "❤️", "😂", "😮", "😢", "🙏"].map((emoji, idx) => {
-                      const esMia = reacciones.some(
-                        (r) => r.usuario_id === miUsuario?.id && r.emoji === emoji
-                      );
-
-                      return (
-                        <span
-                          key={idx}
-                          onClick={() => handleReaction(emoji)}
-                          style={{
-                            fontSize: "20px",
-                            cursor: "pointer",
-                            padding: "4px 6px",
-                            borderRadius: "50%",
-                            transition: "background 0.2s ease",
-                            backgroundColor: esMia ? "#e6e6e6" : "transparent",
-                          }}
-                        >
-                          {emoji}
-                        </span>
-                      );
-                    })}
-                  </div>
-
-                  <button
-                    type="button"
-                    className="plus-btn"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setShowEmojiPickerReactions(true);
-                      setShowReactions(false);
-                    }}
-                    style={{
-                      width: "28px",
-                      height: "28px",
-                      border: "none",
-                      background: "none",
-                      cursor: "pointer",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      padding: 0,
-                    }}
-                  >
-                    <svg
-                      width="28"
-                      height="28"
-                      viewBox="0 0 24 24"
-                      xmlns="http://www.w3.org/2000/svg"
-                      aria-hidden="true"
-                    >
-                      <circle cx="12" cy="12" r="12" fill="var(--surface-3)" />
-                      <path
-                        d="M12 7v10M7 12h10"
-                        stroke="var(--text-muted-2)"
-                        strokeWidth="2"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      />
-                    </svg>
-                  </button>
-                </div>
-              )}
             </div>
           </div>
         </div>

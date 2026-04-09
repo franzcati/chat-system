@@ -1721,6 +1721,7 @@ const ChatBox = ({ chat, user, setChat, onVerPerfil }) => {
                     type="file"
                     id="fileInput"
                     hidden
+                    accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.xls,.xlsx,.zip,.rar,.txt"
                     onChange={handleArchivoSeleccionado}
                   />
                   <button

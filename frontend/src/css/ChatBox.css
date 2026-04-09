@@ -3,8 +3,8 @@
   --chat-bg-light: #f6f9fb;   /* opcional */
 
   --msg-in-bg: #ffffff;
-  --msg-in-text: #111827;
-  --msg-in-time: #6b7280;
+  --msg-in-text: #111111;
+  --msg-in-time: #374151;
 
   --msg-out-bg: #2787F5;
   --msg-out-text: #ffffff;
@@ -30,7 +30,7 @@
 
   /* burbuja SALIENTE (derecha) */
   --msg-out-bg: #2787F5;      /* puedes dejar tu azul */
-  --msg-out-text: #ffffff;
+  --msg-out-text: #fff;
   --msg-out-time: rgba(255,255,255,0.85);
 
   /* chips de fecha “Hoy / 10/01/2026” */
@@ -528,11 +528,67 @@ blockquote:last-child, ol:last-child, p:last-child, ul:last-child {
   position: relative;
   max-width: 100%;
   min-width: 0;
+  margin-left: .5rem;
 }
 
 
-.message-inner {
-    margin-left: .5rem;
+.message-inner,
+.message-body,
+.message-content,
+.message-text,
+.dropdown {
+  overflow: visible !important;
+}
+
+.message-text {
+  background: #f6f9fb;
+  border-radius: .6rem;
+  padding: 0.35rem 1.9rem 0.35rem 0.35rem;
+  color: #95aac9;
+  position: relative;
+  overflow: visible !important;
+}
+
+.message-out .message-text {
+  background: var(--msg-out-bg);
+  border-radius: .75rem;
+  color: var(--msg-out-text);
+  padding: 0.35rem 1.9rem 0.35rem 0.35rem;
+  overflow: visible !important;
+}
+
+.message-action {
+  position: absolute;
+  top: 6px;
+  right: 8px;
+  z-index: 2000;
+}
+
+.message-out .message-action {
+  right: 8px;
+  left: auto;
+}
+
+.dropdown-menu {
+  position: absolute !important;
+  z-index: 99999 !important;
+  display: none;
+  min-width: 180px;
+  padding: .35rem 0;
+  margin: 0;
+  font-size: .9375rem;
+  color: #374151;
+  text-align: left;
+  list-style: none;
+  background-color: #fff;
+  background-clip: padding-box;
+  border: 1px solid #e5e7eb;
+  border-radius: .75rem;
+  box-shadow: 0 10px 30px rgba(0,0,0,.14);
+}
+
+.dropdown-menu.show {
+  display: block;
 }
 
 
@@ -581,13 +637,47 @@ blockquote:last-child, ol:last-child, p:last-child, ul:last-child {
 .message-text {
     background: #f6f9fb;
     border-radius: .6rem;
-    padding: 0.5rem 0.75rem;
+    padding: 0.35rem 1.9rem 0.35rem 0.35rem;
     color: #95aac9;
+    position: relative;
 }
 
-.message-gallery, .message-text {
-    overflow: hidden;
-    margin-right: .25rem;
+.message-out .message-action {
+  right: 8px;
+}
+
+.wa-message-menu-btn {
+  width: 22px;
+  height: 22px;
+  border: none;
+  background: transparent;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.18s ease;
+  color: rgba(0, 0, 0, 0.45);
+}
+
+.message-out .wa-message-menu-btn {
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.wa-message-menu-btn.visible {
+  opacity: 1;
+}
+
+.message-gallery {
+  overflow: hidden;
+  margin-right: .25rem;
+}
+
+.message-text {
+  overflow: visible;
+  margin-right: .25rem;
+  position: relative;
 }
 
 .dropdown, .dropend, .dropstart, .dropup {
@@ -612,21 +702,48 @@ blockquote:last-child, ol:last-child, p:last-child, ul:last-child {
     padding: .5rem;
 }
 
+.dropdown {
+  position: relative;
+  overflow: visible;
+}
+
 .dropdown-menu {
-    position: absolute;
-    z-index: 1000;
-    display: none;
-    min-width: 10rem;
-    padding: .5rem 0;
-    margin: 0;
-    font-size: .9375rem;
-    color: #95aac9;
-    text-align: left;
-    list-style: none;
-    background-color: #fff;
-    background-clip: padding-box;
-    border: 0 solid #f5f8fb;
-    border-radius: .6rem;
+  position: absolute;
+  z-index: 10000;
+  display: none;
+  min-width: 180px;
+  padding: .35rem 0;
+  margin: 0;
+  font-size: .9375rem;
+  color: #374151;
+  text-align: left;
+  list-style: none;
+  background-color: #fff;
+  background-clip: padding-box;
+  border: 1px solid #e5e7eb;
+  border-radius: .75rem;
+  box-shadow: 0 10px 30px rgba(0,0,0,.14);
+}
+
+.dropdown-menu.show {
+  display: block;
+}
+
+.reactions-popover {
+  overflow: visible;
+}
+
+.reactions-popover-inner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: #fff;
+  border-radius: 999px;
+  padding: 6px 10px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.16);
+  border: 1px solid #e5e7eb;
+  white-space: nowrap;
+  overflow: visible;
 }
 
 .dropdown-item {
@@ -688,9 +805,152 @@ hr.hr-bold:not([size]) {
 }
 
 .message-out .message-text {
-    background: #2787f5;
-    border-radius: .6rem;
-    color: #fff;
+    background: var(--msg-out-bg);
+    border-radius: .75rem;
+    color: var(--msg-out-text);
+    padding: 0.35rem 1.9rem 0.35rem 0.35rem;
+}
+
+/* ===== Flecha hover estilo WhatsApp ===== */
+.message {
+  position: relative;
+}
+
+.message-action {
+  position: absolute;
+  top: -2px;
+  right: 6px;
+  z-index: 40;
+  overflow: visible;
+}
+
+.message-out .message-action {
+  right: 6px;
+  left: auto;
+}
+
+.wa-message-menu-btn {
+  width: 18px;
+  height: 18px;
+  border: none;
+  background: transparent;
+  color: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  opacity: 0;
+  pointer-events: none;
+  padding: 0;
+  transform: translateY(-2px);
+  transition: opacity 0.18s ease, transform 0.18s ease, color 0.18s ease;
+  box-shadow: none;
+}
+
+.message-out .wa-message-menu-btn {
+  color: rgba(255, 255, 255, 0.82);
+}
+
+.message:not(.message-out) .wa-message-menu-btn {
+  color: rgba(17, 24, 39, 0.55);
+}
+
+.wa-message-menu-btn.visible {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0);
+}
+
+.wa-message-menu-btn:hover {
+  color: rgba(0, 0, 0, 0.72);
+}
+
+.message-out .wa-message-menu-btn:hover {
+  color: rgba(255, 255, 255, 1);
+}
+
+/* ===== Audio estilo WhatsApp ===== */
+.wa-audio-player {
+  min-width: 280px;
+  max-width: 360px;
+  min-height: 64px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 4px 2px 2px;
+}
+
+.wa-audio-avatar {
+  width: 42px;
+  min-width: 42px;
+  height: 42px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.wa-audio-play {
+  width: 34px;
+  height: 34px;
+  min-width: 34px;
+  border: none;
+  background: transparent;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 0;
+}
+
+.wa-audio-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.wa-audio-progress {
+  position: relative;
+  height: 4px;
+  border-radius: 999px;
+  cursor: pointer;
+  overflow: hidden;
+  margin-bottom: 8px;
+}
+
+.wa-audio-progress-fill {
+  height: 100%;
+  border-radius: 999px;
+  transition: width 0.08s linear;
+}
+
+.wa-audio-times {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 11px;
+  line-height: 1;
+  font-weight: 500;
+}
+
+/* mejorar footer hora */
+.message-footer {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 4px;
+  margin-top: 2px;
+  padding-right: 2px;
+}
+
+.message-out .message-footer .extra-small {
+  color: rgba(255,255,255,0.88) !important;
+}
+
+.message:not(.message-out) .message-footer .extra-small {
+  color: #4b5563 !important;
 }
 
 .message-out .message-gallery, .message-out .message-text {
