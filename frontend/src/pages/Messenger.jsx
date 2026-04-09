@@ -45,7 +45,7 @@ const Messenger = () => {
         const res = await fetch("/api/proyecto");
         const data = await res.json();
         setProyectos(data);
-        console.log("📌 Proyectos cargados:", data);
+        logDev("📌 Proyectos cargados:", data);
       } catch (err) {
         console.error("❌ Error cargando proyectos:", err);
       }
@@ -87,7 +87,7 @@ const Messenger = () => {
   useEffect(() => {
   if (!usuario?.id) return;
 
-  console.log("🔌 Messenger va a conectar socket", usuario.id);
+  logDev("🔌 Messenger va a conectar socket", usuario.id);
 
   if (!socket.connected) {
     socket.connect();
@@ -96,12 +96,12 @@ const Messenger = () => {
   socket.emit("registrarUsuario", usuario.id);
 
   const onConnect = () => {
-    console.log("✅ Socket conectado en Messenger:", socket.id);
+    logDev("✅ Socket conectado en Messenger:", socket.id);
     socket.emit("registrarUsuario", usuario.id);
   };
 
   const onNuevoMensaje = (msg) => {
-    console.log("📨 Messenger recibió nuevoMensaje:", msg);
+    logDev("📨 Messenger recibió nuevoMensaje:", msg);
   };
 
   socket.on("connect", onConnect);
@@ -114,13 +114,13 @@ const Messenger = () => {
 }, [usuario?.id]);
 
   // 👇 AGREGALOS AQUI
-  console.log("🧩 Messenger render", {
+  logDev("🧩 Messenger render", {
     activeTab,
     usuarioId: usuario?.id,
     selectedChat,
   });
 
-  console.log("🧩 Va a renderizar ChatList?", activeTab === "chat");
+  logDev("🧩 Va a renderizar ChatList?", activeTab === "chat");
 
   return (
     <div className="flex h-screen bg-[#f8f9fd]">

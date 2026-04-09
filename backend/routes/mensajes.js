@@ -136,8 +136,8 @@ router.post("/", async (req, res) => {
   const fechaEnvioMySQL = formatDateToMySQL(fechaUTC);
   const fechaEnvioISO = fechaUTC.toISOString();
 
-  console.log("🕒 Guardando en DB (UTC):", fechaEnvioMySQL);
-  console.log("🕒 Guardando en ISO:", fechaEnvioISO);
+  logDev("🕒 Guardando en DB (UTC):", fechaEnvioMySQL);
+  logDev("🕒 Guardando en ISO:", fechaEnvioISO);
 
   const { enviarEventoAlUsuario } = req.app.get("socketUtils");
 
@@ -189,7 +189,7 @@ router.post("/", async (req, res) => {
       `SELECT * FROM reacciones WHERE mensaje_id = ?`,
       [result.insertId]
     );
-    console.log("🔹 Reacciones del mensaje recién creado:", rowsReacciones);
+    logDev("🔹 Reacciones del mensaje recién creado:", rowsReacciones);
 
     logDev("📦 Mensaje listo para emitir:", nuevoMensaje);
 
@@ -241,7 +241,7 @@ router.put("/marcar-vistos", async (req, res) => {
 // Añadir / quitar reacción
 // =======================
 router.post("/reaccion", async (req, res) => {
-  console.log("➡️ [BACK] Reacción privada recibida:", req.body);
+  logDev("➡️ [BACK] Reacción privada recibida:", req.body);
   const { mensajeId, usuarioId, emoji } = req.body;
 
   if (!mensajeId || !usuarioId || !emoji) {
@@ -287,7 +287,7 @@ router.post("/reaccion", async (req, res) => {
           : usuario_envia_id;
 
       const payload = { mensajeId, usuarioId, emoji, accion, usuario: usuarioData };
-      console.log("🚀 Emitiendo reaccionActualizada PRIVADO:", payload);
+      logDev("🚀 Emitiendo reaccionActualizada PRIVADO:", payload);
 
       enviarEventoAlUsuario(usuarioId, "reaccionActualizada", payload);
       enviarEventoAlUsuario(receptorId, "reaccionActualizada", payload);

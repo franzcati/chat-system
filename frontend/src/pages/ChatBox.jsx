@@ -189,8 +189,8 @@ const ChatBox = ({ chat, user, setChat, onVerPerfil }) => {
           ? resMensajes.data.mensajes_fijados
           : [];
 
-        console.log("📨 Mensajes cargados:", nuevosMensajes);
-        console.log("📌 Fijados cargados:", mensajesFijados);
+        logDev("📨 Mensajes cargados:", nuevosMensajes);
+        logDev("📌 Fijados cargados:", mensajesFijados);
 
         combinarMensajes(nuevosMensajes, mensajesFijados);
       } catch (err) {
@@ -220,7 +220,7 @@ const ChatBox = ({ chat, user, setChat, onVerPerfil }) => {
         }));
       });
 
-      console.log("✅ Mensajes combinados:", mensajesCombinados);
+      logDev("✅ Mensajes combinados:", mensajesCombinados);
     };
 
     cargarMensajes();
@@ -249,7 +249,7 @@ const ChatBox = ({ chat, user, setChat, onVerPerfil }) => {
 
   // Guardar como favorito un sticker (desde el mensaje)
   const handleGuardarStickerFavorito = async (stickerUrl) => {
-    console.log("Añadir favorito, URL que mando:", stickerUrl); // 👈 LOG
+    logDev("Añadir favorito, URL que mando:", stickerUrl); // 👈 LOG
     if (!user?.id || !stickerUrl) return;
 
     try {
@@ -400,7 +400,7 @@ const ChatBox = ({ chat, user, setChat, onVerPerfil }) => {
 
         if (grupo_id !== chat.grupo_id) return;
 
-        console.log("📌 [SOCKET] mensajeFijadoGrupo recibido:", data);
+        logDev("📌 [SOCKET] mensajeFijadoGrupo recibido:", data);
 
         // ✅ Actualizar mensajes del chat
         setMessages((prev) =>
@@ -443,7 +443,7 @@ const ChatBox = ({ chat, user, setChat, onVerPerfil }) => {
       // 🔹 Grupo actualizado (nombre o descripción)
       const handleGrupoActualizado = (data) => {
         if (Number(data.id) !== chat.grupo_id) return;
-        console.log("📢 [SOCKET] Grupo actualizado:", data);
+        logDev("📢 [SOCKET] Grupo actualizado:", data);
         setChat((prev) => ({
           ...prev,
           ...(data.nombre && { usuario_nombre: data.nombre }),
@@ -455,7 +455,7 @@ const ChatBox = ({ chat, user, setChat, onVerPerfil }) => {
       const handlePrivacidadActualizada = (data) => {
         if (Number(data.id) !== chat.grupo_id) return;
 
-        console.log("🔐 [SOCKET] Privacidad actualizada:", data);
+        logDev("🔐 [SOCKET] Privacidad actualizada:", data);
 
         setChat((prev) => ({
           ...prev,
@@ -467,7 +467,7 @@ const ChatBox = ({ chat, user, setChat, onVerPerfil }) => {
       const handleMiembrosActualizados = (data) => {
         if (Number(data.id) !== chat.grupo_id) return;
 
-        console.log("👥 [SOCKET] Miembros actualizados:", data);
+        logDev("👥 [SOCKET] Miembros actualizados:", data);
 
         setChat((prev) => ({
           ...prev,
@@ -563,7 +563,7 @@ const ChatBox = ({ chat, user, setChat, onVerPerfil }) => {
 
       // 👇 AÑADE ESTO
       const handleMensajeFijado = ({ accion, mensajeId, usuarioId, usuario, mensaje, fecha_fijado }) => {
-        console.log("📌 [SOCKET] Evento mensajeFijado recibido:", { accion, mensajeId });
+        logDev("📌 [SOCKET] Evento mensajeFijado recibido:", { accion, mensajeId });
         setMessages(prev =>
           prev.map(m =>
             m.id === mensajeId
@@ -580,7 +580,7 @@ const ChatBox = ({ chat, user, setChat, onVerPerfil }) => {
           (chat.usuario_id === emisorId && user.id === receptorId) ||
           (chat.usuario_id === receptorId && user.id === emisorId)
         ) {
-          console.log("🔹 Evento MENSAJES VISTOS recibido:", { emisorId, receptorId });
+          logDev("🔹 Evento MENSAJES VISTOS recibido:", { emisorId, receptorId });
 
           setMessages(prev =>
             prev.map(m =>
@@ -880,7 +880,7 @@ const ChatBox = ({ chat, user, setChat, onVerPerfil }) => {
           });
 
           const nuevo = res.data?.mensaje || res.data;
-          console.log("✅ Respuesta POST /api/mensajes:", nuevo);
+          logDev("✅ Respuesta POST /api/mensajes:", nuevo);
 
           setMessages((prev) => {
             const yaExiste = prev.some((m) => Number(m.id) === Number(nuevo.id));
@@ -929,7 +929,7 @@ const ChatBox = ({ chat, user, setChat, onVerPerfil }) => {
           rating: "pg",
         },
       });
-      console.log("Giphy response:", res.data); // para depurar
+      logDev("Giphy response:", res.data); // para depurar
       setGifResults(res.data.data);
     } catch (err) {
       console.error("❌ Error buscando GIFs:", err);
@@ -1038,7 +1038,7 @@ const ChatBox = ({ chat, user, setChat, onVerPerfil }) => {
       try {
         // loteId = null, y no necesitamos barra de progreso aquí
         await uploadImageMessage(file, null, null);
-        console.log("📁 Archivo subido correctamente:", file.name);
+        logDev("📁 Archivo subido correctamente:", file.name);
         // El mensaje aparecerá cuando llegue el evento socket "nuevoMensaje" / "nuevoMensajeGrupo"
       } catch (err) {
         console.error("❌ Error subiendo archivo:", file.name, err);
@@ -1117,7 +1117,7 @@ const ChatBox = ({ chat, user, setChat, onVerPerfil }) => {
       );
     }
 
-    console.log("📁 Imagen subida:", res.data);
+    logDev("📁 Imagen subida:", res.data);
 
     const mensaje = res.data?.mensaje;
     if (!mensaje) return null;
@@ -1404,7 +1404,7 @@ const ChatBox = ({ chat, user, setChat, onVerPerfil }) => {
                                 className="avatar avatar-sm"
                                 onClick={(e) => {
                                   e.preventDefault();
-                                  console.log("👉 Abriendo modal miembros grupo:", chat.grupo_id);
+                                  logDev("👉 Abriendo modal miembros grupo:", chat.grupo_id);
                                   setOffcanvasGrupo(chat); // mantiene la referencia del grupo actual
                                 }}
                               >

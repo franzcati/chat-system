@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import PersonasGrupos from "./PersonasGrupos"; // 👈 Importar componente
+import { logDev } from "../utils/logger";
 
 const CreateChat = ({ proyectoId, usuarioId }) => {
   const [activeTab, setActiveTab] = useState("info");
@@ -57,11 +58,11 @@ const CreateChat = ({ proyectoId, usuarioId }) => {
         formData.append("imagen", file);
       }
 
-      console.log("📤 Enviando al backend:");
-      console.log("propietarioId:", usuarioId);
-      console.log("miembros:", memberIds);
-      console.log("nombre:", chatName);
-      console.log("descripcion:", chatDescription);
+      logDev("📤 Enviando al backend:");
+      logDev("propietarioId:", usuarioId);
+      logDev("miembros:", memberIds);
+      logDev("nombre:", chatName);
+      logDev("descripcion:", chatDescription);
 
       // 🚀 Petición al backend
       const res = await fetch(`/api/grupos`, {
@@ -78,7 +79,7 @@ const CreateChat = ({ proyectoId, usuarioId }) => {
       }
 
       const data = await res.json();
-      console.log("✅ Grupo creado:", data);
+      logDev("✅ Grupo creado:", data);
 
       if (data.success) {
         alert(`✅ Grupo creado: ${data.grupo.nombre}`);
@@ -93,7 +94,7 @@ const CreateChat = ({ proyectoId, usuarioId }) => {
   };
 
   const handleSelectionChange = (ids) => {
-    console.log("📩 Usuarios seleccionados:", ids);
+    logDev("📩 Usuarios seleccionados:", ids);
     setSelectedMembers(ids);
   };
 

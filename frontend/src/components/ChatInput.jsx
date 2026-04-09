@@ -1,5 +1,6 @@
 import React, { useState, useRef, forwardRef, useImperativeHandle } from "react";
 import "../css/emoji.css";
+import { logDev } from "../utils/logger";
 
 const ChatInput = forwardRef(({ onSend, onPasteFiles }, ref) => {
   const [value, setValue] = useState("");
@@ -73,7 +74,7 @@ const ChatInput = forwardRef(({ onSend, onPasteFiles }, ref) => {
         .filter(Boolean);
     }
 
-    console.log("📋 PASTE - imágenes detectadas:", imageFiles);
+    logDev("📋 PASTE - imágenes detectadas:", imageFiles);
 
     if (imageFiles.length && typeof onPasteFiles === "function") {
       e.preventDefault();          // evita que pegue "blob:..." en el textarea

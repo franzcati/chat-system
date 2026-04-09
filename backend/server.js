@@ -83,7 +83,7 @@ async function startServer() {
           `DELETE FROM mensajes_fijados WHERE fecha_expiracion <= UTC_TIMESTAMP()`
         );
         if (result.affectedRows > 0) {
-          console.log(`🕒 ${result.affectedRows} mensajes fijados expirados fueron eliminados automáticamente.`);
+          logDev(`🕒 ${result.affectedRows} mensajes fijados expirados fueron eliminados automáticamente.`);
         }
       } catch (err) {
         console.error("❌ Error limpiando mensajes fijados expirados:", err);

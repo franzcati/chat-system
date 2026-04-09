@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import socket from "../socket";
 import { getAvatarUrl } from "../utils/url";
+import { logDev } from "../utils/logger";
 
 /**
  * PersonasGrupos
@@ -84,7 +85,7 @@ const PersonasGrupos = ({ proyectoId, usuarioId, onSelectionChange }) => {
       const next = prev.includes(id)
         ? prev.filter((x) => x !== id)
         : [...prev, id];
-      console.log("✅ Nuevo estado de selección:", next);
+      logDev("✅ Nuevo estado de selección:", next);
       // ❌ Quitar esta línea porque ya notificamos en el useEffect
       // if (typeof onSelectionChange === "function") onSelectionChange(next);
       return next;
@@ -94,7 +95,7 @@ const PersonasGrupos = ({ proyectoId, usuarioId, onSelectionChange }) => {
   // 🔹 Cada vez que cambia la selección, avisamos al padre
   useEffect(() => {
     if (onSelectionChange) {
-      console.log("📤 Notificando selección al padre:", selectedIds);
+      logDev("📤 Notificando selección al padre:", selectedIds);
       onSelectionChange(selectedIds);
     }
   }, [selectedIds, onSelectionChange]);

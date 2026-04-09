@@ -4,6 +4,7 @@ const db = require("../db");
 const multer = require("multer");
 const path = require("path");
 const fs = require("fs");
+const { logDev } = require("../utils/logger");
 
 
 // =======================
@@ -341,7 +342,7 @@ router.put("/marcar-vistos-grupo", async (req, res) => {
           mensajeId: ultimoMensaje.id,
         });
 
-        console.log(`✅ Todos los miembros vieron el mensaje ${ultimoMensaje.id} del grupo ${grupoId}`);
+        logDev(`✅ Todos los miembros vieron el mensaje ${ultimoMensaje.id} del grupo ${grupoId}`);
       }
     }
 
@@ -356,7 +357,7 @@ router.put("/marcar-vistos-grupo", async (req, res) => {
 // Añadir / quitar reacción (CHAT GRUPAL)
 // =======================
 router.post("/reaccion", async (req, res) => {
-  console.log("➡️ [BACK] Reacción de grupo recibida:", req.body);
+  logDev("➡️ [BACK] Reacción de grupo recibida:", req.body);
   const { mensajeGrupoId, usuarioId, emoji } = req.body;
 
   if (!mensajeGrupoId || !usuarioId || !emoji) {
@@ -416,7 +417,7 @@ router.post("/reaccion", async (req, res) => {
         grupoId, // útil para el frontend
       };
 
-      console.log("🚀 Emitiendo reaccionActualizadaGrupo a sala grupo_%s:", grupoId, payload);
+      logDev("🚀 Emitiendo reaccionActualizadaGrupo a sala grupo_%s:", grupoId, payload);
       io.to(`grupo_${grupoId}`).emit("reaccionActualizadaGrupo", payload);
     }
 
@@ -638,7 +639,7 @@ router.get("/:id/historial", async (req, res) => {
 router.post("/fijar", async (req, res) => {
   const { grupo_id, mensaje_id, usuario_id, duracion = "24h" } = req.body;
 
-  console.log("📩 Datos recibidos para fijar:", req.body);
+  logDev("📩 Datos recibidos para fijar:", req.body);
 
   if (!grupo_id || !mensaje_id || !usuario_id) {
     return res.status(400).json({ error: "Faltan parámetros" });

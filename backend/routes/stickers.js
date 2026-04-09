@@ -5,6 +5,7 @@ const db = require("../db");
 const multer = require("multer");
 const path = require("path");
 const fs = require("fs");
+const { logDev } = require("../utils/logger");
 
 // backend/routes/stickers.js
 const storageSticker = multer.diskStorage({

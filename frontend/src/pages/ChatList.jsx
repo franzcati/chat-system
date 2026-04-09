@@ -12,7 +12,7 @@ import toast from "react-hot-toast";
 
 const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat }) => {
   
-  console.log("🔥 ChatList renderizado", { userId });
+  logDev("🔥 ChatList renderizado", { userId });
   const [mensajes, setMensajes] = useState([]);
   const [grupos, setGrupos] = useState([]);
   const [chats, setChats] = useState([]);
@@ -191,7 +191,7 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat }) => {
   };
 
   useEffect(() => {
-    console.log("🟢 useEffect ChatList sockets montado", {
+    logDev("🟢 useEffect ChatList sockets montado", {
       userId,
       connected: socket.connected,
       socketId: socket.id,
@@ -200,7 +200,7 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat }) => {
     if (!userId) return;
 
     const handleNuevoMensaje = (msg) => {
-      console.log("📩 ChatList recibió nuevoMensaje:", msg);
+      logDev("📩 ChatList recibió nuevoMensaje:", msg);
 
       const miId = Number(userId);
       const enviaId = Number(msg.usuario_envia_id);
@@ -276,10 +276,10 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat }) => {
         setSilenciados(resSilenciados.data || []);
 
         console.group("📋 Chats cargados al inicio");
-        console.log("🗨️ Mensajes privados:", resMensajes.data);
-        console.log("👥 Grupos:", resGrupos.data);
-        console.log("⭐ Favoritos:", resFavoritos.data);
-        console.log("🔕 Silenciados:", resSilenciados.data);
+        logDev("🗨️ Mensajes privados:", resMensajes.data);
+        logDev("👥 Grupos:", resGrupos.data);
+        logDev("⭐ Favoritos:", resFavoritos.data);
+        logDev("🔕 Silenciados:", resSilenciados.data);
         console.groupEnd();
 
       } catch (error) {
@@ -528,7 +528,7 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat }) => {
 
     // 🧩 Grupo nuevo (cuando te agregan a uno)
     const handleGrupoCreado = (nuevoGrupo) => {
-      console.log("🟢 NUEVO GRUPO CREADO (socket):", nuevoGrupo);
+      logDev("🟢 NUEVO GRUPO CREADO (socket):", nuevoGrupo);
       setGrupos((prev) => [...prev, nuevoGrupo]);
 
       setChats((prevChats) => {
@@ -600,7 +600,7 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat }) => {
     };
 
     const handleTodosMensajesVistosGrupo = ({ grupoId, mensajeId }) => {
-      console.log("🔹 Evento TODOS MENSAJES VISTOS recibido:", { grupoId, mensajeId });
+      logDev("🔹 Evento TODOS MENSAJES VISTOS recibido:", { grupoId, mensajeId });
 
       // 1️⃣ Actualizar mensajes del grupo
       setMensajes(prev => prev.map(msg =>
@@ -626,7 +626,7 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat }) => {
 
     // --- ⬇️ NUEVO: grupo actualizado ---
     const handleGrupoActualizado = (data) => {
-      console.log("📢 [SOCKET] Grupo actualizado:", data);
+      logDev("📢 [SOCKET] Grupo actualizado:", data);
 
       const grupoId = Number(data.id); // 👈 Convertir a número
 
@@ -658,7 +658,7 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat }) => {
     
     // 🟢 Nuevo: privacidad actualizada
     const handlePrivacidadActualizada = (data) => {
-      console.log("🔐 [SOCKET] Privacidad actualizada:", data);
+      logDev("🔐 [SOCKET] Privacidad actualizada:", data);
 
       const grupoId = Number(data.id);
 
@@ -681,7 +681,7 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat }) => {
 
     // 🧩 Nuevo: miembros actualizados en tiempo real
     const handleMiembrosActualizados = (data) => {
-      console.log("👥 [SOCKET] Miembros actualizados (ChatList):", data);
+      logDev("👥 [SOCKET] Miembros actualizados (ChatList):", data);
 
       const grupoId = Number(data.id);
 
@@ -705,27 +705,27 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat }) => {
     // 🧩 Grupo eliminado (si te sacan del grupo)
     const handleGrupoEliminado = (data) => {
       const grupoId = Number(data.id);
-      console.log("🚫 [SOCKET] Eliminando grupo del ChatList:", grupoId);
+      logDev("🚫 [SOCKET] Eliminando grupo del ChatList:", grupoId);
 
       setGrupos((prev) => {
         const existe = prev.some((g) => g.grupo_id === grupoId);
         if (!existe) return prev;
-        console.log("🗑️ Eliminado de grupos:", grupoId);
+        logDev("🗑️ Eliminado de grupos:", grupoId);
         return prev.filter((g) => g.grupo_id !== grupoId);
       });
 
       setChats((prev) => {
         const existe = prev.some((c) => c.tipo === "grupo" && c.grupo_id === grupoId);
         if (!existe) return prev;
-        console.log("🗑️ Eliminado de chats:", grupoId);
+        logDev("🗑️ Eliminado de chats:", grupoId);
         return prev.filter((c) => !(c.tipo === "grupo" && c.grupo_id === grupoId));
       });
 
-      console.log("🗑️ selectedChat actual:", selectedChat);
+      logDev("🗑️ selectedChat actual:", selectedChat);
 
       // 💡 Forzar limpieza del chat actual si corresponde
       if (!selectedChat || (selectedChat.tipo === "grupo" && Number(selectedChat.grupo_id) === grupoId)) {
-        console.log("🧹 Cerrando chat actual...");
+        logDev("🧹 Cerrando chat actual...");
         setSelectedChat(null);
       }
 
@@ -978,7 +978,7 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat }) => {
     onSelectChat(chat);
     try {
       if (chat.tipo === "grupo") {
-         console.log("📡 Chat grupo seleccionado:", chat);
+         logDev("📡 Chat grupo seleccionado:", chat);
         if (!chat.ultimo_mensaje) return;
 
         await axios.put("/api/mensajes/grupo/marcar-vistos-grupo", {

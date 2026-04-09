@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { getAvatarUrl } from "../utils/url";
+import { logDev } from "../utils/logger";
 
 const getInitials = (nombre = "", apellido = "") =>
   (nombre?.charAt(0)?.toUpperCase() || "") +
@@ -63,7 +64,7 @@ const MiembrosGrupos = ({ grupo, usuarioId, onClose }) => {
       if (!res.ok) throw new Error("Error al actualizar miembros");
 
       const data = await res.json();
-      console.log("✅ Miembros actualizados:", data);
+      logDev("✅ Miembros actualizados:", data);
 
       // ✅ Mostrar una notificación suave (reemplaza alert)
       // Puedes usar toastify, sweetalert2, o un pequeño aviso temporal si prefieres

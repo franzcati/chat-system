@@ -6,6 +6,7 @@ import Picker from "@emoji-mart/react";
 import twemoji from "twemoji";
 import { formatChatTimeOnly, formatChatDate } from "../utils/date";
 import { useTheme } from "../context/ThemeContext";
+import { logDev } from "../utils/logger";
 
 const reactions = ["👍", "❤️", "😂", "😮", "😢", "🙏"];
 
@@ -157,7 +158,7 @@ const Message = ({
 
   // 👉 Al reaccionar: actualiza UI y guarda en backend
   const handleReaction = async (emoji) => {
-    console.log("👉 [FRONT] handleReaction llamado con:", emoji, "para mensaje:", id);
+    logDev("👉 [FRONT] handleReaction llamado con:", emoji, "para mensaje:", id);
 
     try {
       const endpoint = esGrupo
@@ -175,7 +176,7 @@ const Message = ({
       });
 
       const data = await res.json();
-      console.log("✅ Backend respondió:", data);
+      logDev("✅ Backend respondió:", data);
     } catch (e) {
       console.error("❌ Error en fetch:", e);
     }
@@ -206,7 +207,7 @@ const Message = ({
 
   // 👉 Eliminar mensaje
   const handleEliminar = async (mensajeId) => {
-    console.log("🗑️ [FRONT] Eliminando mensaje:", mensajeId);
+    logDev("🗑️ [FRONT] Eliminando mensaje:", mensajeId);
 
     try {
       const url = esGrupo
@@ -224,7 +225,7 @@ const Message = ({
       });
 
       const data = await res.json();
-      console.log("✅ [FRONT] Respuesta eliminar:", data);
+      logDev("✅ [FRONT] Respuesta eliminar:", data);
 
       if (!res.ok) {
         console.error("❌ [FRONT] Error al eliminar:", data.error);
@@ -236,7 +237,7 @@ const Message = ({
 
   // 👉 Deshacer el mensaje eliminado
   const handleDeshacer = async (mensajeId) => {
-    console.log("↩️ [FRONT] Deshaciendo eliminación de:", mensajeId);
+    logDev("↩️ [FRONT] Deshaciendo eliminación de:", mensajeId);
 
     try {
       const url = esGrupo
@@ -252,7 +253,7 @@ const Message = ({
       });
 
       const data = await res.json();
-      console.log("✅ [FRONT] Respuesta deshacer:", data);
+      logDev("✅ [FRONT] Respuesta deshacer:", data);
 
       if (!res.ok) {
         console.error("❌ [FRONT] Error al deshacer:", data.error);
@@ -264,7 +265,7 @@ const Message = ({
 
   // 👉 Editar mensaje
   const handleEditar = async (mensajeId, nuevoTexto) => {
-    console.log("✏️ [FRONT] Editando mensaje:", mensajeId, "nuevo texto:", nuevoTexto);
+    logDev("✏️ [FRONT] Editando mensaje:", mensajeId, "nuevo texto:", nuevoTexto);
 
     try {
       const url = esGrupo
@@ -282,7 +283,7 @@ const Message = ({
       });
 
       const data = await res.json();
-      console.log("✅ [FRONT] Respuesta editar:", data);
+      logDev("✅ [FRONT] Respuesta editar:", data);
 
       if (!res.ok) {
         console.error("❌ [FRONT] Error al editar:", data.error);
@@ -371,7 +372,7 @@ const Message = ({
             duracion: duracionOverride,
           };
 
-      console.log("📤 Enviando al backend:", { endpoint, body });
+      logDev("📤 Enviando al backend:", { endpoint, body });
 
       const res = await fetch(endpoint, {
         method: "POST",
@@ -380,7 +381,7 @@ const Message = ({
       });
 
       const data = await res.json();
-      console.log("📩 Respuesta del backend:", data);
+      logDev("📩 Respuesta del backend:", data);
 
       if (res.ok) {
         setEstaFijado(true);
@@ -409,7 +410,7 @@ const Message = ({
             usuarioId: miUsuario.id,
           };
 
-      console.log("📤 Desfijando mensaje:", { endpoint, body });
+      logDev("📤 Desfijando mensaje:", { endpoint, body });
 
       const res = await fetch(endpoint, {
         method: "POST",
@@ -418,7 +419,7 @@ const Message = ({
       });
 
       const data = await res.json();
-      console.log("📌 Desfijado:", data);
+      logDev("📌 Desfijado:", data);
 
       if (res.ok) setEstaFijado(false);
     } catch (err) {

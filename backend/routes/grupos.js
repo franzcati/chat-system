@@ -1,5 +1,6 @@
 const express = require("express");
 const multer = require("multer");
+const { logDev } = require('../utils/logger');
 const path = require("path");
 const db = require("../db");
 
@@ -129,8 +130,8 @@ router.post("/", upload.single("imagen"), async (req, res) => {
     })
     .filter((id) => !!id && id !== propietarioId);
 
-  console.log("📦 Miembros recibidos desde frontend:", miembros);
-  console.log("✅ Miembros parseados:", miembrosArray);
+  logDev("📦 Miembros recibidos desde frontend:", miembros);
+  logDev("✅ Miembros parseados:", miembrosArray);
 
   // 🔹 Validación de datos
   if (!propietarioId) {
