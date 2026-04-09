@@ -158,7 +158,7 @@ router.post("/favorito", async (req, res) => {
   try {
     let { usuarioId, url } = req.body;
 
-    console.log("👉 /api/stickers/favorito body:", req.body);
+    logDev("👉 /api/stickers/favorito body:", req.body);
 
     if (!usuarioId || !url) {
       return res.status(400).json({ success: false, error: "Faltan datos" });
@@ -170,7 +170,7 @@ router.post("/favorito", async (req, res) => {
       url = url.slice(BASE_URL.length); // deja "/uploads/..."
     }
 
-    console.log("👉 Buscando sticker por url:", url);
+    logDev("👉 Buscando sticker por url:", url);
 
     // 1️⃣ Buscamos el sticker en el catálogo
     const [rows] = await db.query(
