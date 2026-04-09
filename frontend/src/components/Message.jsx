@@ -79,10 +79,7 @@ const Message = ({
     Date.now() - new Date(mensajeData.fecha_envio).getTime() < 15 * 60 * 1000;
 
   // 👇 estado local que parte de lo que vino del backend
-  const [reacciones, setReacciones] = useState(reaccionesDB);
-  useEffect(() => {
-    setReacciones(reaccionesDB || []);
-  }, [reaccionesDB]);
+  const reacciones = reaccionesDB || [];
 
   const dropdownRef = useRef(null);
 
@@ -97,8 +94,8 @@ const Message = ({
   const normalizarUrlImagen = (rawUrl) => {
     let finalUrl = rawUrl || "";
 
-    if (finalUrl.startsWith("http://quickchat.click")) {
-      finalUrl = finalUrl.replace("http://quickchat.click", "https://quickchat.click");
+    if (finalUrl.startsWith("http://chatvista.click")) {
+      finalUrl = finalUrl.replace("http://chatvista.click", "https://chatvista.click");
     } else if (finalUrl.startsWith("http://")) {
       try {
         const u = new URL(finalUrl);
@@ -162,26 +159,7 @@ const Message = ({
   const handleReaction = async (emoji) => {
     console.log("👉 [FRONT] handleReaction llamado con:", emoji, "para mensaje:", id);
 
-    // Verifica si ya reaccionaste con ese emoji
-    const yaExiste = reacciones.some(
-      (r) => r.usuario_id === miUsuario?.id && r.emoji === emoji
-    );
-
-    // 👉 Actualizar estado local (toggle)
-    setReacciones((prev) => {
-      if (yaExiste) {
-        // eliminar mi reacción
-        return prev.filter(
-          (r) => !(r.usuario_id === miUsuario?.id && r.emoji === emoji)
-        );
-      } else {
-        // agregar mi reacción
-        return [...prev, { mensaje_id: id, usuario_id: miUsuario?.id, emoji }];
-      }
-    });
-
     try {
-      // 👇 Cambia endpoint según si es grupo o privado
       const endpoint = esGrupo
         ? "/api/mensajes/grupo/reaccion"
         : "/api/mensajes/reaccion";
@@ -676,10 +654,10 @@ const Message = ({
                           {visibles.map((rawUrl, idx) => {
                             let finalUrl = todasNormalizadas[idx];
 
-                            if (finalUrl?.startsWith("http://quickchat.click")) {
+                            if (finalUrl?.startsWith("http://chatvista.click")) {
                               finalUrl = finalUrl.replace(
-                                "http://quickchat.click",
-                                "https://quickchat.click"
+                                "http://chatvista.click",
+                                "https://chatvista.click"
                               );
                             } else if (finalUrl?.startsWith("http://")) {
                               try {

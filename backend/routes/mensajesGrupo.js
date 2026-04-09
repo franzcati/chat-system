@@ -4,7 +4,7 @@ const db = require("../db");
 const multer = require("multer");
 const path = require("path");
 const fs = require("fs");
-const { enviarEventoAlUsuario } = require("../utils/socketUtils");
+
 
 // =======================
 // Helper: formato UTC para MySQL
@@ -214,24 +214,22 @@ router.get("/:grupoId", async (req, res) => {
 // Enviar mensaje a un grupo
 // =======================
 router.post("/", async (req, res) => {
-  const { grupoId, usuarioId, mensaje, loteId } = req.body; // 👈 leemos loteId OPCIONAL
+  const { grupoId, usuarioId, mensaje, loteId } = req.body;
 
   if (!grupoId || !usuarioId || !mensaje) {
     return res.status(400).json({ error: "Faltan campos obligatorios" });
   }
 
   const fechaUTC = new Date();
-  const fechaEnvioMySQL = formatDateToMySQL(fechaUTC);
   const fechaEnvioISO = fechaUTC.toISOString();
 
-  const io = req.app.get("io");
-  const { usuariosConectados, enviarEventoAlUsuario } = req.app.get("socketUtils");
+  const { enviarEventoAlUsuario } = req.app.get("socketUtils");
 
   try {
     const [result] = await db.query(
       `INSERT INTO mensajes_grupo (grupo_id, usuario_id, mensaje, fecha_envio, lote_id)
-      VALUES (?, ?, ?, UTC_TIMESTAMP(3), ?)`,
-      [grupoId, usuarioId, mensaje, fechaEnvioMySQL, loteId || null]  // 👈 puede ser null
+       VALUES (?, ?, ?, UTC_TIMESTAMP(3), ?)`,
+      [grupoId, usuarioId, mensaje, loteId || null]
     );
 
     const [usuarioInfo] = await db.query(
@@ -242,25 +240,24 @@ router.post("/", async (req, res) => {
 
     const nuevoMensaje = {
       id: result.insertId,
-      grupo_id: grupoId,
-      usuario_id: usuarioId,
+      grupo_id: Number(grupoId),
+      usuario_id: Number(usuarioId),
       mensaje,
       eliminado: 0,
       fecha_envio: fechaEnvioISO,
       editado: 0,
       correo: usuario.correo,
-      lote_id: loteId || null,  // 👈 MUY IMPORTANTE
+      lote_id: loteId || null,
       ...usuario,
     };
 
-    // Emitir mensaje a todos los miembros del grupo conectados
     const [miembros] = await db.query(
       "SELECT usuario_id FROM usuario_grupo WHERE grupo_id = ?",
       [grupoId]
     );
 
     miembros.forEach(({ usuario_id }) => {
-      enviarEventoAlUsuario(io, usuariosConectados, usuario_id, "nuevoMensajeGrupo", nuevoMensaje);
+      enviarEventoAlUsuario(usuario_id, "nuevoMensajeGrupo", nuevoMensaje);
     });
 
     return res.status(201).json(nuevoMensaje);
@@ -283,10 +280,9 @@ router.put("/marcar-vistos-grupo", async (req, res) => {
   }
 
   const io = req.app.get("io");
-  const { usuariosConectados, enviarEventoAlUsuario } = req.app.get("socketUtils");
+  const { enviarEventoAlUsuario } = req.app.get("socketUtils");
 
   try {
-    // 1️⃣ Traer todos los mensajes del grupo que NO fueron enviados por el mismo usuario
     const [mensajes] = await db.query(
       `SELECT id 
        FROM mensajes_grupo 
@@ -298,25 +294,25 @@ router.put("/marcar-vistos-grupo", async (req, res) => {
       return res.json({ success: true, actualizados: 0 });
     }
 
-    // 2️⃣ Insertar en la tabla de vistos (si no existe, ignora)
     const values = mensajes.map((m) => [m.id, userId]);
     await db.query(
       `INSERT IGNORE INTO mensajes_grupo_vistos (mensaje_id, usuario_id) VALUES ?`,
       [values]
     );
 
-    // 3️⃣ Emitir evento a todos los miembros conectados del grupo para actualizar vistos
     mensajes.forEach((m) => {
-      io.to(`grupo_${grupoId}`).emit("mensajesVistosGrupo", { grupoId, userId, mensajeId: m.id });
+      io.to(`grupo_${grupoId}`).emit("mensajesVistosGrupo", {
+        grupoId,
+        userId,
+        mensajeId: m.id,
+      });
     });
 
-    // 🔹 Resetear contador de no vistos del usuario que abrió el chat
-    enviarEventoAlUsuario(io, usuariosConectados, userId, "actualizarNoVistosGrupo", {
+    enviarEventoAlUsuario(userId, "actualizarNoVistosGrupo", {
       grupoId,
       reset: true,
     });
 
-    // 4️⃣ Verificar si todos los miembros vieron el último mensaje
     const [[ultimoMensaje]] = await db.query(
       `SELECT id, usuario_id AS creadorId 
        FROM mensajes_grupo 
@@ -325,13 +321,13 @@ router.put("/marcar-vistos-grupo", async (req, res) => {
     );
 
     if (ultimoMensaje) {
-      // Contar miembros (todos menos el remitente del mensaje)
       const [[{ totalMiembros }]] = await db.query(
-        `SELECT COUNT(*) AS totalMiembros FROM usuario_grupo WHERE grupo_id = ? AND usuario_id != ?`,
+        `SELECT COUNT(*) AS totalMiembros 
+         FROM usuario_grupo 
+         WHERE grupo_id = ? AND usuario_id != ?`,
         [grupoId, ultimoMensaje.creadorId]
       );
 
-      // Contar usuarios que vieron el mensaje (sin contar al creador)
       const [[{ vistos }]] = await db.query(
         `SELECT COUNT(DISTINCT usuario_id) AS vistos 
          FROM mensajes_grupo_vistos 
@@ -339,7 +335,6 @@ router.put("/marcar-vistos-grupo", async (req, res) => {
         [ultimoMensaje.id]
       );
 
-      // Si todos los miembros vieron → emitir evento global
       if (vistos === totalMiembros) {
         io.to(`grupo_${grupoId}`).emit("todosMensajesVistosGrupo", {
           grupoId,
@@ -440,7 +435,6 @@ router.put("/:id/eliminar", async (req, res) => {
   const { usuarioId } = req.body;
 
   const io = req.app.get("io");
-  const { usuariosConectados, enviarEventoAlUsuario } = req.app.get("socketUtils");
 
   try {
     await db.query(
@@ -454,10 +448,8 @@ router.put("/:id/eliminar", async (req, res) => {
     }
 
     const msg = rows[0];
-    const io = req.app.get("io");
-     // 3️⃣ Emitir evento a todos los miembros conectados del grupo
-    io.to(`grupo_${msg.grupo_id}`).emit("mensajeEliminadoGrupo", msg);
 
+    io.to(`grupo_${msg.grupo_id}`).emit("mensajeEliminadoGrupo", msg);
 
     return res.json({ success: true, id: msg.id });
   } catch (err) {
@@ -476,7 +468,6 @@ router.put("/:id/deshacer", async (req, res) => {
   const { usuarioId } = req.body;
 
   const io = req.app.get("io");
-  const { usuariosConectados, enviarEventoAlUsuario } = req.app.get("socketUtils");
 
   try {
     await db.query(
@@ -489,14 +480,14 @@ router.put("/:id/deshacer", async (req, res) => {
 
     const msg = rows[0];
 
-    // Transformar a ISO UTC antes de emitir
-    const fechaEnvioISO = msg.fecha_envio ? new Date(msg.fecha_envio.replace(" ", "T") + "Z").toISOString() : null;
+    const fechaEnvioISO = msg.fecha_envio
+      ? new Date(msg.fecha_envio.replace(" ", "T") + "Z").toISOString()
+      : null;
 
     io.to(`grupo_${msg.grupo_id}`).emit("mensajeDeshechoGrupo", {
       ...msg,
       fecha_envio: fechaEnvioISO
     });
-
 
     return res.json({ success: true, mensaje: msg });
   } catch (err) {
@@ -517,18 +508,14 @@ router.put("/:id/editar", async (req, res) => {
   if (!nuevoTexto) return res.status(400).json({ error: "Falta el nuevo texto" });
 
   const io = req.app.get("io");
-  const { usuariosConectados, enviarEventoAlUsuario } = req.app.get("socketUtils");
 
   try {
-    // 1️⃣ Obtener mensaje actual
     const [rows] = await db.query(`SELECT * FROM mensajes_grupo WHERE id = ?`, [id]);
     if (!rows.length) return res.status(404).json({ error: "Mensaje no encontrado" });
 
     const mensajeActual = rows[0];
     if (mensajeActual.usuario_id !== usuarioId) return res.status(403).json({ error: "No autorizado" });
 
-    // 2️⃣ Guardar historial de edición con fecha_original
-    // Si es la primera edición, usamos fecha_envio como fecha_original
     const fechaOriginal = mensajeActual.fecha_editado || mensajeActual.fecha_envio;
 
     await db.query(
@@ -537,7 +524,6 @@ router.put("/:id/editar", async (req, res) => {
       [id, usuarioId, mensajeActual.mensaje, fechaOriginal]
     );
 
-    // 3️⃣ Actualizar mensaje en mensajes_grupo
     await db.query(
       `UPDATE mensajes_grupo
        SET mensaje = ?, editado = 1, fecha_editado = UTC_TIMESTAMP()
@@ -545,7 +531,6 @@ router.put("/:id/editar", async (req, res) => {
       [nuevoTexto, id]
     );
 
-    // 4️⃣ Traer mensaje actualizado
     const [rowsActualizados] = await db.query(
       `SELECT mg.*, u.nombre, u.apellido, u.url_imagen, u.background
        FROM mensajes_grupo mg
@@ -556,11 +541,14 @@ router.put("/:id/editar", async (req, res) => {
 
     const mensajeConUTC = {
       ...rowsActualizados[0],
-      fecha_envio: rowsActualizados[0].fecha_envio ? new Date(rowsActualizados[0].fecha_envio + "Z").toISOString() : null,
-      fecha_editado: rowsActualizados[0].fecha_editado ? new Date(rowsActualizados[0].fecha_editado + "Z").toISOString() : null,
+      fecha_envio: rowsActualizados[0].fecha_envio
+        ? new Date(rowsActualizados[0].fecha_envio + "Z").toISOString()
+        : null,
+      fecha_editado: rowsActualizados[0].fecha_editado
+        ? new Date(rowsActualizados[0].fecha_editado + "Z").toISOString()
+        : null,
     };
 
-    // 5️⃣ Emitir evento a todos los miembros
     io.to(`grupo_${mensajeActual.grupo_id}`).emit("mensajeEditadoGrupo", {
       ...mensajeConUTC,
       grupoId: mensajeActual.grupo_id,

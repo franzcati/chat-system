@@ -51,6 +51,10 @@ app.use("/api/grupos", gruposRoutes);
 const stickersRoutes = require("./routes/stickers");
 app.use("/api/stickers", stickersRoutes);
 
+// 👇 NOTIFICACIONES
+const notificacionesRoutes = require("./routes/notificaciones");
+app.use("/api/notificaciones", notificacionesRoutes);
+
 const path = require("path");
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 

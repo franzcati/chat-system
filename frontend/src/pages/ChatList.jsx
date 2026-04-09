@@ -9,19 +9,120 @@ import toast from "react-hot-toast";
 
 
 
+
 const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat }) => {
+  
+  console.log("🔥 ChatList renderizado", { userId });
   const [mensajes, setMensajes] = useState([]);
   const [grupos, setGrupos] = useState([]);
   const [chats, setChats] = useState([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [favoritos, setFavoritos] = useState([]);
   const [usuariosComunes, setUsuariosComunes] = useState([]);
+  const [silenciados, setSilenciados] = useState([]);
+  const [menuChatAbierto, setMenuChatAbierto] = useState(null);
+
+ // ----------------------------
+ // SILENCIAR NOTIFICACIONES
+
+ const getChatKey = (chat) =>
+  `${chat.tipo}-${chat.tipo === "grupo" ? chat.grupo_id : chat.usuario_id}`;
+ const esFavorito = (chat) =>
+  favoritos.some(
+    (f) =>
+      f.chat_id === (chat.tipo === "grupo" ? chat.grupo_id : chat.usuario_id) &&
+      f.tipo === chat.tipo
+  );
+
+  const estaSilenciado = (tipo, chatId) => {
+    return silenciados.some(
+      (s) =>
+        s.tipo === tipo &&
+        Number(s.chat_id) === Number(chatId) &&
+        Number(s.silenciado) === 1
+    );
+  };
+
+  const mostrarNotificacion = ({ titulo, cuerpo, chat, uniqueId }) => {
+    if (!("Notification" in window)) return;
+    if (Notification.permission !== "granted") return;
+
+    const n = new Notification(titulo, {
+      body: cuerpo,
+      icon: "/icono.png",
+      tag: uniqueId ? `msg-${uniqueId}` : `msg-${Date.now()}`,
+    });
+
+    n.onclick = () => {
+      window.focus();
+      if (chat) {
+        onSelectChat(chat);
+        if (setSelectedChat) setSelectedChat(chat);
+      }
+      n.close();
+    };
+  };
+
+  const toggleSilencio = async (chat) => {
+    try {
+      const tipo = chat.tipo;
+      const chatId = tipo === "grupo" ? chat.grupo_id : chat.usuario_id;
+      const silenciadoActual = estaSilenciado(tipo, chatId);
+
+      await axios.post("/api/notificaciones/silenciar", {
+        usuarioId: userId,
+        tipo,
+        chatId,
+        silenciado: !silenciadoActual,
+      });
+
+      setSilenciados((prev) => {
+        const existe = prev.some(
+          (s) => s.tipo === tipo && Number(s.chat_id) === Number(chatId)
+        );
+
+        if (existe) {
+          return prev.map((s) =>
+            s.tipo === tipo && Number(s.chat_id) === Number(chatId)
+              ? { ...s, silenciado: silenciadoActual ? 0 : 1 }
+              : s
+          );
+        }
+
+        return [...prev, { tipo, chat_id: chatId, silenciado: 1 }];
+      });
+
+      toast.success(
+        silenciadoActual
+          ? "Notificaciones activadas"
+          : "Chat silenciado correctamente"
+      );
+    } catch (err) {
+      console.error("❌ Error cambiando silencio:", err);
+      toast.error("No se pudo actualizar el silencio");
+    }
+  };
+
+  useEffect(() => {
+    if ("Notification" in window && Notification.permission === "default") {
+      Notification.requestPermission();
+    }
+  }, []);
 
   const getTimestamp = (fecha) => {
     const d = parseToDate(fecha);
     return d ? d.getTime() : 0;
   };
   const getInitial = (text) => (text ? text.charAt(0).toUpperCase() : "U");
+
+  useEffect(() => {
+    const handleClickOutside = () => {
+      setMenuChatAbierto(null);
+    };
+
+    document.addEventListener("click", handleClickOutside);
+    return () => document.removeEventListener("click", handleClickOutside);
+  }, []);
 
   // -------------------------------
   // 🔹 Agrupar mensajes privados
@@ -89,6 +190,72 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat }) => {
     return Object.values(grouped);
   };
 
+  useEffect(() => {
+    console.log("🟢 useEffect ChatList sockets montado", {
+      userId,
+      connected: socket.connected,
+      socketId: socket.id,
+    });
+
+    if (!userId) return;
+
+    const handleNuevoMensaje = (msg) => {
+      console.log("📩 ChatList recibió nuevoMensaje:", msg);
+
+      const miId = Number(userId);
+      const enviaId = Number(msg.usuario_envia_id);
+      const recibeId = Number(msg.usuario_recibe_id);
+
+      if (enviaId !== miId && recibeId !== miId) return;
+
+      setMensajes((prev) => {
+        const yaExiste = prev.some((m) => Number(m.id) === Number(msg.id));
+        if (yaExiste) {
+          return prev.map((m) =>
+            Number(m.id) === Number(msg.id) ? { ...m, ...msg } : m
+          );
+        }
+        return [...prev, msg];
+      });
+
+      const otherUserId = enviaId === miId ? recibeId : enviaId;
+      const esMio = enviaId === miId;
+
+      const chatAbiertoEsEste =
+        selectedChat?.tipo === "privado" &&
+        Number(selectedChat?.usuario_id) === Number(otherUserId);
+
+      const silenciado = estaSilenciado("privado", otherUserId);
+
+      if (!esMio && !chatAbiertoEsEste && !silenciado) {
+        mostrarNotificacion({
+          titulo: `${msg.emisor_nombre || "Usuario"} ${msg.emisor_apellido || ""}`.trim(),
+          cuerpo:
+            msg.eliminado === 1
+              ? "Se eliminó este mensaje"
+              : msg.mensaje?.startsWith("/uploads/")
+              ? "📎 Archivo adjunto"
+              : msg.mensaje || "Nuevo mensaje",
+          uniqueId: msg.id,
+          chat: {
+            tipo: "privado",
+            usuario_id: otherUserId,
+            usuario_nombre: `${msg.emisor_nombre || ""} ${msg.emisor_apellido || ""}`.trim(),
+            usuario_correo: msg.emisor_correo || "",
+            url_imagen: msg.emisor_avatar || null,
+            background: msg.emisor_background || "#6c757d",
+          },
+        });
+      }
+    };
+
+    socket.on("nuevoMensaje", handleNuevoMensaje);
+
+    return () => {
+      socket.off("nuevoMensaje", handleNuevoMensaje);
+    };
+  }, [userId, selectedChat, silenciados]);
+
   // -------------------------------
   // 🔹 Cargar privados, grupos y favoritos
   useEffect(() => {
@@ -96,20 +263,23 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat }) => {
 
     const fetchData = async () => {
       try {
-        const [resMensajes, resGrupos, resFavoritos] = await Promise.all([
+        const [resMensajes, resGrupos, resFavoritos, resSilenciados] = await Promise.all([
           axios.get(`/api/chats/${userId}`),
           axios.get(`/api/grupos/usuario/${userId}`),
-          axios.get(`/api/chats/favoritos/${userId}`)
+          axios.get(`/api/chats/favoritos/${userId}`),
+          axios.get(`/api/notificaciones/silenciados/${userId}`),
         ]);
 
         setMensajes(resMensajes.data);
         setGrupos(resGrupos.data);
         setFavoritos(resFavoritos.data);
+        setSilenciados(resSilenciados.data || []);
 
         console.group("📋 Chats cargados al inicio");
         console.log("🗨️ Mensajes privados:", resMensajes.data);
         console.log("👥 Grupos:", resGrupos.data);
         console.log("⭐ Favoritos:", resFavoritos.data);
+        console.log("🔕 Silenciados:", resSilenciados.data);
         console.groupEnd();
 
       } catch (error) {
@@ -182,45 +352,98 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat }) => {
   useEffect(() => {
     if (!userId) return;
 
-    if (!socket.connected) socket.connect();
-    socket.emit("registrarUsuario", userId);
-    logDev("🔌 Usuario registrado en Socket:", userId);
-
     const handleNuevoMensaje = (msg) => {
-      if (msg.usuario_envia_id === userId || msg.usuario_recibe_id === userId) {
-        setMensajes((prev) => {
-          const updated = [...prev, msg];
+      const miId = Number(userId);
+      const enviaId = Number(msg.usuario_envia_id);
+      const recibeId = Number(msg.usuario_recibe_id);
 
-          // 🔹 Reordenar chats directamente
-          setChats((prevChats) => {
-            return prevChats.map((chat) => {
-              if (
-                chat.tipo === "privado" &&
-                ((chat.usuario_id === msg.usuario_envia_id && msg.usuario_recibe_id === userId) ||
-                (chat.usuario_id === msg.usuario_recibe_id && msg.usuario_envia_id === userId))
-              ) {
-                return { ...chat, ultimo_mensaje: msg.mensaje, ultimo_mensaje_id: msg.id, fecha_envio: msg.fecha_envio, lastTime: getTimestamp(msg.fecha_envio) };
-              }
-              return chat;
-            }).sort((a, b) => b.lastTime - a.lastTime);
-          });
+      if (enviaId !== miId && recibeId !== miId) return;
 
-          return updated;
-        });
-      }
+      setMensajes((prev) => {
+        const yaExiste = prev.some((m) => Number(m.id) === Number(msg.id));
+        if (yaExiste) {
+          return prev.map((m) =>
+            Number(m.id) === Number(msg.id) ? { ...m, ...msg } : m
+          );
+        }
+        return [...prev, msg];
+      });
+
+      setChats((prevChats) => {
+        const otherUserId = enviaId === miId ? recibeId : enviaId;
+        const esEmisor = enviaId === miId;
+
+        const yaExiste = prevChats.some(
+          (chat) =>
+            chat.tipo === "privado" &&
+            Number(chat.usuario_id) === Number(otherUserId)
+        );
+
+        if (!yaExiste) {
+          return [
+            {
+              tipo: "privado",
+              usuario_id: otherUserId,
+              usuario_nombre: esEmisor
+                ? `${msg.receptor_nombre || ""} ${msg.receptor_apellido || ""}`.trim() || msg.receptor_nombre || "Usuario"
+                : `${msg.emisor_nombre || ""} ${msg.emisor_apellido || ""}`.trim() || msg.emisor_nombre || "Usuario",
+              usuario_correo: esEmisor ? msg.receptor_correo || "" : msg.emisor_correo || "",
+              url_imagen: esEmisor ? msg.receptor_avatar || null : msg.emisor_avatar || null,
+              background: esEmisor
+                ? msg.receptor_background || "#6c757d"
+                : msg.emisor_background || "#6c757d",
+              mensajes_no_leidos: esEmisor ? 0 : ((msg.visto ?? 0) === 0 ? 1 : 0),
+              eliminado: msg.eliminado ?? 0,
+              ultimo_mensaje: msg.eliminado ? "Se eliminó este mensaje" : msg.mensaje,
+              ultimo_mensaje_id: msg.id,
+              fecha_envio: msg.fecha_envio,
+              tipo_mensaje: esEmisor ? "enviado" : "recibido",
+              visto: msg.visto ?? 0,
+              lastTime: getTimestamp(msg.fecha_envio),
+            },
+            ...prevChats,
+          ].sort((a, b) => b.lastTime - a.lastTime);
+        }
+
+        return prevChats
+          .map((chat) => {
+            if (
+              chat.tipo === "privado" &&
+              Number(chat.usuario_id) === Number(otherUserId)
+            ) {
+              return {
+                ...chat,
+                ultimo_mensaje: msg.eliminado ? "Se eliminó este mensaje" : msg.mensaje,
+                ultimo_mensaje_id: msg.id,
+                fecha_envio: msg.fecha_envio,
+                tipo_mensaje: esEmisor ? "enviado" : "recibido",
+                visto: msg.visto ?? 0,
+                lastTime: getTimestamp(msg.fecha_envio),
+                mensajes_no_leidos: esEmisor
+                  ? chat.mensajes_no_leidos || 0
+                  : (chat.mensajes_no_leidos || 0) + ((msg.visto ?? 0) === 0 ? 1 : 0),
+              };
+            }
+            return chat;
+          })
+          .sort((a, b) => b.lastTime - a.lastTime);
+      });
     };
 
     const handleNuevoMensajeGrupo = (msg) => {
-      setMensajes((prev) => [
-        ...prev,
-        { ...msg, tipo_mensaje: msg.usuario_id === userId ? "enviado" : "recibido" }
-      ]);
+      setMensajes((prev) => {
+        const yaExiste = prev.some((m) => Number(m.id) === Number(msg.id));
+        if (yaExiste) return prev;
+        return [
+          ...prev,
+          { ...msg, tipo_mensaje: Number(msg.usuario_id) === Number(userId) ? "enviado" : "recibido" },
+        ];
+      });
 
       setGrupos((prev) => {
         const updatedGrupos = prev.map((g) => {
-          if (g.grupo_id === msg.grupo_id) {
-            const soyRemitente = msg.usuario_id === userId;
-            // 🔹 Si yo NO envié el mensaje, aumento el contador
+          if (Number(g.grupo_id) === Number(msg.grupo_id)) {
+            const soyRemitente = Number(msg.usuario_id) === Number(userId);
             const nuevosNoVistos = soyRemitente
               ? g.mensajes_no_leidos || 0
               : (g.mensajes_no_leidos || 0) + 1;
@@ -238,13 +461,12 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat }) => {
               tipo_mensaje: soyRemitente ? "enviado" : "recibido",
               lastTime: getTimestamp(msg.fecha_envio),
               mensajes_no_leidos: nuevosNoVistos,
-              visto: soyRemitente ? 0 : g.visto, // 👈 resetear solo para quien envía
+              visto: soyRemitente ? 0 : g.visto,
             };
           }
           return g;
         });
 
-        // 🔹 Reordenar chats después de actualizar grupo
         setChats((prevChats) => {
           const privadoChats = prevChats.filter((c) => c.tipo === "privado");
           const grupoChats = updatedGrupos.map((g) => ({
@@ -271,6 +493,37 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat }) => {
 
         return updatedGrupos;
       });
+
+      const soyYo = Number(msg.usuario_id) === Number(userId);
+      const chatAbiertoEsEsteGrupo =
+        selectedChat?.tipo === "grupo" &&
+        Number(selectedChat?.grupo_id) === Number(msg.grupo_id);
+
+      const silenciado = estaSilenciado("grupo", msg.grupo_id);
+
+      if (!soyYo && !chatAbiertoEsEsteGrupo && !silenciado) {
+        const grupoActual = grupos.find(
+          (g) => Number(g.grupo_id) === Number(msg.grupo_id)
+        );
+
+        mostrarNotificacion({
+          titulo: `Grupo: ${grupoActual?.nombre || "Grupo"}`,
+          cuerpo: `${msg.nombre || "Usuario"}: ${
+            msg.eliminado === 1
+              ? "Se eliminó este mensaje"
+              : msg.mensaje?.startsWith("/uploads/")
+              ? "📎 Archivo adjunto"
+              : msg.mensaje || "Nuevo mensaje"
+          }`,
+          uniqueId: msg.id,
+          chat: {
+            tipo: "grupo",
+            grupo_id: msg.grupo_id,
+            usuario_nombre: grupoActual?.nombre || "Grupo",
+            imagen_url: grupoActual?.imagen_url || null,
+          },
+        });
+      }
     };
 
     // 🧩 Grupo nuevo (cuando te agregan a uno)
@@ -504,7 +757,7 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat }) => {
       socket.off("miembrosActualizados", handleMiembrosActualizados);
       socket.off("grupoEliminado", handleGrupoEliminado);
     };
-  }, [userId]);
+  }, [userId, selectedChat, silenciados, grupos]);
 
   // -------------------------------
   // 🔹 Socket.IO PARA ELIMINAR MENSAJES, DESHACER ELIMINADO, EDITAR MENSAJE
@@ -811,7 +1064,7 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat }) => {
                       {usuariosComunes.map((u) => (
                         <div
                           key={u.id}
-                          className="card border-0 text-reset"
+                          className="card border-0 text-reset chat-card-hover"
                           style={{ cursor: "pointer" }}
                           onClick={(e) => {
                             e.preventDefault();
@@ -857,7 +1110,7 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat }) => {
                         <a
                           key={`${chat.tipo}-${chat.tipo === "grupo" ? chat.grupo_id : chat.usuario_id}`}
                           href="#"
-                          className="card border-0 text-reset"
+                          className="card border-0 text-reset chat-card-hover"
                           onClick={(e) => {
                             e.preventDefault();
                             handleSelectChat(chat);
@@ -934,30 +1187,101 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat }) => {
                                 </div>
 
                                 <div className="col">
-                                  <div className="d-flex align-items-center mb-3">
-                                    <h5 className="me-auto mb-0">
-                                      {chat.tipo === "grupo"
-                                        ? chat.ultimo_remitente || chat.usuario_nombre
-                                        : chat.usuario_nombre}
+                                  <div className="d-flex align-items-center mb-3 position-relative">
+                                    <h5 className="me-auto mb-0 d-flex align-items-center gap-2">
+                                      <span>
+                                        {chat.tipo === "grupo"
+                                          ? chat.ultimo_remitente || chat.usuario_nombre
+                                          : chat.usuario_nombre}
+                                      </span>
+
+                                      {estaSilenciado(
+                                        chat.tipo,
+                                        chat.tipo === "grupo" ? chat.grupo_id : chat.usuario_id
+                                      ) && (
+                                        <span title="Chat silenciado" className="text-muted" style={{ fontSize: "14px" }}>
+                                          🔕
+                                        </span>
+                                      )}
                                     </h5>
+
                                     <span className="text-muted extra-small ms-2">
                                       {formatChatTime(chat.fecha_envio)}
                                     </span>
-                                    {/* ⭐ Favorito (siempre amarillo en la lista de favoritos) */}
+
                                     <button
                                       onClick={(e) => {
                                         e.stopPropagation();
-                                        toggleFavorito(chat); // igual se puede quitar de favoritos
+                                        toggleFavorito(chat);
                                       }}
                                       className="btn btn-sm border-0 bg-transparent p-0 ms-2"
                                     >
                                       <Star
                                         size={18}
-                                        fill="currentColor"   // 👉 relleno del mismo color que el texto
-                                        stroke="currentColor" // 👉 el borde también del mismo color
+                                        fill="currentColor"
+                                        stroke="currentColor"
                                         className="text-warning"
                                       />
                                     </button>
+
+                                    <button
+                                      onClick={(e) => {
+                                        e.preventDefault();
+                                        e.stopPropagation();
+                                        setMenuChatAbierto((prev) =>
+                                          prev === getChatKey(chat) ? null : getChatKey(chat)
+                                        );
+                                      }}
+                                      className="btn btn-sm border-0 bg-transparent p-0 ms-2 text-muted chat-options-btn"
+                                      style={{
+                                        opacity: menuChatAbierto === getChatKey(chat) ? 1 : undefined,
+                                        fontSize: "18px",
+                                        lineHeight: 1,
+                                      }}
+                                      title="Opciones"
+                                    >
+                                      ⋯
+                                    </button>
+
+                                    {menuChatAbierto === getChatKey(chat) && (
+                                      <div
+                                        className="shadow-sm border rounded-3 bg-white position-absolute"
+                                        style={{
+                                          top: "30px",
+                                          right: "0",
+                                          minWidth: "220px",
+                                          zIndex: 2000,
+                                          padding: "8px 0",
+                                        }}
+                                        onClick={(e) => e.stopPropagation()}
+                                      >
+                                        <button
+                                          className="dropdown-item d-flex align-items-center justify-content-between px-3 py-2"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            toggleSilencio(chat);
+                                            setMenuChatAbierto(null);
+                                          }}
+                                        >
+                                          <span>
+                                            {estaSilenciado(
+                                              chat.tipo,
+                                              chat.tipo === "grupo" ? chat.grupo_id : chat.usuario_id
+                                            )
+                                              ? "Reactivar notificación"
+                                              : "Silenciar"}
+                                          </span>
+                                          <span>
+                                            {estaSilenciado(
+                                              chat.tipo,
+                                              chat.tipo === "grupo" ? chat.grupo_id : chat.usuario_id
+                                            )
+                                              ? "🔔"
+                                              : "🔕"}
+                                          </span>
+                                        </button>
+                                      </div>
+                                    )}
                                   </div>
 
                                   <div className="d-flex align-items-baseline">
@@ -1066,7 +1390,7 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat }) => {
                     <a
                       key={`${chat.tipo}-${chat.tipo === "grupo" ? chat.grupo_id : chat.usuario_id}`}
                       href="#"
-                      className="card border-0 text-reset"
+                      className="card border-0 text-reset chat-card-hover"
                       onClick={(e) => {
                         e.preventDefault();
                         handleSelectChat(chat);
@@ -1143,32 +1467,107 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat }) => {
                             </div>
 
                             <div className="col">
-                                  <div className="d-flex align-items-center mb-3">
-                                    <h5 className="me-auto mb-0">
-                                      {chat.tipo === "grupo"
-                                        ? chat.ultimo_remitente || chat.usuario_nombre
-                                        : chat.usuario_nombre}
+                                  <div className="d-flex align-items-center mb-3 position-relative">
+                                    <h5 className="me-auto mb-0 d-flex align-items-center gap-2">
+                                      <span>
+                                        {chat.tipo === "grupo"
+                                          ? chat.ultimo_remitente || chat.usuario_nombre
+                                          : chat.usuario_nombre}
+                                      </span>
+
+                                      {estaSilenciado(
+                                        chat.tipo,
+                                        chat.tipo === "grupo" ? chat.grupo_id : chat.usuario_id
+                                      ) && (
+                                        <span
+                                          title="Chat silenciado"
+                                          className="text-muted"
+                                          style={{ fontSize: "14px" }}
+                                        >
+                                          🔕
+                                        </span>
+                                      )}
                                     </h5>
-                                    
-                                      
+
                                     <span className="text-muted extra-small ms-2">
                                       {formatChatTime(chat.fecha_envio)}
                                     </span>
-                                    {/* ⭐ Botón de favorito */}
-                                      <button
-                                        onClick={(e) => {
-                                          e.stopPropagation(); // evita que abra el chat
-                                          toggleFavorito(chat); // función que guarda/quita en favoritos
+
+                                    {/* ⭐ Favorito */}
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        toggleFavorito(chat);
+                                      }}
+                                      className="btn btn-sm border-0 bg-transparent p-0 ms-2"
+                                    >
+                                      <Star
+                                        size={18}
+                                        className={`transition-colors ${
+                                          esFavorito(chat) ? "text-warning fill-warning" : "text-muted"
+                                        }`}
+                                      />
+                                    </button>
+
+                                    {/* ⋮ Menú */}
+                                    <button
+                                      onClick={(e) => {
+                                        e.preventDefault();
+                                        e.stopPropagation();
+                                        setMenuChatAbierto((prev) =>
+                                          prev === getChatKey(chat) ? null : getChatKey(chat)
+                                        );
+                                      }}
+                                      className="btn btn-sm border-0 bg-transparent p-0 ms-2 text-muted chat-options-btn"
+                                      style={{
+                                        opacity: menuChatAbierto === getChatKey(chat) ? 1 : 0.65,
+                                        fontSize: "18px",
+                                        lineHeight: 1,
+                                      }}
+                                      title="Opciones"
+                                    >
+                                      ⋯
+                                    </button>
+
+                                    {menuChatAbierto === getChatKey(chat) && (
+                                      <div
+                                        className="shadow-sm border rounded-3 bg-white position-absolute"
+                                        style={{
+                                          top: "30px",
+                                          right: "0",
+                                          minWidth: "220px",
+                                          zIndex: 2000,
+                                          padding: "8px 0",
                                         }}
-                                        className="btn btn-sm border-0 bg-transparent p-0 ms-2"
+                                        onClick={(e) => e.stopPropagation()}
                                       >
-                                        <Star
-                                          size={18}
-                                          className={`transition-colors ${
-                                            chat.esFavorito ? "text-warning fill-warning" : "text-muted"
-                                          }`}
-                                        />
-                                      </button>
+                                        <button
+                                          className="dropdown-item d-flex align-items-center justify-content-between px-3 py-2"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            toggleSilencio(chat);
+                                            setMenuChatAbierto(null);
+                                          }}
+                                        >
+                                          <span>
+                                            {estaSilenciado(
+                                              chat.tipo,
+                                              chat.tipo === "grupo" ? chat.grupo_id : chat.usuario_id
+                                            )
+                                              ? "Reactivar notificación"
+                                              : "Silenciar"}
+                                          </span>
+                                          <span>
+                                            {estaSilenciado(
+                                              chat.tipo,
+                                              chat.tipo === "grupo" ? chat.grupo_id : chat.usuario_id
+                                            )
+                                              ? "🔔"
+                                              : "🔕"}
+                                          </span>
+                                        </button>
+                                      </div>
+                                    )}
                                   </div>
 
                                   <div className="d-flex align-items-baseline">

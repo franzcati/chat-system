@@ -339,30 +339,46 @@ const ChatBox = ({ chat, user, setChat, onVerPerfil }) => {
 
       // dentro del useEffect en ChatBox (donde registras otros listeners)
       const handleReaccionGrupo = ({ mensajeGrupoId, usuarioId, emoji, accion, usuario }) => {
-        setMessages(prev =>
-          prev.map(m => {
-            if (m.id !== mensajeGrupoId) return m;
+        setMessages((prev) =>
+          prev.map((m) => {
+            if (Number(m.id) !== Number(mensajeGrupoId)) return m;
+
+            const reaccionesActuales = Array.isArray(m.reacciones) ? m.reacciones : [];
 
             if (accion === "agregada") {
-              // evitar duplicados
-              const ya = (m.reacciones || []).some(r => r.usuario_id === usuarioId && r.emoji === emoji);
-              if (ya) return m;
+              const yaExiste = reaccionesActuales.some(
+                (r) =>
+                  Number(r.usuario_id) === Number(usuarioId) &&
+                  r.emoji === emoji
+              );
+
+              if (yaExiste) return m;
+
               return {
                 ...m,
                 reacciones: [
-                  ...(m.reacciones || []),
-                  { mensaje_id: mensajeGrupoId, usuario_id: usuarioId, emoji, usuario }
+                  ...reaccionesActuales,
+                  {
+                    mensaje_id: mensajeGrupoId,
+                    usuario_id: usuarioId,
+                    emoji,
+                    usuario,
+                  },
                 ],
               };
-            } else {
-              // eliminada
+            }
+
+            if (accion === "eliminada") {
               return {
                 ...m,
-                reacciones: (m.reacciones || []).filter(
-                  r => !(r.usuario_id === usuarioId && r.emoji === emoji)
+                reacciones: reaccionesActuales.filter(
+                  (r) =>
+                    !(Number(r.usuario_id) === Number(usuarioId) && r.emoji === emoji)
                 ),
               };
             }
+
+            return m;
           })
         );
       };
@@ -486,36 +502,40 @@ const ChatBox = ({ chat, user, setChat, onVerPerfil }) => {
     } else {
       // Chat individual
       const handleNuevoMensaje = (msg) => {
-        if (
-          (msg.usuario_envia_id === chat.usuario_id && msg.usuario_recibe_id === user.id) ||
-          (msg.usuario_envia_id === user.id && msg.usuario_recibe_id === chat.usuario_id)
-        ) {
-          setMessages((prev) => {
-            const existente = prev.find((m) => m.id === msg.id);
+        const enviaId = Number(msg.usuario_envia_id);
+        const recibeId = Number(msg.usuario_recibe_id);
+        const chatUserId = Number(chat.usuario_id);
+        const myUserId = Number(user.id);
 
-            if (existente) {
-              // Ya lo tenemos, solo actualizamos
-              return prev.map((m) =>
-                m.id === msg.id
-                  ? {
-                      ...m,
-                      ...msg,
-                      reacciones: m.reacciones || msg.reacciones || [],
-                    }
-                  : m
-              );
-            }
+        const perteneceAChat =
+          (enviaId === chatUserId && recibeId === myUserId) ||
+          (enviaId === myUserId && recibeId === chatUserId);
 
-            // Mensaje nuevo
-            return [
-              ...prev,
-              {
-                ...msg,
-                reacciones: msg.reacciones || [],
-              },
-            ];
-          });
-        }
+        if (!perteneceAChat) return;
+
+        setMessages((prev) => {
+          const existente = prev.find((m) => Number(m.id) === Number(msg.id));
+
+          if (existente) {
+            return prev.map((m) =>
+              Number(m.id) === Number(msg.id)
+                ? {
+                    ...m,
+                    ...msg,
+                    reacciones: m.reacciones || msg.reacciones || [],
+                  }
+                : m
+            );
+          }
+
+          return [
+            ...prev,
+            {
+              ...msg,
+              reacciones: msg.reacciones || [],
+            },
+          ];
+        });
       };
 
       const handleMensajeEliminado = ({ id }) => {
@@ -574,21 +594,46 @@ const ChatBox = ({ chat, user, setChat, onVerPerfil }) => {
 
       // Chat individual
       const handleReaccionActualizada = ({ mensajeId, usuarioId, emoji, accion, usuario }) => {
-        setMessages(prev =>
-          prev.map(m => {
-            if (m.id !== mensajeId) return m;
+        setMessages((prev) =>
+          prev.map((m) => {
+            if (Number(m.id) !== Number(mensajeId)) return m;
 
-            let nuevasReacciones = [...m.reacciones];
+            const reaccionesActuales = Array.isArray(m.reacciones) ? m.reacciones : [];
 
             if (accion === "agregada") {
-              nuevasReacciones.push({ mensaje_id: mensajeId, usuario_id: usuarioId, emoji, usuario });
-            } else if (accion === "eliminada") {
-              nuevasReacciones = nuevasReacciones.filter(
-                r => !(r.usuario_id === usuarioId && r.emoji === emoji)
+              const yaExiste = reaccionesActuales.some(
+                (r) =>
+                  Number(r.usuario_id) === Number(usuarioId) &&
+                  r.emoji === emoji
               );
+
+              if (yaExiste) return m;
+
+              return {
+                ...m,
+                reacciones: [
+                  ...reaccionesActuales,
+                  {
+                    mensaje_id: mensajeId,
+                    usuario_id: usuarioId,
+                    emoji,
+                    usuario,
+                  },
+                ],
+              };
             }
 
-            return { ...m, reacciones: nuevasReacciones };
+            if (accion === "eliminada") {
+              return {
+                ...m,
+                reacciones: reaccionesActuales.filter(
+                  (r) =>
+                    !(Number(r.usuario_id) === Number(usuarioId) && r.emoji === emoji)
+                ),
+              };
+            }
+
+            return m;
           })
         );
       };
@@ -827,18 +872,35 @@ const ChatBox = ({ chat, user, setChat, onVerPerfil }) => {
       // 2️⃣ Si hay texto, lo enviamos (como caption si hay loteId)
       if (hayTexto) {
         if (chat.tipo === "grupo") {
-          await axios.post("/api/mensajes/grupo", {
+          const res = await axios.post("/api/mensajes/grupo", {
             grupoId: chat.grupo_id,
             usuarioId: user.id,
             mensaje: text,
-            loteId, // 👈 va al backend SOLO si hay imágenes
+            loteId,
+          });
+
+          const nuevo = res.data?.mensaje || res.data;
+          console.log("✅ Respuesta POST /api/mensajes:", nuevo);
+
+          setMessages((prev) => {
+            const yaExiste = prev.some((m) => Number(m.id) === Number(nuevo.id));
+            if (yaExiste) return prev;
+            return [...prev, nuevo];
           });
         } else {
-          await axios.post("/api/mensajes", {
+          const res = await axios.post("/api/mensajes", {
             senderId: user.id,
             receiverId: chat.usuario_id,
             message: text,
             loteId,
+          });
+
+          const nuevo = res.data?.mensaje || res.data;
+
+          setMessages((prev) => {
+            const yaExiste = prev.some((m) => Number(m.id) === Number(nuevo.id));
+            if (yaExiste) return prev;
+            return [...prev, nuevo];
           });
         }
       }

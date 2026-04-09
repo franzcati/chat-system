@@ -164,7 +164,7 @@ router.post("/favorito", async (req, res) => {
     }
 
     // 🔹 Normalizar: si viene con dominio completo, lo recortamos
-    const BASE_URL = process.env.BASE_URL || "https://quickchat.click";
+    const BASE_URL = process.env.BASE_URL || "https://chatvista.click";
     if (url.startsWith(BASE_URL)) {
       url = url.slice(BASE_URL.length); // deja "/uploads/..."
     }
@@ -220,7 +220,7 @@ router.delete("/favorito", async (req, res) => {
 
   try {
     let urlBuscar = url;
-    const BASE_URL = process.env.BASE_URL || "https://quickchat.click";
+    const BASE_URL = process.env.BASE_URL || "https://chatvista.click";
     if (urlBuscar.startsWith(BASE_URL)) {
       urlBuscar = urlBuscar.slice(BASE_URL.length);
     }

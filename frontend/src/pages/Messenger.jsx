@@ -14,7 +14,7 @@ const Messenger = () => {
   const [selectedChat, setSelectedChat] = useState(null);
   const [usuario, setUsuario] = useState(null);
   const [proyectos, setProyectos] = useState([]);
-  const [activeTab, setActiveTab] = useState("chat"); // 👈 pestaña activa
+  const [activeTab, setActiveTab] = useState("chat");
   const [perfilSeleccionado, setPerfilSeleccionado] = useState(null);
   const [showModal, setShowModal] = useState(false);
   const navigate = useNavigate();
@@ -23,25 +23,22 @@ const Messenger = () => {
     const storedUser = localStorage.getItem('usuario');
     if (storedUser) {
       const parsedUser = JSON.parse(storedUser);
-      // Convertir permisos_chat SI VIENE COMO STRING
+
       if (typeof parsedUser.permisos_chat === "string") {
         parsedUser.permisos_chat = JSON.parse(parsedUser.permisos_chat);
       }
-      // Permisos rol
+
       if (typeof parsedUser.rol_permisos === "string") {
         parsedUser.rol_permisos = JSON.parse(parsedUser.rol_permisos);
       }
 
       setUsuario(parsedUser);
       logDev("✅ Usuario cargado desde localStorage:", parsedUser);
-      
     } else {
-      // ❌ Si no hay usuario, redirigir al login
       navigate('/');
     }
   }, []);
 
-  // Cargar proyectos activos del backend
   useEffect(() => {
     const cargarProyectos = async () => {
       try {
@@ -57,7 +54,6 @@ const Messenger = () => {
     cargarProyectos();
   }, []);
 
-  // 🔹 2. Una vez que tengamos usuario.id, pedir su proyectoId al backend
   useEffect(() => {
     if (usuario?.id) {
       const fetchProyectoId = async () => {
@@ -88,15 +84,49 @@ const Messenger = () => {
     }
   }, [selectedChat]);
 
+  useEffect(() => {
+  if (!usuario?.id) return;
+
+  console.log("🔌 Messenger va a conectar socket", usuario.id);
+
+  if (!socket.connected) {
+    socket.connect();
+  }
+
+  socket.emit("registrarUsuario", usuario.id);
+
+  const onConnect = () => {
+    console.log("✅ Socket conectado en Messenger:", socket.id);
+    socket.emit("registrarUsuario", usuario.id);
+  };
+
+  const onNuevoMensaje = (msg) => {
+    console.log("📨 Messenger recibió nuevoMensaje:", msg);
+  };
+
+  socket.on("connect", onConnect);
+  socket.on("nuevoMensaje", onNuevoMensaje);
+
+  return () => {
+    socket.off("connect", onConnect);
+    socket.off("nuevoMensaje", onNuevoMensaje);
+  };
+}, [usuario?.id]);
+
+  // 👇 AGREGALOS AQUI
+  console.log("🧩 Messenger render", {
+    activeTab,
+    usuarioId: usuario?.id,
+    selectedChat,
+  });
+
+  console.log("🧩 Va a renderizar ChatList?", activeTab === "chat");
 
   return (
     <div className="flex h-screen bg-[#f8f9fd]">
       {/* Sidebar con iconos */}
       <Sidebar usuario={usuario} active={activeTab} setActive={setActiveTab} />
-      
-      {/* ===========================
-          📌 1. CHAT LIST (solo si chat está activo)
-          =========================== */}
+
       {activeTab === "chat" && (
         <ChatList
           onSelectChat={setSelectedChat}

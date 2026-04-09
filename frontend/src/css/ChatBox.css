@@ -1035,6 +1035,15 @@ button:hover .lucide-star {
   background: #020617; /* más oscuro para ver mejor la imagen */
 }
 
+.chat-card-hover .chat-options-btn {
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.chat-card-hover:hover .chat-options-btn {
+  opacity: 1;
+}
+
 
 @keyframes fadeIn {
   from {
