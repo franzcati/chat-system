@@ -8,7 +8,7 @@ import CreateChat from '../components/CreateChat';
 import ProfileModal from "../components/ProfileModal";
 import AddUsers from "../components/AddUsers";
 import EditUsers from "../components/EditUsers";
-import socket from "../socket";
+import socket, { conectarUsuarioSocket } from "../socket";
 
 const Messenger = () => {
   const [selectedChat, setSelectedChat] = useState(null);
@@ -85,33 +85,28 @@ const Messenger = () => {
   }, [selectedChat]);
 
   useEffect(() => {
-  if (!usuario?.id) return;
+    if (!usuario?.id) return;
 
-  logDev("🔌 Messenger va a conectar socket", usuario.id);
+    logDev("🔌 Messenger va a conectar socket", usuario.id);
+    conectarUsuarioSocket(usuario.id);
 
-  if (!socket.connected) {
-    socket.connect();
-  }
+    const onConnect = () => {
+      logDev("✅ Socket conectado en Messenger:", socket.id);
+      conectarUsuarioSocket(usuario.id);
+    };
 
-  socket.emit("registrarUsuario", usuario.id);
+    const onNuevoMensaje = (msg) => {
+      logDev("📨 Messenger recibió nuevoMensaje:", msg);
+    };
 
-  const onConnect = () => {
-    logDev("✅ Socket conectado en Messenger:", socket.id);
-    socket.emit("registrarUsuario", usuario.id);
-  };
+    socket.on("connect", onConnect);
+    socket.on("nuevoMensaje", onNuevoMensaje);
 
-  const onNuevoMensaje = (msg) => {
-    logDev("📨 Messenger recibió nuevoMensaje:", msg);
-  };
-
-  socket.on("connect", onConnect);
-  socket.on("nuevoMensaje", onNuevoMensaje);
-
-  return () => {
-    socket.off("connect", onConnect);
-    socket.off("nuevoMensaje", onNuevoMensaje);
-  };
-}, [usuario?.id]);
+    return () => {
+      socket.off("connect", onConnect);
+      socket.off("nuevoMensaje", onNuevoMensaje);
+    };
+  }, [usuario?.id]);
 
   // 👇 AGREGALOS AQUI
   logDev("🧩 Messenger render", {

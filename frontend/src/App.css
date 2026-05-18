@@ -1333,3 +1333,19 @@ button, input, optgroup, select, textarea {
 
 
 
+
+
+/* Fallback global para dropdowns en modo oscuro */
+:root[data-theme="dark"] .dropdown-item {
+  color: var(--text) !important;
+}
+
+:root[data-theme="dark"] .dropdown-item:hover,
+:root[data-theme="dark"] .dropdown-item:focus {
+  background-color: rgba(255, 255, 255, 0.08) !important;
+  color: #ffffff !important;
+}
+
+:root[data-theme="dark"] .dropdown-item.text-danger {
+  color: #ff6b6b !important;
+}

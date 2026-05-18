@@ -641,11 +641,10 @@ const Message = ({
           {/* Nombre arriba si es grupo */}
           {esGrupo && !enviadoPorMi && (
             <div
-              className="fw-bold small"
+              className="fw-bold small message-sender-name"
               style={{
                 marginBottom: "4px",
                 marginLeft: "6px",
-                color: "#111827",
               }}
             >
               {`${usuario?.nombre || ""} ${usuario?.apellido || ""}`}
@@ -686,8 +685,9 @@ const Message = ({
                       ...(openDirection === "up"
                         ? { bottom: "calc(100% + 8px)" }
                         : { top: "calc(100% + 8px)" }),
-                      right: "0",
-                      left: "auto",
+                      ...(enviadoPorMi
+                        ? { right: "0", left: "auto" }
+                        : { left: "0", right: "auto" }),
                       transform: "none",
                       zIndex: 10000,
                     }}
@@ -861,7 +861,9 @@ const Message = ({
                         ...(openDirection === "up"
                           ? { bottom: "calc(100% + 8px)" }
                           : { top: "calc(100% + 8px)" }),
-                        right: "0",
+                        ...(enviadoPorMi
+                          ? { right: "0", left: "auto" }
+                          : { left: "0", right: "auto" }),
                         zIndex: 10001,
                       }}
                       onClick={(e) => e.stopPropagation()}

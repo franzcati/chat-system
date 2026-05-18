@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import socket from "../socket";
+import socket, { conectarUsuarioSocket } from "../socket";
 import { getAvatarUrl } from "../utils/url";
 import { logDev } from "../utils/logger";
 
@@ -39,14 +39,16 @@ const PersonasGrupos = ({ proyectoId, usuarioId, onSelectionChange }) => {
   useEffect(() => {
     if (!usuarioId) return;
 
-    socket.emit("registrarUsuario", usuarioId);
+    conectarUsuarioSocket(usuarioId);
 
-    socket.on("actualizarUsuarios", (data) => {
+    const handleActualizarUsuarios = (data) => {
       setUsuariosSocket(data);
-    });
+    };
+
+    socket.on("actualizarUsuarios", handleActualizarUsuarios);
 
     return () => {
-      socket.disconnect();
+      socket.off("actualizarUsuarios", handleActualizarUsuarios);
     };
   }, [usuarioId]);
 
