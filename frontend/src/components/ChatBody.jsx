@@ -1,5 +1,5 @@
 // src/components/ChatBody.jsx
-import React, { useMemo, useEffect, useRef } from "react";
+import React, { useMemo, useEffect, useRef, useLayoutEffect } from "react";
 import { formatChatTimeOnly, formatChatDate } from "../utils/date";
 import Message from "./Message";
 
@@ -153,16 +153,30 @@ const ChatBody = ({
   user,
   socket,
   tipo,
+  chatKey,
+  hasMoreMessages = false,
+  isLoadingOlderMessages = false,
+  onLoadOlderMessages,
   onVerPerfil,
   onGuardarStickerFavorito,
   onEliminarStickerFavorito,
   stickersFavoritos = [],
+  mentionOptions = [],
+  onReply,
+  onReplyPrivado,
+  onEnviarMensajePrivado,
+  onReplyPreviewClick,
+  scrollTargetMessageId = null,
+  scrollTargetToken = null,
 }) => {
   const esGrupo = tipo === "grupo";
 
   const chatContainerRef = useRef(null);
   const messagesEndRef = useRef(null);
   const prevMessagesLength = useRef(0);
+  const olderLoadSnapshotRef = useRef(null);
+  const skipNextAutoScrollRef = useRef(false);
+  const loadingOlderRef = useRef(false);
 
   // --- helpers scroll ---
   const isNearBottom = () => {
@@ -178,22 +192,95 @@ const ChatBody = ({
     });
   };
 
+  const scrollToMessageInBody = (messageId, smooth = true) => {
+    if (!messageId) return false;
+
+    const target = document.getElementById(`mensaje-${messageId}`);
+    if (!target) return false;
+
+    target.scrollIntoView({
+      behavior: smooth ? "smooth" : "auto",
+      block: "center",
+    });
+    target.classList.add("highlight-pinned");
+    setTimeout(() => target.classList.remove("highlight-pinned"), 1600);
+    return true;
+  };
+
+  const handleScroll = () => {
+    const el = chatContainerRef.current;
+    if (
+      !el ||
+      !hasMoreMessages ||
+      isLoadingOlderMessages ||
+      loadingOlderRef.current ||
+      !onLoadOlderMessages
+    ) return;
+
+    if (el.scrollTop <= 120) {
+      olderLoadSnapshotRef.current = {
+        scrollHeight: el.scrollHeight,
+        scrollTop: el.scrollTop,
+      };
+      skipNextAutoScrollRef.current = true;
+      loadingOlderRef.current = true;
+
+      Promise.resolve(onLoadOlderMessages()).finally(() => {
+        loadingOlderRef.current = false;
+      });
+    }
+  };
+
+  // Mantiene la posición exacta cuando se agregan mensajes antiguos arriba.
+  useLayoutEffect(() => {
+    const snapshot = olderLoadSnapshotRef.current;
+    const el = chatContainerRef.current;
+    if (!snapshot || !el) return;
+
+    el.scrollTop = el.scrollHeight - snapshot.scrollHeight + snapshot.scrollTop;
+    olderLoadSnapshotRef.current = null;
+  }, [messages]);
+
   // Cuando cambian los mensajes
   useEffect(() => {
-    if (
-      messages.length > prevMessagesLength.current &&
-      isNearBottom()
-    ) {
+    if (skipNextAutoScrollRef.current) {
+      skipNextAutoScrollRef.current = false;
+      prevMessagesLength.current = messages.length;
+      return;
+    }
+
+    if (prevMessagesLength.current === 0 && messages.length > 0) {
+      scrollToBottom(false);
+    } else if (messages.length > prevMessagesLength.current && isNearBottom()) {
       scrollToBottom();
     }
+
     prevMessagesLength.current = messages.length;
   }, [messages]);
 
   // Cuando se cambia de chat (grupo o privado)
   useEffect(() => {
-    setTimeout(() => scrollToBottom(false), 150);
-    prevMessagesLength.current = messages.length;
-  }, [tipo]);
+    prevMessagesLength.current = 0;
+    olderLoadSnapshotRef.current = null;
+    skipNextAutoScrollRef.current = false;
+    loadingOlderRef.current = false;
+
+    if (!scrollTargetMessageId) {
+      setTimeout(() => scrollToBottom(false), 150);
+    }
+  }, [chatKey, tipo, scrollTargetMessageId]);
+
+  // Cuando venimos desde una respuesta privada a un mensaje de grupo,
+  // centramos el mensaje original en lugar de mandar el chat al final.
+  useEffect(() => {
+    if (!scrollTargetMessageId) return;
+
+    const timer = setTimeout(() => {
+      scrollToMessageInBody(scrollTargetMessageId, true);
+    }, 180);
+
+    return () => clearTimeout(timer);
+  }, [scrollTargetMessageId, scrollTargetToken, messages]);
 
   // Agrupar por fecha
   const groups = useMemo(() => {
@@ -221,8 +308,22 @@ const ChatBody = ({
   return (
     <div
       ref={chatContainerRef}
-      className="chat-body-inner py-6 py-lg-12 hide-scrollbar overflow-auto"
+      className="chat-body-inner h-100 py-6 py-lg-12 hide-scrollbar overflow-auto"
+      onScroll={handleScroll}
     >
+      <div className="chat-load-more">
+        {isLoadingOlderMessages ? (
+          <span className="chat-load-more-pill">Cargando mensajes anteriores...</span>
+        ) : hasMoreMessages ? (
+          <button
+            type="button"
+            className="chat-load-more-pill chat-load-more-button"
+            onClick={onLoadOlderMessages}
+          >
+            Cargar mensajes anteriores
+          </button>
+        ) : null}
+      </div>
       {groups.map(({ date, items }) => {
         const itemsAgrupados = agruparImagenesTipoWhatsApp(items) || [];
 
@@ -232,7 +333,7 @@ const ChatBody = ({
               <span className="date-chip">{formatChatDate(date)}</span>
             </div>
 
-            {itemsAgrupados.map((msg) => {
+            {itemsAgrupados.map((msg, index) => {
               const usuario = esGrupo
                 ? {
                     id: msg.usuario_id,
@@ -251,9 +352,26 @@ const ChatBody = ({
                     background: msg.emisor_background || "#6c757d",
                   };
 
+              const getSenderId = (item) => {
+                if (!item) return null;
+                return esGrupo ? item.usuario_id : item.usuario_envia_id;
+              };
+
+              const senderId = getSenderId(msg);
+              const previousSenderId = getSenderId(itemsAgrupados[index - 1]);
+              const nextSenderId = getSenderId(itemsAgrupados[index + 1]);
+              const agrupadoConAnterior = previousSenderId === senderId;
+              const agrupadoConSiguiente = nextSenderId === senderId;
+
               const enviadoPorMi = esGrupo
                 ? msg.usuario_id === user.id
                 : msg.usuario_envia_id === user.id;
+
+              // Solo mostramos el avatar en el último mensaje de una racha
+              // consecutiva del mismo usuario. La separación por fecha ya la
+              // hace el contenedor padre con date-group.
+              const mostrarAvatar = !agrupadoConSiguiente;
+              const mostrarNombre = esGrupo && !enviadoPorMi && !agrupadoConAnterior;
 
               // 🔹 ¿Es este mensaje un sticker y además favorito?
               let esStickerFavorito = false;
@@ -275,10 +393,19 @@ const ChatBody = ({
                   miUsuario={user}
                   reacciones={msg.reacciones || []}
                   esGrupo={esGrupo}
+                  mostrarAvatar={mostrarAvatar}
+                  mostrarNombre={mostrarNombre}
+                  agrupadoConAnterior={agrupadoConAnterior}
+                  agrupadoConSiguiente={agrupadoConSiguiente}
                   onVerPerfil={onVerPerfil}
                   onGuardarStickerFavorito={onGuardarStickerFavorito}
                   onEliminarStickerFavorito={onEliminarStickerFavorito}   
-                  esStickerFavorito={esStickerFavorito}                    
+                  esStickerFavorito={esStickerFavorito}
+                  mentionOptions={mentionOptions}
+                  onReply={onReply}
+                  onReplyPrivado={onReplyPrivado}
+                  onEnviarMensajePrivado={onEnviarMensajePrivado}
+                  onReplyPreviewClick={onReplyPreviewClick}
                 />
               );
             })}

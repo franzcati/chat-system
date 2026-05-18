@@ -7,6 +7,153 @@ function formatDateToMySQL(date) {
   return date.toISOString().slice(0, 19).replace("T", " ");
 }
 
+function getPaginationOptions(query) {
+  const paginated =
+    query.paginated === "1" ||
+    query.paginado === "1" ||
+    query.limit !== undefined ||
+    query.beforeId !== undefined;
+
+  const parsedLimit = Number.parseInt(query.limit, 10);
+  const limit = Number.isFinite(parsedLimit)
+    ? Math.min(Math.max(parsedLimit, 1), 80)
+    : 50;
+
+  const parsedBeforeId = Number.parseInt(query.beforeId, 10);
+  const beforeId =
+    Number.isFinite(parsedBeforeId) && parsedBeforeId > 0 ? parsedBeforeId : null;
+
+  return { paginated, limit, beforeId };
+}
+
+let replyColumnReadyPromise = null;
+
+async function ensureReplyColumn() {
+  if (!replyColumnReadyPromise) {
+    replyColumnReadyPromise = (async () => {
+      const [replyIdColumns] = await db.query("SHOW COLUMNS FROM mensajes LIKE 'reply_to_id'");
+      if (!replyIdColumns.length) {
+        await db.query("ALTER TABLE mensajes ADD COLUMN reply_to_id INT NULL AFTER lote_id");
+      }
+
+      const [replyTypeColumns] = await db.query("SHOW COLUMNS FROM mensajes LIKE 'reply_to_tipo'");
+      if (!replyTypeColumns.length) {
+        await db.query("ALTER TABLE mensajes ADD COLUMN reply_to_tipo VARCHAR(20) NULL AFTER reply_to_id");
+      }
+
+      const [replyGroupColumns] = await db.query("SHOW COLUMNS FROM mensajes LIKE 'reply_to_grupo_id'");
+      if (!replyGroupColumns.length) {
+        await db.query("ALTER TABLE mensajes ADD COLUMN reply_to_grupo_id INT NULL AFTER reply_to_tipo");
+      }
+    })().catch((err) => {
+      replyColumnReadyPromise = null;
+      throw err;
+    });
+  }
+
+  return replyColumnReadyPromise;
+}
+
+async function getReplyMessagesByIds(ids = []) {
+  const cleanIds = [...new Set(ids.map((id) => Number(id)).filter(Boolean))];
+  if (!cleanIds.length) return new Map();
+
+  const [rows] = await db.query(
+    `SELECT
+       qm.id,
+       qm.mensaje,
+       qm.eliminado,
+       qm.usuario_envia_id AS usuario_id,
+       COALESCE(qma_direct.archivo_url, qma_lote.archivo_url) AS archivo_url,
+       COALESCE(qma_direct.tipo_archivo, qma_lote.tipo_archivo) AS tipo_archivo,
+       COALESCE(qma_direct.nombre_archivo, qma_lote.nombre_archivo) AS nombre_archivo,
+       qu.nombre,
+       qu.apellido,
+       NULL AS source_group_id,
+       NULL AS source_group_name
+     FROM mensajes qm
+     JOIN usuario qu ON qu.id = qm.usuario_envia_id
+     LEFT JOIN mensajes_archivos qma_direct
+       ON qma_direct.sender_id = qm.usuario_envia_id
+      AND qma_direct.receiver_id = qm.usuario_recibe_id
+      AND qma_direct.archivo_url = qm.mensaje
+     LEFT JOIN (
+       SELECT lote_id, sender_id, receiver_id, MIN(id) AS first_file_id
+       FROM mensajes_archivos
+       WHERE lote_id IS NOT NULL
+       GROUP BY lote_id, sender_id, receiver_id
+     ) qma_idx
+       ON qma_idx.lote_id = qm.lote_id
+      AND qma_idx.sender_id = qm.usuario_envia_id
+      AND qma_idx.receiver_id = qm.usuario_recibe_id
+     LEFT JOIN mensajes_archivos qma_lote
+       ON qma_lote.id = qma_idx.first_file_id
+     WHERE qm.id IN (?)`,
+    [cleanIds]
+  );
+
+  return new Map(rows.map((row) => [Number(row.id), row]));
+}
+
+async function getReplyMessageById(id) {
+  const map = await getReplyMessagesByIds([id]);
+  return map.get(Number(id)) || null;
+}
+
+async function getGroupReplyMessagesByIds(ids = []) {
+  const cleanIds = [...new Set(ids.map((id) => Number(id)).filter(Boolean))];
+  if (!cleanIds.length) return new Map();
+
+  const [rows] = await db.query(
+    `SELECT
+       qmg.id,
+       qmg.mensaje,
+       qmg.eliminado,
+       qmg.usuario_id,
+       qmg.grupo_id AS source_group_id,
+       g.nombre AS source_group_name,
+       COALESCE(qga_direct.archivo_url, qga_lote.archivo_url) AS archivo_url,
+       COALESCE(qga_direct.tipo_archivo, qga_lote.tipo_archivo) AS tipo_archivo,
+       COALESCE(qga_direct.nombre_archivo, qga_lote.nombre_archivo) AS nombre_archivo,
+       u.nombre,
+       u.apellido
+     FROM mensajes_grupo qmg
+     JOIN usuario u ON u.id = qmg.usuario_id
+     LEFT JOIN grupos g ON g.id = qmg.grupo_id
+     LEFT JOIN mensajes_grupo_archivos qga_direct
+       ON qga_direct.grupo_id = qmg.grupo_id
+      AND qga_direct.usuario_id = qmg.usuario_id
+      AND qga_direct.archivo_url = qmg.mensaje
+     LEFT JOIN (
+       SELECT grupo_id, lote_id, MIN(id) AS media_message_id
+       FROM mensajes_grupo
+       WHERE lote_id IS NOT NULL AND mensaje LIKE '/uploads/%'
+       GROUP BY grupo_id, lote_id
+     ) qgm_idx
+       ON qgm_idx.grupo_id = qmg.grupo_id
+      AND qgm_idx.lote_id = qmg.lote_id
+     LEFT JOIN mensajes_grupo qgm_media
+       ON qgm_media.id = qgm_idx.media_message_id
+     LEFT JOIN mensajes_grupo_archivos qga_lote
+       ON qga_lote.grupo_id = qgm_media.grupo_id
+      AND qga_lote.usuario_id = qgm_media.usuario_id
+      AND qga_lote.archivo_url = qgm_media.mensaje
+     WHERE qmg.id IN (?)`,
+    [cleanIds]
+  );
+
+  return new Map(rows.map((row) => [Number(row.id), { ...row, reply_source: "grupo", reply_to_tipo: "grupo" }]));
+}
+
+async function getReplyMessageByContext(id, tipo = "privado") {
+  if (!id) return null;
+  if (tipo === "grupo") {
+    const map = await getGroupReplyMessagesByIds([id]);
+    return map.get(Number(id)) || null;
+  }
+  return getReplyMessageById(id);
+}
+
 // =======================
 // Subir archivo en chat individual
 // =======================
@@ -33,10 +180,28 @@ const upload = multer({ storage });
 
 router.get("/", async (req, res) => {
   try {
+    await ensureReplyColumn();
     const { usuario1, usuario2 } = req.query;
+    const { paginated, limit, beforeId } = getPaginationOptions(req.query);
 
     if (!usuario1 || !usuario2) {
       return res.status(400).json({ error: "Faltan parámetros usuario1 y usuario2" });
+    }
+
+    const params = [usuario1, usuario2, usuario2, usuario1];
+    let beforeClause = "";
+
+    if (paginated && beforeId) {
+      beforeClause = "AND m.id < ?";
+      params.push(beforeId);
+    }
+
+    const limitClause = paginated
+      ? "ORDER BY m.id DESC LIMIT ?"
+      : "ORDER BY m.fecha_envio ASC, m.id ASC";
+
+    if (paginated) {
+      params.push(limit + 1);
     }
 
     const sqlMensajes = `
@@ -46,11 +211,18 @@ router.get("/", async (req, res) => {
         m.usuario_recibe_id,
         m.mensaje,
         m.lote_id,
+        m.reply_to_id,
+        m.reply_to_tipo,
+        m.reply_to_grupo_id,
         m.fecha_envio,
         m.eliminado,
         m.editado,
         m.visto,
         m.fijado,
+        ma.archivo_url,
+        ma.tipo_archivo,
+        ma.nombre_archivo,
+        ma.tamano,
         ue.nombre AS emisor_nombre,
         ue.apellido AS emisor_apellido,
         ue.url_imagen AS emisor_avatar,
@@ -64,12 +236,21 @@ router.get("/", async (req, res) => {
       FROM mensajes m
       JOIN usuario ue ON ue.id = m.usuario_envia_id
       JOIN usuario ur ON ur.id = m.usuario_recibe_id
-      WHERE (m.usuario_envia_id = ? AND m.usuario_recibe_id = ?)
-         OR (m.usuario_envia_id = ? AND m.usuario_recibe_id = ?)
-      ORDER BY m.fecha_envio ASC
+      LEFT JOIN mensajes_archivos ma
+        ON ma.sender_id = m.usuario_envia_id
+       AND ma.receiver_id = m.usuario_recibe_id
+       AND ma.archivo_url = m.mensaje
+      WHERE (
+          (m.usuario_envia_id = ? AND m.usuario_recibe_id = ?)
+       OR (m.usuario_envia_id = ? AND m.usuario_recibe_id = ?)
+      )
+      ${beforeClause}
+      ${limitClause}
     `;
 
-    const [mensajes] = await db.query(sqlMensajes, [usuario1, usuario2, usuario2, usuario1]);
+    const [rows] = await db.query(sqlMensajes, params);
+    const hasMore = paginated && rows.length > limit;
+    const mensajes = paginated ? rows.slice(0, limit).reverse() : rows;
 
     const ids = mensajes.map((m) => m.id);
     let reacciones = [];
@@ -86,11 +267,27 @@ router.get("/", async (req, res) => {
       reacciones = rowsReacciones;
     }
 
+    const privateReplyMap = await getReplyMessagesByIds(
+      mensajes
+        .filter((m) => !m.reply_to_tipo || m.reply_to_tipo === "privado")
+        .map((m) => m.reply_to_id)
+    );
+    const groupReplyMap = await getGroupReplyMessagesByIds(
+      mensajes
+        .filter((m) => m.reply_to_tipo === "grupo")
+        .map((m) => m.reply_to_id)
+    );
+
     const mensajesConReacciones = mensajes.map((m) => ({
       ...m,
       fijado: !!m.fijado,
       fecha_envio: m.fecha_envio
         ? new Date(m.fecha_envio.replace(" ", "T") + "Z").toISOString()
+        : null,
+      reply_to: m.reply_to_id
+        ? (m.reply_to_tipo === "grupo"
+            ? groupReplyMap.get(Number(m.reply_to_id))
+            : privateReplyMap.get(Number(m.reply_to_id))) || null
         : null,
       reacciones: reacciones
         .filter((r) => r.mensaje_id === m.id)
@@ -108,6 +305,14 @@ router.get("/", async (req, res) => {
         })),
     }));
 
+    if (paginated) {
+      return res.json({
+        mensajes: mensajesConReacciones,
+        hasMore,
+        nextBeforeId: mensajesConReacciones.length ? mensajesConReacciones[0].id : null,
+      });
+    }
+
     return res.json(mensajesConReacciones);
   } catch (err) {
     console.error("❌ Error al obtener mensajes:", err);
@@ -123,7 +328,10 @@ router.get("/", async (req, res) => {
 router.post("/", async (req, res) => {
   const senderId = Number(req.body.senderId);
   const receiverId = Number(req.body.receiverId);
-  const { message, loteId } = req.body;
+  const { message, loteId, replyToId, replyToType, replyToGrupoId } = req.body;
+  const replyToIdNum = Number(replyToId) || null;
+  const replyToTipo = replyToIdNum && replyToType === "grupo" ? "grupo" : (replyToIdNum ? "privado" : null);
+  const replyToGrupoIdNum = replyToTipo === "grupo" ? Number(replyToGrupoId) || null : null;
 
   logDev("📤 [POST] Datos recibidos:", req.body);
 
@@ -142,11 +350,13 @@ router.post("/", async (req, res) => {
   const { enviarEventoAlUsuario } = req.app.get("socketUtils");
 
   try {
+    await ensureReplyColumn();
+
     const [result] = await db.query(
       `INSERT INTO mensajes 
-        (usuario_envia_id, usuario_recibe_id, mensaje, lote_id, fecha_envio, fijado)
-      VALUES (?, ?, ?, ?, ?, 0)`,
-      [senderId, receiverId, message, loteId || null, fechaEnvioMySQL]
+        (usuario_envia_id, usuario_recibe_id, mensaje, lote_id, reply_to_id, reply_to_tipo, reply_to_grupo_id, fecha_envio, fijado)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0)`,
+      [senderId, receiverId, message, loteId || null, replyToIdNum, replyToTipo, replyToGrupoIdNum, fechaEnvioMySQL]
     );
 
     const [senderInfo] = await db.query(
@@ -167,6 +377,10 @@ router.post("/", async (req, res) => {
       usuario_recibe_id: receiverId,
       mensaje: message,
       lote_id: loteId || null,
+      reply_to_id: replyToIdNum,
+      reply_to_tipo: replyToTipo,
+      reply_to_grupo_id: replyToGrupoIdNum,
+      reply_to: replyToIdNum ? await getReplyMessageByContext(replyToIdNum, replyToTipo) : null,
       fecha_envio: fechaEnvioISO,
       fecha_envio_db: fechaEnvioMySQL,
       editado: 0,
@@ -515,7 +729,9 @@ router.post("/fijar", async (req, res) => {
       await db.query("UPDATE mensajes SET fijado = 0 WHERE id = ?", [mensajeId]);
       accion = "desfijado";
     } else {
-      const fechaUTC = new Date();
+      await ensureReplyColumn();
+
+    const fechaUTC = new Date();
       const fechaExp = new Date(fechaUTC);
 
       switch (duracion) {
@@ -604,6 +820,10 @@ router.get("/fijados", async (req, res) => {
           mf.fecha_expiracion,
           m.id AS mensaje_id, 
           m.mensaje, 
+          COALESCE(ma_direct.archivo_url, ma_lote.archivo_url) AS archivo_url,
+          COALESCE(ma_direct.tipo_archivo, ma_lote.tipo_archivo) AS tipo_archivo,
+          COALESCE(ma_direct.nombre_archivo, ma_lote.nombre_archivo) AS nombre_archivo,
+          COALESCE(ma_direct.tamano, ma_lote.tamano) AS tamano,
           m.usuario_envia_id, 
           m.usuario_recibe_id,
           m.fijado,
@@ -614,6 +834,21 @@ router.get("/fijados", async (req, res) => {
           u.background
        FROM mensajes_fijados mf
        JOIN mensajes m ON m.id = mf.mensaje_id
+       LEFT JOIN mensajes_archivos ma_direct
+         ON ma_direct.sender_id = m.usuario_envia_id
+        AND ma_direct.receiver_id = m.usuario_recibe_id
+        AND ma_direct.archivo_url = m.mensaje
+       LEFT JOIN (
+         SELECT lote_id, sender_id, receiver_id, MIN(id) AS first_file_id
+         FROM mensajes_archivos
+         WHERE lote_id IS NOT NULL
+         GROUP BY lote_id, sender_id, receiver_id
+       ) ma_idx
+         ON ma_idx.lote_id = m.lote_id
+        AND ma_idx.sender_id = m.usuario_envia_id
+        AND ma_idx.receiver_id = m.usuario_recibe_id
+       LEFT JOIN mensajes_archivos ma_lote
+         ON ma_lote.id = ma_idx.first_file_id
        JOIN usuario u ON u.id = mf.usuario_id
        WHERE ((m.usuario_envia_id = ? AND m.usuario_recibe_id = ?)
           OR (m.usuario_envia_id = ? AND m.usuario_recibe_id = ?))
@@ -644,6 +879,10 @@ router.post("/archivo", upload.single("archivo"), async (req, res) => {
     const sender_id = Number(req.body.sender_id || req.query.sender_id);
     const receiver_id = Number(req.body.receiver_id || req.query.receiver_id);
     const loteId = req.body.loteId || req.query.loteId || null;
+    const replyToIdNum = Number(req.body.replyToId || req.query.replyToId) || null;
+    const replyToType = req.body.replyToType || req.query.replyToType;
+    const replyToTipo = replyToIdNum && replyToType === "grupo" ? "grupo" : (replyToIdNum ? "privado" : null);
+    const replyToGrupoIdNum = replyToTipo === "grupo" ? Number(req.body.replyToGrupoId || req.query.replyToGrupoId) || null : null;
 
     if (!sender_id || !receiver_id || isNaN(sender_id) || isNaN(receiver_id)) {
       console.error("❌ sender_id o receiver_id inválido:", sender_id, receiver_id);
@@ -662,6 +901,8 @@ router.post("/archivo", upload.single("archivo"), async (req, res) => {
 
     const urlArchivo = `/uploads/${relativePath.replace(/\\/g, "/")}`;
 
+    await ensureReplyColumn();
+
     const fechaUTC = new Date();
     const fechaEnvioMySQL = formatDateToMySQL(fechaUTC);
     const fechaEnvioISO = fechaUTC.toISOString();
@@ -675,9 +916,9 @@ router.post("/archivo", upload.single("archivo"), async (req, res) => {
 
     const [resultadoMensaje] = await db.query(
       `INSERT INTO mensajes 
-        (usuario_envia_id, usuario_recibe_id, mensaje, lote_id, fecha_envio, fijado)
-       VALUES (?, ?, ?, ?, ?, 0)`,
-      [sender_id, receiver_id, urlArchivo, loteId || null, fechaEnvioMySQL]
+        (usuario_envia_id, usuario_recibe_id, mensaje, lote_id, reply_to_id, reply_to_tipo, reply_to_grupo_id, fecha_envio, fijado)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0)`,
+      [sender_id, receiver_id, urlArchivo, loteId || null, replyToIdNum, replyToTipo, replyToGrupoIdNum, fechaEnvioMySQL]
     );
 
     const [[emisor]] = await db.query(
@@ -696,6 +937,10 @@ router.post("/archivo", upload.single("archivo"), async (req, res) => {
       usuario_recibe_id: receiver_id,
       mensaje: urlArchivo,
       lote_id: loteId || null,
+      reply_to_id: replyToIdNum,
+      reply_to_tipo: replyToTipo,
+      reply_to_grupo_id: replyToGrupoIdNum,
+      reply_to: replyToIdNum ? await getReplyMessageByContext(replyToIdNum, replyToTipo) : null,
       fecha_envio: fechaEnvioISO,
       editado: 0,
       eliminado: 0,

@@ -22,6 +22,55 @@ const storage = multer.diskStorage({
 
 const upload = multer({ storage });
 
+const getBaseUrl = () => process.env.BASE_URL || "https://chatvista.click";
+
+const buildAbsoluteUrl = (url) => {
+  if (!url) return null;
+  if (/^https?:\/\//i.test(url)) return url;
+  return `${getBaseUrl()}${url}`;
+};
+
+const obtenerRolEnGrupo = async (grupoId, usuarioId) => {
+  const [rows] = await db.query(
+    "SELECT rol FROM usuario_grupo WHERE grupo_id = ? AND usuario_id = ? LIMIT 1",
+    [grupoId, usuarioId]
+  );
+  return rows[0]?.rol || null;
+};
+
+const obtenerMiembrosGrupo = async (grupoId) => {
+  const [miembros] = await db.query(`
+    SELECT 
+      u.id,
+      u.nombre,
+      u.apellido,
+      u.correo,
+      u.url_imagen,
+      u.background,
+      ug.rol
+    FROM usuario_grupo ug
+    JOIN usuario u ON u.id = ug.usuario_id
+    WHERE ug.grupo_id = ?
+    ORDER BY FIELD(ug.rol, 'propietario', 'admin', 'miembro'), u.nombre, u.apellido
+  `, [grupoId]);
+
+  return miembros.map((m) => ({
+    ...m,
+    url_imagen: buildAbsoluteUrl(m.url_imagen),
+  }));
+};
+
+const emitirMiembrosActualizados = async (req, grupoId) => {
+  const miembros = await obtenerMiembrosGrupo(grupoId);
+  const io = req.app.get("io");
+  io.to(`grupo_${grupoId}`).emit("miembrosActualizados", {
+    id: Number(grupoId),
+    miembros,
+  });
+  return miembros;
+};
+
+
 // =======================
 // Obtener usuarios por proyecto
 // =======================
@@ -272,6 +321,10 @@ router.get("/usuario/:userId", async (req, res) => {
         -- Último mensaje
         m.id AS ultimo_mensaje_id,
         m.mensaje AS ultimo_mensaje,
+        COALESCE(mga_ult_direct.archivo_url, mga_ult_lote.archivo_url) AS ultimo_archivo_url,
+        COALESCE(mga_ult_direct.tipo_archivo, mga_ult_lote.tipo_archivo) AS ultimo_tipo_archivo,
+        COALESCE(mga_ult_direct.nombre_archivo, mga_ult_lote.nombre_archivo) AS ultimo_nombre_archivo,
+        COALESCE(mga_ult_direct.tamano, mga_ult_lote.tamano) AS ultimo_tamano,
         m.eliminado AS eliminado,
         m.editado AS editado,
         m.fecha_envio,
@@ -401,6 +454,24 @@ router.get("/usuario/:userId", async (req, res) => {
           GROUP BY grupo_id
         ) t ON t.last_id = mg.id
       ) m ON g.id = m.grupo_id
+      LEFT JOIN mensajes_grupo_archivos mga_ult_direct
+        ON mga_ult_direct.grupo_id = m.grupo_id
+       AND mga_ult_direct.usuario_id = m.usuario_id
+       AND mga_ult_direct.archivo_url = m.mensaje
+      LEFT JOIN (
+        SELECT grupo_id, lote_id, MIN(id) AS media_message_id
+        FROM mensajes_grupo
+        WHERE lote_id IS NOT NULL AND mensaje LIKE '/uploads/%'
+        GROUP BY grupo_id, lote_id
+      ) mg_ult_media_idx
+        ON mg_ult_media_idx.grupo_id = m.grupo_id
+       AND mg_ult_media_idx.lote_id = m.lote_id
+      LEFT JOIN mensajes_grupo mg_ult_media
+        ON mg_ult_media.id = mg_ult_media_idx.media_message_id
+      LEFT JOIN mensajes_grupo_archivos mga_ult_lote
+        ON mga_ult_lote.grupo_id = mg_ult_media.grupo_id
+       AND mga_ult_lote.usuario_id = mg_ult_media.usuario_id
+       AND mga_ult_lote.archivo_url = mg_ult_media.mensaje
       LEFT JOIN usuario u ON u.id = m.usuario_id
       LEFT JOIN chats_favoritos cf 
         ON cf.chat_id = g.id AND cf.usuario_id = ? AND cf.tipo = 'grupo'
@@ -631,6 +702,238 @@ router.post("/:id/actualizar-miembros", async (req, res) => {
   } catch (err) {
     console.error("❌ Error actualizando miembros:", err);
     res.status(500).json({ error: "Error en el servidor" });
+  }
+});
+
+
+// 🖼️ Cambiar imagen del grupo (propietario o admin)
+router.put("/:id/imagen", upload.single("imagen"), async (req, res) => {
+  const { id } = req.params;
+  const { usuarioId } = req.body;
+  const file = req.file;
+
+  if (!usuarioId) {
+    return res.status(400).json({ error: "Falta usuarioId" });
+  }
+
+  if (!file) {
+    return res.status(400).json({ error: "Falta la imagen" });
+  }
+
+  try {
+    const rol = await obtenerRolEnGrupo(id, usuarioId);
+    if (!["propietario", "admin"].includes(rol)) {
+      return res.status(403).json({ error: "No tienes permisos para cambiar la imagen del grupo" });
+    }
+
+    const imagenUrl = `/uploads/grupos/${file.filename}`;
+    await db.query("UPDATE grupos SET imagen_url = ? WHERE id = ?", [imagenUrl, id]);
+
+    const imagenAbsoluta = buildAbsoluteUrl(imagenUrl);
+    const io = req.app.get("io");
+    io.to(`grupo_${id}`).emit("grupoActualizado", {
+      id: Number(id),
+      imagen_url: imagenAbsoluta,
+    });
+
+    res.json({ success: true, imagen_url: imagenAbsoluta });
+  } catch (err) {
+    console.error("❌ Error al cambiar imagen del grupo:", err);
+    res.status(500).json({ error: "Error al cambiar imagen del grupo" });
+  }
+});
+
+// 🗑️ Quitar imagen del grupo (propietario o admin)
+router.delete("/:id/imagen", async (req, res) => {
+  const { id } = req.params;
+  const { usuarioId } = req.body;
+
+  if (!usuarioId) {
+    return res.status(400).json({ error: "Falta usuarioId" });
+  }
+
+  try {
+    const rol = await obtenerRolEnGrupo(id, usuarioId);
+    if (!["propietario", "admin"].includes(rol)) {
+      return res.status(403).json({ error: "No tienes permisos para quitar la foto del grupo" });
+    }
+
+    const [rows] = await db.query("SELECT imagen_url FROM grupos WHERE id = ? LIMIT 1", [id]);
+    if (!rows.length) {
+      return res.status(404).json({ error: "Grupo no encontrado" });
+    }
+
+    const currentImage = rows[0].imagen_url;
+    await db.query("UPDATE grupos SET imagen_url = NULL WHERE id = ?", [id]);
+
+    if (currentImage && !/^https?:\/\//i.test(currentImage)) {
+      const localPath = path.join(__dirname, "..", currentImage.replace(/^\/+/, ""));
+      fs.unlink(localPath, () => {});
+    }
+
+    const io = req.app.get("io");
+    io.to(`grupo_${id}`).emit("grupoActualizado", {
+      id: Number(id),
+      imagen_url: null,
+    });
+
+    res.json({ success: true, imagen_url: null });
+  } catch (err) {
+    console.error("❌ Error al quitar imagen del grupo:", err);
+    res.status(500).json({ error: "Error al quitar imagen del grupo" });
+  }
+});
+
+// 👑 Designar rol de miembro (propietario o admin)
+router.put("/:id/miembros/:miembroId/rol", async (req, res) => {
+  const { id, miembroId } = req.params;
+  const { usuarioId, rol } = req.body;
+
+  if (!usuarioId || !rol) {
+    return res.status(400).json({ error: "Faltan datos" });
+  }
+
+  if (!["admin", "miembro"].includes(rol)) {
+    return res.status(400).json({ error: "Rol inválido" });
+  }
+
+  try {
+    const actorRol = await obtenerRolEnGrupo(id, usuarioId);
+    if (!["propietario", "admin"].includes(actorRol)) {
+      return res.status(403).json({ error: "No tienes permisos para administrar miembros" });
+    }
+
+    const miembroRol = await obtenerRolEnGrupo(id, miembroId);
+    if (!miembroRol) {
+      return res.status(404).json({ error: "El usuario no pertenece al grupo" });
+    }
+
+    if (miembroRol === "propietario") {
+      return res.status(403).json({ error: "No puedes cambiar el rol del propietario" });
+    }
+
+    if (rol === "miembro" && actorRol !== "propietario") {
+      return res.status(403).json({ error: "Solo el propietario puede descartar admins" });
+    }
+
+    if (actorRol === "admin" && miembroRol === "admin") {
+      return res.status(403).json({ error: "Un admin no puede administrar a otro admin" });
+    }
+
+    await db.query(
+      "UPDATE usuario_grupo SET rol = ? WHERE grupo_id = ? AND usuario_id = ?",
+      [rol, id, miembroId]
+    );
+
+    const miembros = await emitirMiembrosActualizados(req, id);
+    res.json({ success: true, miembros });
+  } catch (err) {
+    console.error("❌ Error al actualizar rol del miembro:", err);
+    res.status(500).json({ error: "Error al actualizar rol del miembro" });
+  }
+});
+
+// 👑 Ceder propiedad del grupo (solo propietario)
+router.put("/:id/propietario", async (req, res) => {
+  const { id } = req.params;
+  const { usuarioId, nuevoPropietarioId } = req.body;
+
+  if (!usuarioId || !nuevoPropietarioId) {
+    return res.status(400).json({ error: "Faltan datos" });
+  }
+
+  if (Number(usuarioId) === Number(nuevoPropietarioId)) {
+    return res.status(400).json({ error: "Ya eres propietario del grupo" });
+  }
+
+  const conn = await db.getConnection();
+  await conn.beginTransaction();
+
+  try {
+    const actorRol = await obtenerRolEnGrupo(id, usuarioId);
+    if (actorRol !== "propietario") {
+      await conn.rollback();
+      return res.status(403).json({ error: "Solo el propietario puede ceder la propiedad" });
+    }
+
+    const nuevoRol = await obtenerRolEnGrupo(id, nuevoPropietarioId);
+    if (!nuevoRol) {
+      await conn.rollback();
+      return res.status(404).json({ error: "El usuario no pertenece al grupo" });
+    }
+
+    await conn.query("UPDATE grupos SET propietario_id = ? WHERE id = ?", [nuevoPropietarioId, id]);
+    await conn.query(
+      "UPDATE usuario_grupo SET rol = 'admin' WHERE grupo_id = ? AND usuario_id = ?",
+      [id, usuarioId]
+    );
+    await conn.query(
+      "UPDATE usuario_grupo SET rol = 'propietario' WHERE grupo_id = ? AND usuario_id = ?",
+      [id, nuevoPropietarioId]
+    );
+
+    await conn.commit();
+
+    const miembros = await emitirMiembrosActualizados(req, id);
+    const io = req.app.get("io");
+    io.to(`grupo_${id}`).emit("grupoActualizado", {
+      id: Number(id),
+      propietario_id: Number(nuevoPropietarioId),
+      miembros,
+    });
+
+    res.json({ success: true, propietario_id: Number(nuevoPropietarioId), miembros });
+  } catch (err) {
+    await conn.rollback();
+    console.error("❌ Error al ceder propiedad del grupo:", err);
+    res.status(500).json({ error: "Error al ceder propiedad del grupo" });
+  } finally {
+    conn.release();
+  }
+});
+
+// 🚪 Quitar miembro del grupo (propietario o admin)
+router.post("/:id/miembros/:miembroId/quitar", async (req, res) => {
+  const { id, miembroId } = req.params;
+  const { usuarioId } = req.body;
+
+  if (!usuarioId) {
+    return res.status(400).json({ error: "Falta usuarioId" });
+  }
+
+  if (Number(usuarioId) === Number(miembroId)) {
+    return res.status(400).json({ error: "Usa la opción salir del grupo para quitarte a ti mismo" });
+  }
+
+  try {
+    const actorRol = await obtenerRolEnGrupo(id, usuarioId);
+    if (!["propietario", "admin"].includes(actorRol)) {
+      return res.status(403).json({ error: "No tienes permisos para quitar miembros" });
+    }
+
+    const miembroRol = await obtenerRolEnGrupo(id, miembroId);
+    if (!miembroRol) {
+      return res.status(404).json({ error: "El usuario no pertenece al grupo" });
+    }
+
+    if (miembroRol === "propietario") {
+      return res.status(403).json({ error: "No puedes quitar al propietario" });
+    }
+
+    if (actorRol === "admin" && miembroRol === "admin") {
+      return res.status(403).json({ error: "Un admin no puede quitar a otro admin" });
+    }
+
+    await db.query("DELETE FROM usuario_grupo WHERE grupo_id = ? AND usuario_id = ?", [id, miembroId]);
+
+    const io = req.app.get("io");
+    io.to(`usuario_${miembroId}`).emit("grupoEliminado", { id: Number(id) });
+
+    const miembros = await emitirMiembrosActualizados(req, id);
+    res.json({ success: true, miembros });
+  } catch (err) {
+    console.error("❌ Error al quitar miembro del grupo:", err);
+    res.status(500).json({ error: "Error al quitar miembro del grupo" });
   }
 });
 

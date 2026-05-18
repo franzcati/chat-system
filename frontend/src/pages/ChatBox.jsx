@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import axios from "axios";
 import ChatBody from "../components/ChatBody";
 import MiembrosGrupos from "../components/MiembrosGrupos";
@@ -10,15 +10,103 @@ import socket from "../socket";
 import * as bootstrap from "bootstrap";
 import { logDev } from "../utils/logger";
 import { getAvatarUrl } from "../utils/url";
+import { getMessagePreview, getReplyAuthorName } from "../utils/messagePreview";
 import ChatInput from "../components/ChatInput";
+import GroupAvatar from "../components/GroupAvatar";
 import data from "@emoji-mart/data";
 import Picker from "@emoji-mart/react";
 import "../css/emoji.css";
 
 
+const MESSAGE_PAGE_SIZE = 50;
+const GROUP_CONTEXT_PAGE_SIZE = 80;
+
+const getChatKey = (chat) => {
+  if (!chat) return "sin-chat";
+  return chat.tipo === "grupo"
+    ? `grupo-${chat.grupo_id}`
+    : `privado-${chat.usuario_id}`;
+};
+
+const extractMessagesPayload = (data) => {
+  const mensajes = Array.isArray(data)
+    ? data
+    : Array.isArray(data?.mensajes)
+      ? data.mensajes
+      : [];
+
+  const mensajesFijados = Array.isArray(data?.mensajes_fijados)
+    ? data.mensajes_fijados
+    : [];
+
+  return {
+    mensajes,
+    mensajesFijados,
+    hasMore: Boolean(data?.hasMore),
+    nextBeforeId: data?.nextBeforeId ?? (mensajes.length ? mensajes[0].id : null),
+  };
+};
+
+const getMessageSortTime = (message) => {
+  const time = new Date(message?.fecha_envio || 0).getTime();
+  return Number.isFinite(time) ? time : 0;
+};
+
+const sortAndDedupeMessages = (items) => {
+  const map = new Map();
+
+  items.forEach((message) => {
+    if (!message) return;
+    const key = String(message.id ?? `${message.fecha_envio}-${message.mensaje}`);
+    const previous = map.get(key);
+
+    map.set(key, {
+      ...(previous || {}),
+      ...message,
+      reacciones: message.reacciones || previous?.reacciones || [],
+    });
+  });
+
+  return Array.from(map.values()).sort((a, b) => {
+    const byDate = getMessageSortTime(a) - getMessageSortTime(b);
+    if (byDate !== 0) return byDate;
+
+    const aId = Number(a.id);
+    const bId = Number(b.id);
+    if (Number.isFinite(aId) && Number.isFinite(bId)) return aId - bId;
+
+    return String(a.id || "").localeCompare(String(b.id || ""));
+  });
+};
+
+const applyPinnedToMessages = (mensajes, mensajesFijados) => {
+  const pinnedMap = new Map(
+    (mensajesFijados || [])
+      .map((message) => [String(message.mensaje_id || message.id), message])
+      .filter(([id]) => id && id !== "undefined")
+  );
+
+  return mensajes.map((message) => {
+    const pinned = pinnedMap.get(String(message.id));
+    return {
+      ...message,
+      fijado: pinned ? 1 : message.fijado ? 1 : 0,
+      fecha_fijado: pinned?.fecha_fijado || message.fecha_fijado || null,
+    };
+  });
+};
+
+
 const ChatBox = ({ chat, user, setChat, onVerPerfil }) => {
 
   const [messages, setMessages] = useState([]);
+  const [hasMoreMessages, setHasMoreMessages] = useState(false);
+  const [nextBeforeId, setNextBeforeId] = useState(null);
+  const [isLoadingMessages, setIsLoadingMessages] = useState(false);
+  const [isLoadingOlderMessages, setIsLoadingOlderMessages] = useState(false);
+  const [pinnedMessages, setPinnedMessages] = useState([]);
+  const [replyingTo, setReplyingTo] = useState(null);
+  const [replyJumpTarget, setReplyJumpTarget] = useState(null);
 
     // 👇 NUEVO
   const [pendingImages, setPendingImages] = useState([]); // {id, file, preview}
@@ -29,6 +117,8 @@ const ChatBox = ({ chat, user, setChat, onVerPerfil }) => {
   const [offcanvasGrupo, setOffcanvasGrupo] = useState(null);
   const [mostrarInfoGrupo, setMostrarInfoGrupo] = useState(false);
   const [mostrarVerArchivos, setMostrarVerArchivos] = useState(false);
+  const [mostrarMenuLlamada, setMostrarMenuLlamada] = useState(false);
+  const [searchRequestToken, setSearchRequestToken] = useState(null);
   // 👇 referencia al último mensaje
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null); // ref para el ChatInput optimizado
@@ -39,6 +129,7 @@ const ChatBox = ({ chat, user, setChat, onVerPerfil }) => {
   const gifBtnRef = useRef(null); // ref para el botón
   const stickerRef = useRef(null);   // ref para el contenedor del picker
   const stickerBtnRef = useRef(null); // ref para el botón
+  const callMenuRef = useRef(null);
   const [showGifPicker, setShowGifPicker] = useState(false);
   const [gifSearch, setGifSearch] = useState(""); // texto a buscar
   const [gifResults, setGifResults] = useState([]); // resultados de la API
@@ -59,6 +150,55 @@ const ChatBox = ({ chat, user, setChat, onVerPerfil }) => {
 
   const listaStickers =
   stickerTab === "favoritos" ? stickersFavoritos : stickersTodos;
+
+  const mentionOptions = useMemo(() => {
+    if (!chat) return [];
+
+    const normalizarNombre = (value) => String(value || "").trim();
+
+    if (chat.tipo === "grupo") {
+      const miembros = Array.isArray(chat.miembros) ? chat.miembros : [];
+      const usuarios = miembros
+        .filter((m) => Number(m.id) !== Number(user?.id))
+        .map((m) => {
+          const nombreCompleto = `${normalizarNombre(m.nombre)} ${normalizarNombre(m.apellido)}`.trim();
+
+          return {
+            id: m.id,
+            type: "user",
+            label: nombreCompleto || m.correo || `usuario${m.id}`,
+            subtitle: m.correo || "Miembro del grupo",
+            correo: m.correo || "",
+            background: m.background || "#6c757d",
+            url_imagen: m.url_imagen || null,
+          };
+        });
+
+      return [
+        {
+          id: "todos",
+          type: "all",
+          label: "todos",
+          subtitle: "Mencionar a todos los miembros",
+          background: "#2787F5",
+        },
+        ...usuarios,
+      ];
+    }
+
+    return [
+      {
+        id: chat.usuario_id,
+        type: "user",
+        label: chat.usuario_nombre || chat.usuario_correo || "usuario",
+        subtitle: chat.usuario_correo || "Usuario del chat",
+        correo: chat.usuario_correo || "",
+        background: chat.background || "#6c757d",
+        url_imagen: chat.url_imagen || null,
+      },
+    ].filter((m) => m.id);
+  }, [chat, user?.id]);
+
 
   const crearLoteId = () =>
   `lote-${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -124,107 +264,191 @@ const ChatBox = ({ chat, user, setChat, onVerPerfil }) => {
       }
 
       // Primer vez que lo vemos ⇒ lo añadimos
-      return [
+      return sortAndDedupeMessages([
         ...prev,
         {
           ...mensajeTransformado,
           reacciones: mensajeTransformado.reacciones || [],
         },
-      ];
+      ]);
     });
   };
 
-  // 👇 cada vez que cambien los mensajes, hacemos scroll al final
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+  // El scroll principal lo controla ChatBody. Esto evita que al cargar
+  // mensajes antiguos el chat salte otra vez al final.
 
-  // 🔹 Cargar historial y mensajes fijados cuando cambia el chat
+  // 🔹 Cargar sólo la última página del historial cuando cambia el chat.
+  // Así el chat entra rápido, como WhatsApp, aunque la conversación sea larga.
   useEffect(() => {
-    if (!chat || !user) return;
+    if (!chat || !user?.id) return;
+
+    setReplyingTo(chat.__privateReplyDraft || null);
+    if (chat.__privateReplyDraft) {
+      setTimeout(() => inputRef.current?.focus?.(), 0);
+    }
+    let cancelado = false;
+    const chatKey = getChatKey(chat);
 
     const cargarMensajes = async () => {
+      setMessages([]);
+      setPinnedMessages([]);
+      setHasMoreMessages(false);
+      setNextBeforeId(null);
+      setIsLoadingMessages(true);
+
       try {
-        let resMensajes;
-
         if (chat.tipo === "grupo") {
-          // ✅ Un solo endpoint ahora devuelve ambos: mensajes y fijados
-          resMensajes = await axios.get(`/api/mensajes/grupo/${chat.grupo_id}`);
-        } else {
-          // 🔹 Chats privados (mantiene dos endpoints)
-          const [resPrivados, resFijadosPrivados] = await Promise.all([
-            axios.get("/api/mensajes", {
-              params: { usuario1: user.id, usuario2: chat.usuario_id },
-            }),
-            axios.get("/api/mensajes/fijados", {
-              params: { usuario1: user.id, usuario2: chat.usuario_id },
-            }),
-          ]);
+          const jumpMessageId = chat.__jumpToMessageId || null;
+          const endpoint = jumpMessageId
+            ? `/api/mensajes/grupo/${chat.grupo_id}/contexto/${jumpMessageId}`
+            : `/api/mensajes/grupo/${chat.grupo_id}`;
 
-          // Combinar igual que en grupo
-          const nuevosMensajes = Array.isArray(resPrivados.data)
-            ? resPrivados.data
-            : Array.isArray(resPrivados.data.mensajes)
-              ? resPrivados.data.mensajes
-              : [];
+          const resMensajes = await axios.get(endpoint, {
+            params: jumpMessageId
+              ? { limit: GROUP_CONTEXT_PAGE_SIZE }
+              : {
+                  paginated: 1,
+                  limit: MESSAGE_PAGE_SIZE,
+                },
+          });
 
-          const mensajesFijados = Array.isArray(resFijadosPrivados.data)
-            ? resFijadosPrivados.data
-            : Array.isArray(resFijadosPrivados.data.mensajes_fijados)
-              ? resFijadosPrivados.data.mensajes_fijados
-              : [];
+          if (cancelado || chatKey !== getChatKey(chat)) return;
 
-          combinarMensajes(nuevosMensajes, mensajesFijados);
+          const {
+            mensajes,
+            mensajesFijados,
+            hasMore,
+            nextBeforeId: nextId,
+          } = extractMessagesPayload(resMensajes.data);
+
+          setPinnedMessages(mensajesFijados);
+          setMessages(sortAndDedupeMessages(applyPinnedToMessages(mensajes, mensajesFijados)));
+          setHasMoreMessages(hasMore);
+          setNextBeforeId(nextId);
+
+          if (jumpMessageId) {
+            setReplyJumpTarget({
+              type: "grupo",
+              grupoId: Number(chat.grupo_id),
+              messageId: Number(jumpMessageId),
+              token: chat.__jumpToken || Date.now(),
+            });
+          } else {
+            setReplyJumpTarget(null);
+          }
+
           return;
         }
 
-        // 📦 Para grupos
-        const nuevosMensajes = Array.isArray(resMensajes.data)
-          ? resMensajes.data
-          : Array.isArray(resMensajes.data.mensajes)
-            ? resMensajes.data.mensajes
+        const [resPrivados, resFijadosPrivados] = await Promise.all([
+          axios.get("/api/mensajes", {
+            params: {
+              usuario1: user.id,
+              usuario2: chat.usuario_id,
+              paginated: 1,
+              limit: MESSAGE_PAGE_SIZE,
+            },
+          }),
+          axios.get("/api/mensajes/fijados", {
+            params: { usuario1: user.id, usuario2: chat.usuario_id },
+          }),
+        ]);
+
+        if (cancelado || chatKey !== getChatKey(chat)) return;
+
+        const {
+          mensajes,
+          hasMore,
+          nextBeforeId: nextId,
+        } = extractMessagesPayload(resPrivados.data);
+
+        const mensajesFijados = Array.isArray(resFijadosPrivados.data)
+          ? resFijadosPrivados.data
+          : Array.isArray(resFijadosPrivados.data?.mensajes_fijados)
+            ? resFijadosPrivados.data.mensajes_fijados
             : [];
 
-        const mensajesFijados = Array.isArray(resMensajes.data.mensajes_fijados)
-          ? resMensajes.data.mensajes_fijados
-          : [];
-
-        logDev("📨 Mensajes cargados:", nuevosMensajes);
-        logDev("📌 Fijados cargados:", mensajesFijados);
-
-        combinarMensajes(nuevosMensajes, mensajesFijados);
+        setPinnedMessages(mensajesFijados);
+        setMessages(sortAndDedupeMessages(applyPinnedToMessages(mensajes, mensajesFijados)));
+        setHasMoreMessages(hasMore);
+        setNextBeforeId(nextId);
       } catch (err) {
-        console.error("❌ Error cargando historial o fijados:", err);
+        console.error("❌ Error cargando historial paginado:", err);
+      } finally {
+        if (!cancelado) setIsLoadingMessages(false);
       }
     };
 
-    const combinarMensajes = (nuevosMensajes, mensajesFijados) => {
-      // 🔹 Marca los mensajes fijados dentro del array principal
-      const mensajesCombinados = nuevosMensajes.map((m) => {
-        const estaFijado = mensajesFijados.some((f) => f.mensaje_id === m.id);
-        return {
-          ...m,
-          fijado: estaFijado ? 1 : 0,
-          fecha_fijado: estaFijado
-            ? mensajesFijados.find((f) => f.mensaje_id === m.id)?.fecha_fijado
-            : null,
-        };
-      });
-
-      // 🔹 Mergear reacciones previas para no perderlas
-      setMessages((prev) => {
-        const mapPrev = new Map(prev.map((m) => [m.id, m]));
-        return mensajesCombinados.map((m) => ({
-          ...m,
-          reacciones: mapPrev.get(m.id)?.reacciones || m.reacciones || [],
-        }));
-      });
-
-      logDev("✅ Mensajes combinados:", mensajesCombinados);
-    };
-
     cargarMensajes();
-  }, [chat, user]);
+
+    return () => {
+      cancelado = true;
+    };
+  }, [chat?.tipo, chat?.grupo_id, chat?.usuario_id, chat?.__privateReplyDraft, chat?.__jumpToMessageId, chat?.__jumpToken, user?.id]);
+
+  const cargarMensajesAnteriores = useCallback(async () => {
+    if (!chat || !user?.id || !hasMoreMessages || !nextBeforeId || isLoadingOlderMessages) {
+      return;
+    }
+
+    setIsLoadingOlderMessages(true);
+
+    try {
+      let resMensajes;
+      let mensajesFijados = pinnedMessages;
+
+      if (chat.tipo === "grupo") {
+        resMensajes = await axios.get(`/api/mensajes/grupo/${chat.grupo_id}`, {
+          params: {
+            paginated: 1,
+            limit: MESSAGE_PAGE_SIZE,
+            beforeId: nextBeforeId,
+          },
+        });
+      } else {
+        resMensajes = await axios.get("/api/mensajes", {
+          params: {
+            usuario1: user.id,
+            usuario2: chat.usuario_id,
+            paginated: 1,
+            limit: MESSAGE_PAGE_SIZE,
+            beforeId: nextBeforeId,
+          },
+        });
+      }
+
+      const {
+        mensajes,
+        mensajesFijados: fijadosRespuesta,
+        hasMore,
+        nextBeforeId: nextId,
+      } = extractMessagesPayload(resMensajes.data);
+
+      if (fijadosRespuesta.length) {
+        mensajesFijados = fijadosRespuesta;
+        setPinnedMessages(fijadosRespuesta);
+      }
+
+      const mensajesConFijados = applyPinnedToMessages(mensajes, mensajesFijados);
+
+      setMessages((prev) => sortAndDedupeMessages([...mensajesConFijados, ...prev]));
+      setHasMoreMessages(hasMore);
+      setNextBeforeId(nextId);
+    } catch (err) {
+      console.error("❌ Error cargando mensajes anteriores:", err);
+    } finally {
+      setIsLoadingOlderMessages(false);
+    }
+  }, [
+    chat?.tipo,
+    chat?.grupo_id,
+    chat?.usuario_id,
+    user?.id,
+    hasMoreMessages,
+    nextBeforeId,
+    isLoadingOlderMessages,
+    pinnedMessages,
+  ]);
 
   // Cargar stickers (catálogo + favoritos) al cargar usuario
   useEffect(() => {
@@ -415,7 +639,7 @@ const ChatBox = ({ chat, user, setChat, onVerPerfil }) => {
         setPinnedMessages((prev) => {
           if (accion === "fijado") {
             // evitar duplicados
-            const yaExiste = prev.some((f) => f.mensaje_id === mensaje_id);
+            const yaExiste = prev.some((f) => Number(f.mensaje_id || f.id) === Number(mensaje_id));
             if (yaExiste) return prev;
 
             const nuevo = {
@@ -423,7 +647,7 @@ const ChatBox = ({ chat, user, setChat, onVerPerfil }) => {
               grupo_id,
               mensaje_id,
               usuario_id,
-              mensaje: mensaje.mensaje,
+              mensaje: mensaje?.mensaje || mensaje || "Mensaje fijado",
               fijado_por: usuario,
               fecha_fijado,
               duracion,
@@ -435,7 +659,7 @@ const ChatBox = ({ chat, user, setChat, onVerPerfil }) => {
             return nuevos.slice(-3);
           } else {
             // eliminar si fue desfijado
-            return prev.filter((f) => f.mensaje_id !== mensaje_id);
+            return prev.filter((f) => Number(f.mensaje_id || f.id) !== Number(mensaje_id));
           }
         });
       };
@@ -446,8 +670,9 @@ const ChatBox = ({ chat, user, setChat, onVerPerfil }) => {
         logDev("📢 [SOCKET] Grupo actualizado:", data);
         setChat((prev) => ({
           ...prev,
-          ...(data.nombre && { usuario_nombre: data.nombre }),
-          ...(data.descripcion && { descripcion: data.descripcion }),
+          ...(data.nombre && { usuario_nombre: data.nombre, nombre: data.nombre }),
+          ...(data.descripcion !== undefined && { descripcion: data.descripcion }),
+          ...(data.imagen_url !== undefined && { imagen_url: data.imagen_url }),
         }));
       };
 
@@ -528,13 +753,13 @@ const ChatBox = ({ chat, user, setChat, onVerPerfil }) => {
             );
           }
 
-          return [
+          return sortAndDedupeMessages([
             ...prev,
             {
               ...msg,
               reacciones: msg.reacciones || [],
             },
-          ];
+          ]);
         });
       };
 
@@ -566,11 +791,31 @@ const ChatBox = ({ chat, user, setChat, onVerPerfil }) => {
         logDev("📌 [SOCKET] Evento mensajeFijado recibido:", { accion, mensajeId });
         setMessages(prev =>
           prev.map(m =>
-            m.id === mensajeId
+            Number(m.id) === Number(mensajeId)
               ? { ...m, fijado: accion === "fijado" ? 1 : 0, fecha_fijado }
               : m
           )
         );
+
+        setPinnedMessages((prev) => {
+          if (accion === "fijado") {
+            const yaExiste = prev.some((f) => Number(f.mensaje_id || f.id) === Number(mensajeId));
+            if (yaExiste) return prev;
+
+            const nuevo = {
+              id: mensajeId,
+              mensaje_id: mensajeId,
+              usuario_id: usuarioId,
+              mensaje: mensaje?.mensaje || mensaje || "Mensaje fijado",
+              fijado_por: usuario,
+              fecha_fijado,
+            };
+
+            return [nuevo, ...prev].slice(0, 3);
+          }
+
+          return prev.filter((f) => Number(f.mensaje_id || f.id) !== Number(mensajeId));
+        });
       };
 
       // 👇 Nuevo: manejar cuando ambos han visto los mensajes
@@ -716,6 +961,22 @@ const ChatBox = ({ chat, user, setChat, onVerPerfil }) => {
       document.removeEventListener("mousedown", handleClickOutside);
     };
   }, []);
+
+
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (callMenuRef.current && !callMenuRef.current.contains(e.target)) {
+        setMostrarMenuLlamada(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  useEffect(() => {
+    setMostrarMenuLlamada(false);
+  }, [chat?.tipo, chat?.usuario_id, chat?.grupo_id]);
   
   // cerrar con ESC
   useEffect(() => {
@@ -733,13 +994,187 @@ const ChatBox = ({ chat, user, setChat, onVerPerfil }) => {
     };
   }, []);
 
+  const buildGroupChatFromSource = useCallback((group = {}, fallback = {}) => {
+    group = group || {};
+    fallback = fallback || {};
+    const grupoId = group.grupo_id || group.id || fallback.grupo_id || fallback.id;
+
+    return {
+      ...group,
+      tipo: "grupo",
+      grupo_id: grupoId,
+      user_id: user?.id,
+      usuario_id: grupoId,
+      usuario_nombre: group.usuario_nombre || group.nombre || fallback.nombre || "Grupo",
+      imagen_url: group.imagen_url || fallback.imagen_url || null,
+      background: group.background || "#6c757d",
+      miembros: Array.isArray(group.miembros) ? group.miembros : [],
+      admins: Array.isArray(group.admins) ? group.admins : [],
+      archivos: Array.isArray(group.archivos) ? group.archivos : [],
+    };
+  }, [user?.id]);
+
+  const cargarContextoMensajeGrupo = useCallback(async (grupoId, mensajeId) => {
+    if (!grupoId || !mensajeId) return false;
+
+    setIsLoadingMessages(true);
+    setReplyJumpTarget({
+      type: "grupo",
+      grupoId: Number(grupoId),
+      messageId: Number(mensajeId),
+      token: Date.now(),
+    });
+
+    try {
+      const resMensajes = await axios.get(
+        `/api/mensajes/grupo/${grupoId}/contexto/${mensajeId}`,
+        { params: { limit: GROUP_CONTEXT_PAGE_SIZE } }
+      );
+
+      const {
+        mensajes,
+        mensajesFijados,
+        hasMore,
+        nextBeforeId: nextId,
+      } = extractMessagesPayload(resMensajes.data);
+
+      setPinnedMessages(mensajesFijados);
+      setMessages(sortAndDedupeMessages(applyPinnedToMessages(mensajes, mensajesFijados)));
+      setHasMoreMessages(hasMore);
+      setNextBeforeId(nextId);
+      return true;
+    } catch (err) {
+      console.error("❌ Error cargando contexto del mensaje de grupo:", err);
+      return false;
+    } finally {
+      setIsLoadingMessages(false);
+    }
+  }, []);
+
+  const openGroupAndJumpToMessage = useCallback(async (grupoId, mensajeId, grupoNombre = "Grupo") => {
+    if (!grupoId || !mensajeId) return false;
+
+    setReplyingTo(null);
+    setReplyJumpTarget({
+      type: "grupo",
+      grupoId: Number(grupoId),
+      messageId: Number(mensajeId),
+      token: Date.now(),
+    });
+
+    let groupChat = buildGroupChatFromSource(null, {
+      grupo_id: grupoId,
+      nombre: grupoNombre,
+    });
+
+    try {
+      if (user?.id) {
+        const res = await axios.get(`/api/grupos/usuario/${user.id}`);
+        const groups = Array.isArray(res.data) ? res.data : [];
+        const found = groups.find((g) => Number(g.grupo_id || g.id) === Number(grupoId));
+
+        if (found) {
+          groupChat = buildGroupChatFromSource(found, {
+            grupo_id: grupoId,
+            nombre: grupoNombre,
+          });
+        }
+      }
+    } catch (err) {
+      console.error("❌ Error buscando grupo para abrir mensaje citado:", err);
+    }
+
+    setChat({
+      ...groupChat,
+      __jumpToMessageId: Number(mensajeId),
+      __jumpToken: Date.now(),
+    });
+
+    return true;
+  }, [buildGroupChatFromSource, setChat, user?.id]);
+
+  const getSenderFromGroupMessage = useCallback((message = {}) => {
+    const senderId = message.usuario_id || message.usuario_envia_id;
+    if (!senderId) return null;
+
+    const nombre = message.nombre || message.emisor_nombre || "Usuario";
+    const apellido = message.apellido || message.emisor_apellido || "";
+
+    return {
+      tipo: "privado",
+      usuario_id: senderId,
+      usuario_nombre: `${nombre} ${apellido}`.trim(),
+      usuario_correo: message.correo || message.emisor_correo || "",
+      url_imagen: message.url_imagen || message.emisor_avatar || null,
+      background: message.background || message.emisor_background || "#6c757d",
+    };
+  }, []);
+
+  const buildPrivateReplyFromGroup = useCallback((message = {}) => ({
+    ...message,
+    id: message.id,
+    usuario_id: message.usuario_id || message.usuario_envia_id,
+    usuario_envia_id: message.usuario_id || message.usuario_envia_id,
+    reply_source: "grupo",
+    reply_to_tipo: "grupo",
+    reply_to_grupo_id: message.grupo_id || chat?.grupo_id || null,
+    source_group_id: message.grupo_id || chat?.grupo_id || null,
+    source_group_name: chat?.usuario_nombre || chat?.nombre || "Grupo",
+  }), [chat?.grupo_id, chat?.usuario_nombre, chat?.nombre]);
+
+  const openPrivateChatFromGroupMessage = useCallback((message, shouldReply = false) => {
+    const privateChat = getSenderFromGroupMessage(message);
+    if (!privateChat || Number(privateChat.usuario_id) === Number(user?.id)) return;
+
+    setChat({
+      ...privateChat,
+      __privateReplyDraft: shouldReply ? buildPrivateReplyFromGroup(message) : null,
+    });
+  }, [buildPrivateReplyFromGroup, getSenderFromGroupMessage, setChat, user?.id]);
+
+  const handleReplyPrivado = useCallback((message) => {
+    openPrivateChatFromGroupMessage(message, true);
+  }, [openPrivateChatFromGroupMessage]);
+
+  const handleEnviarMensajePrivado = useCallback((message) => {
+    openPrivateChatFromGroupMessage(message, false);
+  }, [openPrivateChatFromGroupMessage]);
+
+  const handleReplyMessage = useCallback((message) => {
+    if (!message?.id) return;
+    setReplyingTo(message);
+    setTimeout(() => inputRef.current?.focus?.(), 0);
+  }, []);
+
+  const renderPreviewLine = (message) => {
+    const preview = getMessagePreview(message);
+
+    return (
+      <span className="wa-preview-line">
+        {preview.iconClass && <i className={`wa-preview-icon ${preview.iconClass}`} aria-hidden="true" />}
+        <span className="wa-preview-label">{preview.text}</span>
+      </span>
+    );
+  };
+
   // Función para enviar mensaje
   const handleSendMessage = async (messageText) => {
     const text = (messageText || "").trim();
     const hayTexto = !!text;
     const hayImagenes = pendingImages.length > 0;
+    const replyToId = replyingTo?.id || null;
+    const replyPayload = replyingTo || null;
+    const replyToType = replyingTo?.reply_to_tipo || replyingTo?.reply_source || "privado";
+    const replyToGrupoId = replyingTo?.reply_to_grupo_id || replyingTo?.source_group_id || null;
 
     if (!hayTexto && !hayImagenes) return;
+
+    // WhatsApp limpia la barra de respuesta apenas el envío fue aceptado.
+    // Guardamos arriba la referencia en replyPayload/replyToId para que el backend
+    // y el mensaje temporal sigan recibiendo la cita correcta aunque el estado se limpie.
+    if (replyToId) {
+      setReplyingTo(null);
+    }
 
     // 👇 Un id de lote SOLO cuando hay imágenes
     const loteId = hayImagenes ? crearLoteId() : null;
@@ -764,6 +1199,10 @@ const ChatBox = ({ chat, user, setChat, onVerPerfil }) => {
             estado: "subiendo",
             progreso: 0,
             lote_id: loteId,
+            reply_to_id: replyToId,
+            reply_to_tipo: replyToType,
+            reply_to_grupo_id: replyToGrupoId,
+            reply_to: replyPayload,
           };
 
           let tempMsg;
@@ -798,7 +1237,7 @@ const ChatBox = ({ chat, user, setChat, onVerPerfil }) => {
           }
 
           // Añadimos el mensaje temporal al chat
-          setMessages((prev) => [...prev, tempMsg]);
+          setMessages((prev) => sortAndDedupeMessages([...prev, tempMsg]));
 
           // Subimos la imagen de verdad
           uploadImageMessage(img.file, loteId, (percent) => {
@@ -807,7 +1246,7 @@ const ChatBox = ({ chat, user, setChat, onVerPerfil }) => {
                 m.id === tempId ? { ...m, progreso: percent } : m
               )
             );
-          })
+          }, replyToId, replyToType, replyToGrupoId)
             .then((mensajeServidor) => {
               if (!mensajeServidor) {
                 // marcar error si no hay respuesta
@@ -877,6 +1316,9 @@ const ChatBox = ({ chat, user, setChat, onVerPerfil }) => {
             usuarioId: user.id,
             mensaje: text,
             loteId,
+            replyToId,
+            replyToType,
+            replyToGrupoId,
           });
 
           const nuevo = res.data?.mensaje || res.data;
@@ -885,7 +1327,7 @@ const ChatBox = ({ chat, user, setChat, onVerPerfil }) => {
           setMessages((prev) => {
             const yaExiste = prev.some((m) => Number(m.id) === Number(nuevo.id));
             if (yaExiste) return prev;
-            return [...prev, nuevo];
+            return sortAndDedupeMessages([...prev, nuevo]);
           });
         } else {
           const res = await axios.post("/api/mensajes", {
@@ -893,23 +1335,35 @@ const ChatBox = ({ chat, user, setChat, onVerPerfil }) => {
             receiverId: chat.usuario_id,
             message: text,
             loteId,
+            replyToId,
+            replyToType,
+            replyToGrupoId,
           });
 
           const nuevo = res.data?.mensaje || res.data;
+          if (replyPayload && !nuevo.reply_to) {
+            nuevo.reply_to = replyPayload;
+            nuevo.reply_to_tipo = replyToType;
+            nuevo.reply_to_grupo_id = replyToGrupoId;
+          }
 
           setMessages((prev) => {
             const yaExiste = prev.some((m) => Number(m.id) === Number(nuevo.id));
             if (yaExiste) return prev;
-            return [...prev, nuevo];
+            return sortAndDedupeMessages([...prev, nuevo]);
           });
         }
       }
 
       // 3️⃣ Limpiar previews
       setPendingImages([]);
+      setReplyingTo(null);
       inputRef.current?.reset();
     } catch (err) {
       console.error("❌ Error enviando mensaje:", err);
+      if (replyToId) {
+        setReplyingTo(null);
+      }
     }
   };
 
@@ -999,6 +1453,29 @@ const ChatBox = ({ chat, user, setChat, onVerPerfil }) => {
       return text.charAt(0).toUpperCase();
   };
 
+  const getHeaderSubtitle = () => {
+    if (!chat) return "";
+    if (chat.tipo !== "grupo") return chat.usuario_correo || "";
+
+    const miembros = Array.isArray(chat.miembros) ? chat.miembros : [];
+    if (miembros.length) {
+      const names = miembros
+        .slice(0, 4)
+        .map((m) => Number(m.id) === Number(user?.id) ? "Tú" : (m.nombre || m.correo || "Usuario"))
+        .filter(Boolean)
+        .join(", ");
+      return names || `${miembros.length} miembros`;
+    }
+
+    return `${chat.miembros?.length || 0} miembros, ${chat.online || 0} online`;
+  };
+
+  const handleBuscarEnChat = () => {
+    if (chat?.tipo !== "grupo") return;
+    setMostrarInfoGrupo(true);
+    setSearchRequestToken(Date.now());
+  };
+
   // 👉 Scroll hasta el mensaje fijado en el cuerpo del chat
   const scrollToMessage = (mensajeId) => {
     const elemento = document.getElementById(`mensaje-${mensajeId}`);
@@ -1006,8 +1483,73 @@ const ChatBox = ({ chat, user, setChat, onVerPerfil }) => {
       elemento.scrollIntoView({ behavior: "smooth", block: "center" });
       elemento.classList.add("highlight-pinned");
       setTimeout(() => elemento.classList.remove("highlight-pinned"), 1500);
+      return true;
     }
+
+    return false;
   };
+
+  const handleJumpToGroupSearchMessage = useCallback(async (mensajeId) => {
+    if (!chat?.grupo_id || !mensajeId) return false;
+
+    const foundInCurrentPage = scrollToMessage(mensajeId);
+    if (foundInCurrentPage) return true;
+
+    return cargarContextoMensajeGrupo(chat.grupo_id, mensajeId);
+  }, [chat?.grupo_id, cargarContextoMensajeGrupo]);
+
+  const handleReplyPreviewClick = useCallback((replyMessage = {}, currentMessage = {}) => {
+    const targetId = replyMessage.id || replyMessage.reply_to_id || currentMessage.reply_to_id;
+    if (!targetId) return false;
+
+    const sourceType =
+      replyMessage.reply_to_tipo ||
+      replyMessage.reply_source ||
+      currentMessage.reply_to_tipo ||
+      currentMessage.reply_source ||
+      null;
+
+    const sourceGroupId =
+      replyMessage.source_group_id ||
+      replyMessage.reply_to_grupo_id ||
+      currentMessage.reply_to_grupo_id ||
+      currentMessage.source_group_id ||
+      (sourceType === "grupo" && chat?.tipo === "grupo" ? chat.grupo_id : null);
+
+    const sourceGroupName =
+      replyMessage.source_group_name ||
+      replyMessage.reply_source_group_name ||
+      currentMessage.source_group_name ||
+      currentMessage.reply_source_group_name ||
+      chat?.usuario_nombre ||
+      chat?.nombre ||
+      "Grupo";
+
+    // Si el mensaje citado viene de un grupo y estamos en privado, abrimos
+    // ese grupo y centramos el mensaje original, igual que WhatsApp.
+    if (sourceType === "grupo" || sourceGroupId) {
+      const groupId = sourceGroupId || chat?.grupo_id;
+      if (!groupId) return false;
+
+      if (chat?.tipo === "grupo" && Number(chat.grupo_id) === Number(groupId)) {
+        if (scrollToMessage(targetId)) return true;
+        cargarContextoMensajeGrupo(groupId, targetId);
+        return true;
+      }
+
+      openGroupAndJumpToMessage(groupId, targetId, sourceGroupName);
+      return true;
+    }
+
+    return false;
+  }, [
+    cargarContextoMensajeGrupo,
+    chat?.grupo_id,
+    chat?.nombre,
+    chat?.tipo,
+    chat?.usuario_nombre,
+    openGroupAndJumpToMessage,
+  ]);
 
   const handleArchivoSeleccionado = (e) => {
     const files = e.target.files;
@@ -1034,10 +1576,26 @@ const ChatBox = ({ chat, user, setChat, onVerPerfil }) => {
     // 2) Otros archivos (Word, Excel, ZIP, EXE, etc.) → subir directo
     const otherFiles = filesArray.filter((f) => !f.type.startsWith("image/"));
 
+    const replyFileId = replyingTo?.id || null;
+    const replyFileType = replyingTo?.reply_to_tipo || replyingTo?.reply_source || "privado";
+    const replyFileGrupoId = replyingTo?.reply_to_grupo_id || replyingTo?.source_group_id || null;
+
+    if (replyFileId && otherFiles.length) {
+      setReplyingTo(null);
+    }
+
     otherFiles.forEach(async (file) => {
       try {
         // loteId = null, y no necesitamos barra de progreso aquí
-        await uploadImageMessage(file, null, null);
+        await uploadImageMessage(
+          file,
+          null,
+          null,
+          replyFileId,
+          replyFileType,
+          replyFileGrupoId
+        );
+        setReplyingTo(null);
         logDev("📁 Archivo subido correctamente:", file.name);
         // El mensaje aparecerá cuando llegue el evento socket "nuevoMensaje" / "nuevoMensajeGrupo"
       } catch (err) {
@@ -1068,7 +1626,7 @@ const ChatBox = ({ chat, user, setChat, onVerPerfil }) => {
   };
 
   // 👇 sube UNA imagen y devuelve el objeto mensaje del backend
-  const uploadImageMessage = async (file, loteId, onProgress) => {
+  const uploadImageMessage = async (file, loteId, onProgress, replyToId = null, replyToType = "privado", replyToGrupoId = null) => {
     if (file.size > 100 * 1024 * 1024) {
       alert("⚠️ El archivo supera los 100 MB permitidos.");
       return null;
@@ -1077,6 +1635,9 @@ const ChatBox = ({ chat, user, setChat, onVerPerfil }) => {
     const formData = new FormData();
     formData.append("archivo", file);
     if (loteId) formData.append("loteId", loteId); // 👈 importante
+    if (replyToId) formData.append("replyToId", replyToId);
+    if (replyToId && replyToType) formData.append("replyToType", replyToType);
+    if (replyToId && replyToGrupoId) formData.append("replyToGrupoId", replyToGrupoId);
 
     let lastPercent = 0;
     let res;
@@ -1121,6 +1682,12 @@ const ChatBox = ({ chat, user, setChat, onVerPerfil }) => {
 
     const mensaje = res.data?.mensaje;
     if (!mensaje) return null;
+
+    if (replyingTo && replyToId && !mensaje.reply_to) {
+      mensaje.reply_to = replyingTo;
+      mensaje.reply_to_tipo = replyToType;
+      mensaje.reply_to_grupo_id = replyToGrupoId;
+    }
 
     // devolvemos SIEMPRE el objeto mensaje
     return {
@@ -1179,14 +1746,10 @@ const ChatBox = ({ chat, user, setChat, onVerPerfil }) => {
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
     >
-      <div className="container h-100">
-        <div 
-          className={`d-flex flex-column h-100 position-relativetransition-all duration-300 ${
-            mostrarInfoGrupo ? "mr-80 md:mr-96" : "mr-0"
-          }`}
-        >
+      <div className={`container-fluid h-100 px-0 wa-chat-shell ${mostrarInfoGrupo ? "is-info-open" : ""}`}>
+        <div className="wa-chat-conversation d-flex flex-column h-100 position-relative">
           {/* Header del chat */}
-          <div className="chat-header border-bottom py-4 py-lg-7">
+          <div className="chat-header wa-chat-header border-bottom">
             <div className="row align-items-center">
               {/* Mobile: close */}
               <div className="col-2 d-xl-none">
@@ -1228,35 +1791,17 @@ const ChatBox = ({ chat, user, setChat, onVerPerfil }) => {
                           >
                             {/* Avatar o icono del grupo */}
                             <div className="avatar me-3">
-                              {chat.imagen_url ? (
-                                <img
-                                  src={chat.imagen_url}
-                                  alt={chat.usuario_nombre}
-                                  className="avatar-img rounded-circle"
-                                  style={{ width: "44px", height: "44px", objectFit: "cover" }}
-                                />
-                              ) : (
-                                <div
-                                  className="avatar-img rounded-circle d-flex align-items-center justify-content-center text-white fw-bold"
-                                  style={{ width: "44px", height: "44px", backgroundColor: "#6c757d" }}
-                                >
-                                  {chat.usuario_nombre?.charAt(0).toUpperCase() || "?"}
-                                </div>
-                              )}
+                              <GroupAvatar group={chat} members={chat.miembros} size={44} />
                             </div>
 
                             {/* Nombre + info */}
-                            <div className="col overflow-hidden">
-                              <h5 className="text-truncate">
-                                {chat.usuario_nombre || "?"}
+                            <div className="col overflow-hidden wa-chat-title-block">
+                              <h5 className="text-truncate mb-0">
+                                {chat.usuario_nombre || chat.nombre || "Grupo"}
                               </h5>
-
-                              <div className="d-flex flex-column">
-                                <h6 className="mb-0 fw-bold">{chat.nombre}</h6>
-                                <small className="text-muted">
-                                  {chat.miembros?.length || 0} miembros, {chat.online || 0} online
-                                </small>
-                              </div>
+                              <small className="text-muted text-truncate d-block">
+                                {getHeaderSubtitle()}
+                              </small>
                             </div>
                           </div>
                           {/* 🔹 Sidebar deslizante */}
@@ -1295,23 +1840,13 @@ const ChatBox = ({ chat, user, setChat, onVerPerfil }) => {
                                 </div>
                               )}
                             </div>
-                            <div className="col overflow-hidden">
-                              <h5 className="text-truncate">
+                            <div className="col overflow-hidden wa-chat-title-block">
+                              <h5 className="text-truncate mb-0">
                                 {chat.usuario_nombre}
                               </h5>
-
-                              <p className="text-truncate">
-                                {/*
-                                <span className="text-truncate">
-                                  Escribiendo
-                                  <span className="typing-dots">
-                                    <span>.</span>
-                                    <span>.</span>
-                                    <span>.</span>
-                                  </span>
-                                </span>
-                                */}
-                              </p>
+                              {getHeaderSubtitle() && (
+                                <small className="text-muted text-truncate d-block">{getHeaderSubtitle()}</small>
+                              )}
                             </div>
                           </div>
                         </>
@@ -1326,6 +1861,52 @@ const ChatBox = ({ chat, user, setChat, onVerPerfil }) => {
                   {/* Toolbar (desktop) */}
                   <div className="col-xl-6 d-none d-xl-block">
                     <div className="row align-items-center justify-content-end gx-6">
+                      <div className="col-auto position-relative" ref={callMenuRef}>
+                        <button
+                          type="button"
+                          className="wa-header-icon-btn"
+                          onClick={() => setMostrarMenuLlamada((prev) => !prev)}
+                          title="Videollamada"
+                        >
+                          <i className="fa-solid fa-video" aria-hidden="true" />
+                          <i className="fa-solid fa-caret-down ms-1" aria-hidden="true" />
+                        </button>
+                        {mostrarMenuLlamada && (
+                          <div className="wa-call-menu">
+                            <div className="wa-call-menu-head">
+                              {chat.tipo === "grupo" ? (
+                                <GroupAvatar group={chat} members={chat.miembros} size={42} />
+                              ) : chat?.url_imagen ? (
+                                <img src={getAvatarUrl(chat.url_imagen)} alt={chat.usuario_nombre} />
+                              ) : (
+                                <div style={{ backgroundColor: chat?.background || "#6c757d" }}>{getInitial(chat?.usuario_nombre || "U")}</div>
+                              )}
+                              <div>
+                                <strong>{chat.usuario_nombre || chat.nombre || "Chat"}</strong>
+                                <span>{chat.tipo === "grupo" ? "Selecciona personas" : "Llamada"}</span>
+                              </div>
+                            </div>
+                            <div className="wa-call-menu-actions">
+                              <button type="button"><i className="fa-solid fa-phone" aria-hidden="true" /> Voz</button>
+                              <button type="button"><i className="fa-solid fa-video" aria-hidden="true" /> Video</button>
+                            </div>
+                            <button type="button" className="wa-call-menu-row"><i className="fa-solid fa-link" aria-hidden="true" /> Enviar enlace de llamada</button>
+                            <button type="button" className="wa-call-menu-row"><i className="fa-regular fa-calendar" aria-hidden="true" /> Programar llamada</button>
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="col-auto">
+                        <button
+                          type="button"
+                          className="wa-header-icon-btn"
+                          onClick={handleBuscarEnChat}
+                          title="Buscar en el chat"
+                        >
+                          <i className="fa-solid fa-magnifying-glass" aria-hidden="true" />
+                        </button>
+                      </div>
+
                       <div className="col-auto">
                         <a
                           href="#"
@@ -1546,28 +2127,27 @@ const ChatBox = ({ chat, user, setChat, onVerPerfil }) => {
           </div>
           
           {/* 🔹 Mensajes fijados estilo WhatsApp */}
-          {messages.some(m => m.fijado === 1) && (
+          {pinnedMessages.length > 0 && (
             <div className="pinned-bar d-flex align-items-center justify-content-between px-3 py-1 border-bottom">
-              
-              {/* Lista horizontal de fijados */}
               <div className="pinned-list d-flex align-items-center overflow-auto" style={{ flex: 1 }}>
-                {messages
-                  .filter(m => m.fijado === 1)
-                  .map((msg, i) => (
+                {pinnedMessages.map((msg) => {
+                  const pinnedMessageId = msg.mensaje_id || msg.id;
+
+                  return (
                     <div 
-                      key={msg.id} 
+                      key={msg.fijado_id || pinnedMessageId} 
                       className="pinned-item position-relative d-flex align-items-center mx-1"
-                      onClick={() => scrollToMessage(msg.id)}
+                      onClick={() => scrollToMessage(pinnedMessageId)}
                     >
                       <div className="pinned-content px-3 py-2 bg-white rounded-pill shadow-sm d-flex align-items-center">
                         <i className="bi bi-pin-angle-fill text-primary me-2"></i>
-                        <span className="text-truncate small" style={{ maxWidth: 180 }}>
-                          {msg.mensaje || "Mensaje fijado"}
+                        <span className="text-truncate small pinned-preview-text" style={{ maxWidth: 220 }}>
+                          {renderPreviewLine(msg)}
                         </span>
                       </div>
-
                     </div>
-                  ))}
+                  );
+                })}
               </div>
             </div>
           )}
@@ -1655,10 +2235,14 @@ const ChatBox = ({ chat, user, setChat, onVerPerfil }) => {
             ) : (
               // 👇 MODO NORMAL (mensajes)
               <div className="chat-body-inner h-100" >
-                  {messages.length === 0 ? (
+                  {isLoadingMessages ? (
+                    <div className="d-flex flex-column align-items-center justify-content-center h-100 text-muted">
+                      <div className="spinner-border spinner-border-sm mb-3" role="status" aria-hidden="true"></div>
+                      <span>Cargando últimos mensajes...</span>
+                    </div>
+                  ) : messages.length === 0 ? (
                     <>
-                    <div className="d-flex flex-column align-items-center justify-content-center h-100">
-                        {/* iniciar Conversacion*/}
+                      <div className="d-flex flex-column align-items-center justify-content-center h-100">
                         <div className="text-center mb-6">
                           <span className="icon icon-xl text-muted">
                             <svg
@@ -1679,23 +2263,35 @@ const ChatBox = ({ chat, user, setChat, onVerPerfil }) => {
                           </span>
                         </div>
 
-    
                         <p className="text-center text-muted">
                           Aún no hay mensajes, <br /> ¡inicia la conversación!
                         </p>
                       </div>
                     </>
                   ) : (
-                    <div className="d-flex flex-column justify-content-center">
-                        <ChatBody
-                          messages={messages}
-                          user={user}
-                          chat={chat}   // 👈 aquí ya está el "tipo"
-                          tipo={chat.tipo} // 👈 pasamos el tipo directamente
-                          socket={socket}   // 👈 ahora sí lo pasamos
-                          onVerPerfil={onVerPerfil}  // 👈 usamos el callback del padre
-                          onGuardarStickerFavorito={handleGuardarStickerFavorito} // 👈 aquí lo conectas
-                        />
+                    <div className="d-flex flex-column h-100">
+                      <ChatBody
+                        messages={messages}
+                        user={user}
+                        chat={chat}
+                        chatKey={getChatKey(chat)}
+                        tipo={chat.tipo}
+                        socket={socket}
+                        hasMoreMessages={hasMoreMessages}
+                        isLoadingOlderMessages={isLoadingOlderMessages}
+                        onLoadOlderMessages={cargarMensajesAnteriores}
+                        onVerPerfil={onVerPerfil}
+                        onGuardarStickerFavorito={handleGuardarStickerFavorito}
+                        onEliminarStickerFavorito={handleEliminarStickerFavorito}
+                        stickersFavoritos={stickersFavoritos}
+                        mentionOptions={mentionOptions}
+                        onReply={handleReplyMessage}
+                        onReplyPrivado={handleReplyPrivado}
+                        onEnviarMensajePrivado={handleEnviarMensajePrivado}
+                        onReplyPreviewClick={handleReplyPreviewClick}
+                        scrollTargetMessageId={replyJumpTarget?.messageId || null}
+                        scrollTargetToken={replyJumpTarget?.token || null}
+                      />
                     </div>
                   )}
               </div>
@@ -1707,13 +2303,35 @@ const ChatBox = ({ chat, user, setChat, onVerPerfil }) => {
             
             {/* Chat: Form */}
             <form
-              className="chat-form rounded-pill bg-dark"
+              className={`chat-form wa-chat-form rounded-pill ${replyingTo ? "has-reply-compose" : ""}`}
+
               data-emoji-form=""
               onSubmit={(e) => {
                 e.preventDefault();
                 inputRef.current?.send(); // Llamamos al método de ChatInput
               }}
             >
+              {replyingTo && (
+                <div className="reply-compose-bar">
+                  <span className="reply-compose-accent" />
+                  <div className="reply-compose-content">
+                    <div className="reply-compose-author">
+                      {getReplyAuthorName(replyingTo, user?.id)}
+                    </div>
+                    <div className="reply-compose-preview">
+                      {renderPreviewLine(replyingTo)}
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    className="reply-compose-close"
+                    onClick={() => setReplyingTo(null)}
+                    aria-label="Cancelar respuesta"
+                  >
+                    ×
+                  </button>
+                </div>
+              )}
               <div className="row align-items-center gx-0">
                 {/* Botón para adjuntar archivo */}
                 <div className="col-auto">
@@ -1753,6 +2371,10 @@ const ChatBox = ({ chat, user, setChat, onVerPerfil }) => {
                         ref={inputRef}
                         onSend={(msg) => handleSendMessage(msg)}
                         onPasteFiles={(files) => handleFilesSeleccionados(files)}   // 👈 AHORA
+                        mentionOptions={mentionOptions}
+                        onReply={handleReplyMessage}
+                        onReplyPrivado={handleReplyPrivado}
+                        onEnviarMensajePrivado={handleEnviarMensajePrivado}
                       />
                     </div>
 
@@ -2089,6 +2711,20 @@ const ChatBox = ({ chat, user, setChat, onVerPerfil }) => {
 
           </div>
         </div>
+        {/* Panel de información del grupo: va dentro del shell para empujar el chat y deslizarse desde la derecha */}
+        {chat?.tipo === "grupo" && (
+          <VerInfoGrupo
+            chat={chat}
+            visible={mostrarInfoGrupo}
+            onClose={() => setMostrarInfoGrupo(false)}
+            setMostrarVerArchivos={setMostrarVerArchivos}
+            setOffcanvasGrupo={setOffcanvasGrupo}
+            user={user}
+            onActualizarChat={(campo, valor) => setChat(prev => ({ ...prev, [campo]: valor }))}
+            onJumpToMessage={handleJumpToGroupSearchMessage}
+            searchRequestToken={searchRequestToken}
+          />
+        )}
       </div>
       {/* 👇 Offcanvas MiembrosGrupos controlado por estado */}
       {offcanvasGrupo && (
@@ -2099,16 +2735,6 @@ const ChatBox = ({ chat, user, setChat, onVerPerfil }) => {
         />
       )}
 
-      {/* Panel de información del grupo */}
-      <VerInfoGrupo
-        chat={chat}
-        visible={mostrarInfoGrupo}
-        onClose={() => setMostrarInfoGrupo(false)}
-        setMostrarVerArchivos={setMostrarVerArchivos}
-        setOffcanvasGrupo={setOffcanvasGrupo}
-        user={user}
-        onActualizarChat={(campo, valor) => setChat(prev => ({ ...prev, [campo]: valor }))}
-      />
       {/* 🔹 Panel de archivos */}
       <VerArchivos
         chat={chat}

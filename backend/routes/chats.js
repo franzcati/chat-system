@@ -16,6 +16,10 @@ router.get('/:userId', async (req, res) => {
           m.usuario_recibe_id,
           m.eliminado,
           m.editado,
+          COALESCE(ma_direct.archivo_url, ma_lote.archivo_url) AS archivo_url,
+          COALESCE(ma_direct.tipo_archivo, ma_lote.tipo_archivo) AS tipo_archivo,
+          COALESCE(ma_direct.nombre_archivo, ma_lote.nombre_archivo) AS nombre_archivo,
+          COALESCE(ma_direct.tamano, ma_lote.tamano) AS tamano,
 
           -- Datos del emisor
           u_env.id AS emisor_id,
@@ -41,6 +45,21 @@ router.get('/:userId', async (req, res) => {
       FROM mensajes m
       JOIN usuario u_env ON m.usuario_envia_id = u_env.id
       JOIN usuario u_rec ON m.usuario_recibe_id = u_rec.id
+      LEFT JOIN mensajes_archivos ma_direct
+        ON ma_direct.sender_id = m.usuario_envia_id
+       AND ma_direct.receiver_id = m.usuario_recibe_id
+       AND ma_direct.archivo_url = m.mensaje
+      LEFT JOIN (
+        SELECT lote_id, sender_id, receiver_id, MIN(id) AS first_file_id
+        FROM mensajes_archivos
+        WHERE lote_id IS NOT NULL
+        GROUP BY lote_id, sender_id, receiver_id
+      ) ma_idx
+        ON ma_idx.lote_id = m.lote_id
+       AND ma_idx.sender_id = m.usuario_envia_id
+       AND ma_idx.receiver_id = m.usuario_recibe_id
+      LEFT JOIN mensajes_archivos ma_lote
+        ON ma_lote.id = ma_idx.first_file_id
       WHERE m.usuario_envia_id = ? OR m.usuario_recibe_id = ?
       ORDER BY m.fecha_envio DESC`,
       [userId, userId, userId]

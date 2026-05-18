@@ -1,5 +1,5 @@
 // src/components/Message.jsx
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect, useMemo } from "react";
 import { getAvatarUrl } from "../utils/url";
 import data from "@emoji-mart/data";
 import Picker from "@emoji-mart/react";
@@ -7,6 +7,7 @@ import twemoji from "twemoji";
 import { formatChatTimeOnly, formatChatDate } from "../utils/date";
 import { useTheme } from "../context/ThemeContext";
 import { logDev } from "../utils/logger";
+import { getMessagePreview, getReplyAuthorName } from "../utils/messagePreview";
 
 const reactions = ["👍", "❤️", "😂", "😮", "😢", "🙏"];
 
@@ -23,6 +24,15 @@ const Message = ({
   onGuardarStickerFavorito,
   onEliminarStickerFavorito,   // 👈 nuevo
   esStickerFavorito = false,    // 👈 nuevo
+  mostrarAvatar = true,
+  mostrarNombre = true,
+  agrupadoConAnterior = false,
+  agrupadoConSiguiente = false,
+  mentionOptions = [],
+  onReply,
+  onReplyPrivado,
+  onEnviarMensajePrivado,
+  onReplyPreviewClick,
 }) => {
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [showReactions, setShowReactions] = useState(false);
@@ -81,6 +91,177 @@ const Message = ({
   const stickerUrl = esSticker
     ? mensajeData.mensaje.replace("[sticker]", "")
     : null;
+
+  const tieneGaleriaImagenes =
+    Array.isArray(mensajeData.imagenes) && mensajeData.imagenes.length > 0;
+
+  const archivoUrlCrudo = mensajeData.archivo_url || mensajeData.mensaje || "";
+  const tipoArchivoMensaje = mensajeData.tipo_archivo || "";
+  const tieneImagenSuelta =
+    !tieneGaleriaImagenes &&
+    !esSticker &&
+    !!archivoUrlCrudo &&
+    (/\.(jpe?g|png|webp|gif)(\?.*)?$/i.test(archivoUrlCrudo) ||
+      tipoArchivoMensaje.startsWith("image/"));
+
+  const tieneAudioSuelto =
+    !tieneGaleriaImagenes &&
+    !esSticker &&
+    !!archivoUrlCrudo &&
+    ((!!tipoArchivoMensaje && tipoArchivoMensaje.startsWith("audio/")) ||
+      /\.(mp3|wav|ogg|m4a|aac|webm)(\?.*)?$/i.test(archivoUrlCrudo));
+
+  const tieneVideoSuelto =
+    !tieneGaleriaImagenes &&
+    !esSticker &&
+    !!archivoUrlCrudo &&
+    ((!!tipoArchivoMensaje && tipoArchivoMensaje.startsWith("video/")) ||
+      /\.(mp4|webm|ogg|mov)(\?.*)?$/i.test(archivoUrlCrudo));
+
+  const esMensajeConMedia =
+    tieneGaleriaImagenes || tieneImagenSuelta || tieneAudioSuelto || tieneVideoSuelto;
+
+  const replyToMessage = useMemo(() => {
+    const directo = mensajeData.reply_to || mensajeData.respuesta || mensajeData.citado;
+    if (directo) return directo;
+
+    if (!mensajeData.reply_to_id && !mensajeData.reply_mensaje) return null;
+
+    return {
+      id: mensajeData.reply_to_id,
+      mensaje: mensajeData.reply_mensaje || "",
+      eliminado: mensajeData.reply_eliminado || 0,
+      archivo_url: mensajeData.reply_archivo_url || null,
+      tipo_archivo: mensajeData.reply_tipo_archivo || "",
+      nombre_archivo: mensajeData.reply_nombre_archivo || "",
+      usuario_id: mensajeData.reply_usuario_id,
+      usuario_envia_id: mensajeData.reply_usuario_id,
+      nombre: mensajeData.reply_usuario_nombre || "",
+      apellido: mensajeData.reply_usuario_apellido || "",
+      emisor_nombre: mensajeData.reply_usuario_nombre || "",
+      emisor_apellido: mensajeData.reply_usuario_apellido || "",
+    };
+  }, [mensajeData]);
+
+  const crearPayloadRespuesta = () => ({
+    ...mensajeData,
+    id,
+    usuario_id: mensajeData.usuario_id || mensajeData.usuario_envia_id,
+    usuario_envia_id: mensajeData.usuario_envia_id || mensajeData.usuario_id,
+    nombre:
+      mensajeData.nombre ||
+      mensajeData.emisor_nombre ||
+      (enviadoPorMi ? miUsuario?.nombre : usuario?.nombre) ||
+      "",
+    apellido:
+      mensajeData.apellido ||
+      mensajeData.emisor_apellido ||
+      (enviadoPorMi ? miUsuario?.apellido : usuario?.apellido) ||
+      "",
+    archivo_url: mensajeData.archivo_url || null,
+    tipo_archivo: mensajeData.tipo_archivo || "",
+    nombre_archivo: mensajeData.nombre_archivo || "",
+  });
+
+  const handleReply = (e) => {
+    if (e) {
+      e.preventDefault?.();
+      e.stopPropagation?.();
+    }
+
+    if (typeof onReply === "function" && !mensajeData.eliminado) {
+      onReply(crearPayloadRespuesta());
+      setDropdownOpen(false);
+      setShowReactions(false);
+      setShowEmojiPickerReactions(false);
+    }
+  };
+
+  const nombreRemitenteMenu = (() => {
+    const nombre =
+      mensajeData.nombre ||
+      mensajeData.emisor_nombre ||
+      usuario?.nombre ||
+      "Usuario";
+    const apellido =
+      mensajeData.apellido ||
+      mensajeData.emisor_apellido ||
+      usuario?.apellido ||
+      "";
+    return `${nombre} ${apellido}`.trim();
+  })();
+
+  const puedeEnviarPrivadoDesdeGrupo =
+    esGrupo &&
+    !isMine &&
+    !mensajeData.eliminado &&
+    (typeof onReplyPrivado === "function" || typeof onEnviarMensajePrivado === "function");
+
+  const handleReplyPrivado = (e) => {
+    e.preventDefault?.();
+    e.stopPropagation?.();
+
+    if (typeof onReplyPrivado === "function" && !mensajeData.eliminado) {
+      onReplyPrivado(crearPayloadRespuesta());
+      setDropdownOpen(false);
+      setShowReactions(false);
+      setShowEmojiPickerReactions(false);
+    }
+  };
+
+  const handleEnviarMensajePrivado = (e) => {
+    e.preventDefault?.();
+    e.stopPropagation?.();
+
+    if (typeof onEnviarMensajePrivado === "function" && !mensajeData.eliminado) {
+      onEnviarMensajePrivado(crearPayloadRespuesta());
+      setDropdownOpen(false);
+      setShowReactions(false);
+      setShowEmojiPickerReactions(false);
+    }
+  };
+
+  const scrollToQuotedMessage = (replyId) => {
+    if (!replyId) return;
+    const elemento = document.getElementById(`mensaje-${replyId}`);
+    if (!elemento) return;
+    elemento.scrollIntoView({ behavior: "smooth", block: "center" });
+    elemento.classList.add("highlight-pinned");
+    setTimeout(() => elemento.classList.remove("highlight-pinned"), 1400);
+  };
+
+  const renderReplyPreview = (replyMessage = replyToMessage) => {
+    if (!replyMessage) return null;
+
+    const preview = getMessagePreview(replyMessage);
+    const author = getReplyAuthorName(replyMessage, miUsuario?.id);
+
+    return (
+      <button
+        type="button"
+        className={`wa-quoted-message ${enviadoPorMi ? "out" : "in"}`}
+        onClick={(e) => {
+          e.stopPropagation();
+          const handled = typeof onReplyPreviewClick === "function"
+            ? onReplyPreviewClick(replyMessage, mensajeData)
+            : false;
+
+          if (!handled) {
+            scrollToQuotedMessage(replyMessage.id || replyMessage.reply_to_id);
+          }
+        }}
+      >
+        <span className="wa-quote-line" />
+        <span className="wa-quote-content">
+          <span className="wa-quote-author">{author}</span>
+          <span className="wa-quote-text">
+            {preview.iconClass && <i className={`wa-preview-icon ${preview.iconClass}`} aria-hidden="true" />}
+            <span className="wa-preview-label">{preview.text}</span>
+          </span>
+        </span>
+      </button>
+    );
+  };
 
   const puedeEditar =
     isMine &&
@@ -525,15 +706,109 @@ const Message = ({
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [showEmojiPickerEdit]);
 
-  // 🧩 Texto normal con detección de enlaces
+  const normalizeMentionText = (text = "") =>
+    String(text)
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase()
+      .trim();
+
+  const mentionCandidates = useMemo(() => {
+    const base = [
+      { id: "todos", type: "all", label: "todos" },
+      ...(mentionOptions || []),
+    ];
+
+    const seen = new Set();
+
+    return base
+      .map((option) => {
+        const label = String(option?.label || "").trim();
+        if (!label) return null;
+
+        const normalized = normalizeMentionText(label);
+        if (!normalized || seen.has(normalized)) return null;
+        seen.add(normalized);
+
+        return {
+          id: option.id || label,
+          type: option.type || "user",
+          label,
+          normalized,
+        };
+      })
+      .filter(Boolean)
+      .sort((a, b) => b.label.length - a.label.length);
+  }, [mentionOptions]);
+
+  const isMentionBoundary = (char) =>
+    !char || /[\s.,;:!?()[\]{}<>]/.test(char);
+
+  const renderMentionSegment = (segment = "", keyPrefix = "mention") => {
+    const nodes = [];
+    let cursor = 0;
+
+    while (cursor < segment.length) {
+      const atIndex = segment.indexOf("@", cursor);
+
+      if (atIndex === -1) {
+        nodes.push(<span key={`${keyPrefix}-txt-${cursor}`}>{segment.slice(cursor)}</span>);
+        break;
+      }
+
+      if (atIndex > cursor) {
+        nodes.push(<span key={`${keyPrefix}-txt-${cursor}`}>{segment.slice(cursor, atIndex)}</span>);
+      }
+
+      const match = mentionCandidates.find((candidate) => {
+        const rawMention = segment.slice(atIndex + 1, atIndex + 1 + candidate.label.length);
+        if (normalizeMentionText(rawMention) !== candidate.normalized) return false;
+
+        const nextChar = segment[atIndex + 1 + candidate.label.length];
+        return isMentionBoundary(nextChar);
+      });
+
+      if (match) {
+        const mentionText = segment.slice(atIndex, atIndex + 1 + match.label.length);
+        nodes.push(
+          <span
+            key={`${keyPrefix}-mention-${atIndex}`}
+            className={`chat-mention ${match.type === "all" ? "chat-mention-all" : ""}`}
+          >
+            {mentionText}
+          </span>
+        );
+        cursor = atIndex + 1 + match.label.length;
+        continue;
+      }
+
+      const genericMention = segment.slice(atIndex).match(/^@[A-Za-zÀ-ÿ0-9_.-]{1,40}/);
+      if (genericMention) {
+        nodes.push(
+          <span key={`${keyPrefix}-mention-${atIndex}`} className="chat-mention">
+            {genericMention[0]}
+          </span>
+        );
+        cursor = atIndex + genericMention[0].length;
+        continue;
+      }
+
+      nodes.push(<span key={`${keyPrefix}-at-${atIndex}`}>@</span>);
+      cursor = atIndex + 1;
+    }
+
+    return nodes;
+  };
+
+  // 🧩 Texto normal con detección de enlaces y menciones @usuario / @todos
   const renderTextoConLinks = (texto = "") => {
     const urlRegex = /(https?:\/\/[^\s]+)/g;
-    const partes = texto.split(urlRegex);
+    const partes = String(texto || "").split(urlRegex);
 
-    return partes.map((parte, i) =>
-      urlRegex.test(parte) ? (
+    return partes.flatMap((parte, i) =>
+      urlRegex.test(parte) ? [
         <a
-          key={i}
+          key={`url-${i}`}
           href={parte}
           target="_blank"
           rel="noopener noreferrer"
@@ -544,10 +819,8 @@ const Message = ({
           }}
         >
           {parte}
-        </a>
-      ) : (
-        <span key={i}>{parte}</span>
-      )
+        </a>,
+      ] : renderMentionSegment(parte, `part-${i}`)
     );
   };
 
@@ -595,18 +868,58 @@ const Message = ({
     setAudioCurrentTime(newTime);
   };
 
+  const hasOpenFloatingLayer =
+    dropdownOpen ||
+    showReactions ||
+    showEmojiPickerReactions ||
+    showEmojiPickerEdit ||
+    showReactionModal ||
+    showHistorial ||
+    showFijarModal ||
+    showReplaceModal ||
+    showStickerModal ||
+    galeriaAbierta ||
+    isEditing;
+
   return (
     <div
       id={`mensaje-${id}`}
-      className={`message ${enviadoPorMi ? "message-out" : ""}`}
+      className={`message ${enviadoPorMi ? "message-out" : ""} ${mostrarAvatar ? "message-has-avatar" : "message-no-avatar"} ${agrupadoConAnterior ? "message-grouped-prev" : ""} ${agrupadoConSiguiente ? "message-grouped-next" : ""} ${hasOpenFloatingLayer ? "message-layer-active" : ""}`}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >
+      {!mensajeData.eliminado && typeof onReply === "function" && (
+        <button
+          type="button"
+          className={`message-reply-shortcut ${enviadoPorMi ? "out" : "in"}`}
+          onClick={handleReply}
+          title="Responder"
+        >
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            width="18"
+            height="18"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <polyline points="9 14 4 9 9 4"></polyline>
+            <path d="M20 20v-7a4 4 0 0 0-4-4H4"></path>
+          </svg>
+        </button>
+      )}
+
       {/* Avatar del que envió */}
       <div
-        className="avatar avatar-responsive"
-        style={{ cursor: "pointer" }}
-        onClick={() => onVerPerfil(enviadoPorMi ? miUsuario : usuario)}
+        className={`avatar avatar-responsive ${mostrarAvatar ? "" : "message-avatar-hidden"}`}
+        style={{ cursor: mostrarAvatar ? "pointer" : "default" }}
+        onClick={() => {
+          if (mostrarAvatar) onVerPerfil(enviadoPorMi ? miUsuario : usuario);
+        }}
+        aria-hidden={mostrarAvatar ? "false" : "true"}
       >
         {(enviadoPorMi ? miUsuario?.url_imagen : usuario?.url_imagen) ? (
           <img
@@ -636,23 +949,28 @@ const Message = ({
         )}
       </div>
 
-      <div ref={messageRef} className="message-inner" style={{ position: "relative" }}>
+      <div
+        ref={messageRef}
+        className="message-inner"
+        style={{ position: "relative" }}
+        onDoubleClick={handleReply}
+      >
         <div className="message-body">
-          {/* Nombre arriba si es grupo */}
-          {esGrupo && !enviadoPorMi && (
-            <div
-              className="fw-bold small message-sender-name"
-              style={{
-                marginBottom: "4px",
-                marginLeft: "6px",
-              }}
-            >
-              {`${usuario?.nombre || ""} ${usuario?.apellido || ""}`}
-            </div>
-          )}
-
           <div className="message-content">
-            <div className="message-text position-relative">
+            <div
+              className={`message-text position-relative ${
+                esMensajeConMedia ? "message-media-bubble" : ""
+              } ${tieneAudioSuelto ? "message-audio-bubble" : ""} ${
+                tieneVideoSuelto ? "message-video-bubble" : ""
+              }`}
+            >
+              {/* Nombre del remitente dentro de la burbuja */}
+              {esGrupo && !enviadoPorMi && mostrarNombre && (
+                <div className="fw-bold small message-sender-name">
+                  {`${usuario?.nombre || ""} ${usuario?.apellido || ""}`}
+                </div>
+              )}
+              {renderReplyPreview()}
               <div className="message-action" ref={dropdownRef}>
                 <div className={`dropdown ${dropdownOpen ? "show" : ""}`}>
                   <button
@@ -742,7 +1060,11 @@ const Message = ({
                     )}
 
                     <li>
-                      <a className="dropdown-item d-flex align-items-center" href="#">
+                      <a
+                        className="dropdown-item d-flex align-items-center"
+                        href="#"
+                        onClick={handleReply}
+                      >
                         <span className="me-auto">Responder</span>
                         <div className="icon">
                           <svg
@@ -763,6 +1085,69 @@ const Message = ({
                         </div>
                       </a>
                     </li>
+
+                    {puedeEnviarPrivadoDesdeGrupo && (
+                      <>
+                        {typeof onReplyPrivado === "function" && (
+                          <li>
+                            <a
+                              className="dropdown-item d-flex align-items-center"
+                              href="#"
+                              onClick={handleReplyPrivado}
+                            >
+                              <span className="me-auto">Responder en privado</span>
+                              <div className="icon">
+                                <svg
+                                  xmlns="http://www.w3.org/2000/svg"
+                                  width="22"
+                                  height="22"
+                                  viewBox="0 0 24 24"
+                                  fill="none"
+                                  stroke="currentColor"
+                                  strokeWidth="2"
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                >
+                                  <path d="M21 15a2 2 0 0 1-2 2H8l-5 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+                                  <path d="M8 9h8"></path>
+                                  <path d="M8 13h5"></path>
+                                </svg>
+                              </div>
+                            </a>
+                          </li>
+                        )}
+
+                        {typeof onEnviarMensajePrivado === "function" && (
+                          <li>
+                            <a
+                              className="dropdown-item d-flex align-items-center"
+                              href="#"
+                              onClick={handleEnviarMensajePrivado}
+                            >
+                              <span className="me-auto">Enviar mensaje a {nombreRemitenteMenu}</span>
+                              <div className="icon">
+                                <svg
+                                  xmlns="http://www.w3.org/2000/svg"
+                                  width="22"
+                                  height="22"
+                                  viewBox="0 0 24 24"
+                                  fill="none"
+                                  stroke="currentColor"
+                                  strokeWidth="2"
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                >
+                                  <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+                                  <circle cx="12" cy="7" r="4"></circle>
+                                  <path d="M18 8h4"></path>
+                                  <path d="M20 6v4"></path>
+                                </svg>
+                              </div>
+                            </a>
+                          </li>
+                        )}
+                      </>
+                    )}
 
                     <li>
                       <a
@@ -979,14 +1364,12 @@ const Message = ({
                       mensajeData.mensaje && !esSoloIds ? mensajeData.mensaje : "";
 
                     return (
-                      <div className="d-flex flex-column">
+                      <div className="wa-message-media-stack">
                         <div
+                          className={`wa-image-grid ${total === 1 ? "single" : "multi"}`}
                           style={{
-                            display: "grid",
                             gridTemplateColumns:
                               total === 1 ? "1fr" : "repeat(2, minmax(0, 1fr))",
-                            gap: "4px",
-                            maxWidth: total === 1 ? "260px" : "240px",
                           }}
                         >
                           {visibles.map((rawUrl, idx) => {
@@ -1012,12 +1395,7 @@ const Message = ({
                             return (
                               <div
                                 key={idx}
-                                className="position-relative"
-                                style={{
-                                  borderRadius: 12,
-                                  overflow: "hidden",
-                                  cursor: "pointer",
-                                }}
+                                className="wa-image-tile position-relative"
                                 onClick={() =>
                                   abrirGaleria(todasNormalizadas, idx)
                                 }
@@ -1025,11 +1403,9 @@ const Message = ({
                                 <img
                                   src={finalUrl}
                                   alt={`imagen-${idx}`}
+                                  className="wa-message-image"
                                   style={{
-                                    width: "100%",
                                     height: total === 1 ? "auto" : 120,
-                                    objectFit: "cover",
-                                    display: "block",
                                   }}
                                 />
 
@@ -1054,7 +1430,7 @@ const Message = ({
                         </div>
 
                         {caption && (
-                          <p className="mt-2 break-words whitespace-pre-wrap">
+                          <p className="wa-image-caption break-words whitespace-pre-wrap">
                             {renderTextoConLinks(caption)}
                           </p>
                         )}
@@ -1205,7 +1581,7 @@ const Message = ({
 
                   if (urlArchivo) {
                     const esImagen =
-                      /\.(jpe?g|png|webp|gif)$/i.test(urlArchivo) ||
+                      /\.(jpe?g|png|webp|gif)(\?.*)?$/i.test(urlArchivo) ||
                       (tipo && tipo.startsWith("image/"));
 
                     const esAudio =
@@ -1220,67 +1596,55 @@ const Message = ({
                       const estado = mensajeData.estado;
                       const progreso = mensajeData.progreso;
 
+                      const captionImagen =
+                        mensajeData.archivo_url &&
+                        typeof mensajeData.mensaje === "string" &&
+                        mensajeData.mensaje.trim() !== "" &&
+                        mensajeData.mensaje !== mensajeData.archivo_url &&
+                        !/^https?:\/\//i.test(mensajeData.mensaje.trim())
+                          ? mensajeData.mensaje.trim()
+                          : "";
+
                       return (
-                        <div
-                          style={{
-                            position: "relative",
-                            display: "inline-block",
-                          }}
-                        >
-                          <img
-                            src={urlArchivo}
-                            alt={nombre}
-                            className="rounded-lg cursor-pointer transition-transform hover:scale-105"
-                            style={{
-                              maxWidth: "200px",
-                              opacity: estado === "subiendo" ? 0.8 : 1,
-                            }}
-                            onClick={() =>
-                              estado !== "subiendo" && abrirGaleria([urlArchivo], 0)
-                            }
-                          />
-
-                          {estado === "subiendo" && (
-                            <div
+                        <div className="wa-message-media-stack">
+                          <div className="wa-single-image-wrap">
+                            <img
+                              src={urlArchivo}
+                              alt={nombre}
+                              className="wa-message-image"
                               style={{
-                                position: "absolute",
-                                inset: 0,
-                                display: "flex",
-                                alignItems: "center",
-                                justifyContent: "center",
-                                backgroundColor: "rgba(0,0,0,0.35)",
-                                borderRadius: "12px",
+                                opacity: estado === "subiendo" ? 0.8 : 1,
                               }}
-                            >
-                              <div
-                                className="spinner-border text-light"
-                                role="status"
-                                style={{
-                                  width: "28px",
-                                  height: "28px",
-                                  borderWidth: "3px",
-                                }}
-                              />
-                            </div>
-                          )}
+                              onClick={() =>
+                                estado !== "subiendo" && abrirGaleria([urlArchivo], 0)
+                              }
+                            />
 
-                          {estado === "error" && (
-                            <div
-                              style={{
-                                position: "absolute",
-                                inset: 0,
-                                display: "flex",
-                                alignItems: "center",
-                                justifyContent: "center",
-                                backgroundColor: "rgba(0,0,0,0.45)",
-                                borderRadius: "12px",
-                                color: "#fff",
-                                fontSize: "24px",
-                                fontWeight: "bold",
-                              }}
-                            >
-                              ×
-                            </div>
+                            {estado === "subiendo" && (
+                              <div className="wa-media-upload-overlay">
+                                <div
+                                  className="spinner-border text-light"
+                                  role="status"
+                                  style={{
+                                    width: "28px",
+                                    height: "28px",
+                                    borderWidth: "3px",
+                                  }}
+                                />
+                              </div>
+                            )}
+
+                            {estado === "error" && (
+                              <div className="wa-media-upload-overlay error">
+                                ×
+                              </div>
+                            )}
+                          </div>
+
+                          {captionImagen && (
+                            <p className="wa-image-caption break-words whitespace-pre-wrap">
+                              {renderTextoConLinks(captionImagen)}
+                            </p>
                           )}
                         </div>
                       );
@@ -1399,32 +1763,34 @@ const Message = ({
                     }
 
                     if (esVideo) {
+                      const captionVideo =
+                        mensajeData.archivo_url &&
+                        typeof mensajeData.mensaje === "string" &&
+                        mensajeData.mensaje.trim() !== "" &&
+                        mensajeData.mensaje !== mensajeData.archivo_url &&
+                        !/^https?:\/\//i.test(mensajeData.mensaje.trim())
+                          ? mensajeData.mensaje.trim()
+                          : "";
+
                       return (
-                        <div
-                          style={{
-                            position: "relative",
-                            display: "inline-block",
-                            maxWidth: "280px",
-                            borderRadius: "14px",
-                            overflow: "hidden",
-                            backgroundColor: "#000",
-                          }}
-                        >
-                          <video
-                            controls
-                            playsInline
-                            preload="metadata"
-                            style={{
-                              width: "100%",
-                              maxHeight: "420px",
-                              display: "block",
-                              borderRadius: "14px",
-                              backgroundColor: "#000",
-                            }}
-                          >
-                            <source src={urlArchivo} type={tipo || "video/mp4"} />
-                            Tu navegador no soporta video.
-                          </video>
+                        <div className="wa-message-media-stack">
+                          <div className="wa-video-wrap">
+                            <video
+                              controls
+                              playsInline
+                              preload="metadata"
+                              className="wa-message-video"
+                            >
+                              <source src={urlArchivo} type={tipo || "video/mp4"} />
+                              Tu navegador no soporta video.
+                            </video>
+                          </div>
+
+                          {captionVideo && (
+                            <p className="wa-image-caption wa-media-caption break-words whitespace-pre-wrap">
+                              {renderTextoConLinks(captionVideo)}
+                            </p>
+                          )}
                         </div>
                       );
                     }

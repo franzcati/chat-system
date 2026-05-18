@@ -1,12 +1,21 @@
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import toast from "react-hot-toast";
-import React, { useState } from "react";
-import "../css/emoji.css";
 import data from "@emoji-mart/data";
 import Picker from "@emoji-mart/react";
-import socket from "../socket";
+import "../css/emoji.css";
+import GroupAvatar from "./GroupAvatar";
+import { getAvatarUrl } from "../utils/url";
+import { getMessagePreview } from "../utils/messagePreview";
 
+const BASE_URL = "";
 
-const BASE_URL = ""; // 🔹 Para imágenes relativas
+const getInitial = (text) => {
+  const value = String(text || "").trim();
+  return value ? value.charAt(0).toUpperCase() : "U";
+};
+
+const getMemberName = (member = {}) =>
+  `${member.nombre || ""} ${member.apellido || ""}`.trim() || member.correo || "Usuario";
 
 const VerInfoGrupo = ({
   chat,
@@ -16,761 +25,924 @@ const VerInfoGrupo = ({
   setOffcanvasGrupo,
   user,
   onActualizarChat,
-
+  onJumpToMessage,
+  searchRequestToken,
 }) => {
   const [editandoCampo, setEditandoCampo] = useState(null);
   const [nuevoValor, setNuevoValor] = useState("");
-  const [mostrarEmojis, setMostrarEmojis] = useState(false);
   const [mostrarEmojisNombre, setMostrarEmojisNombre] = useState(false);
   const [mostrarEmojisDesc, setMostrarEmojisDesc] = useState(false);
-
-
-  const puedeEditar = chat.miembros?.some(
-    (m) =>
-      m.id === chat.user_id &&
-      (m.rol === "propietario" || m.rol === "admin")
-  );
-
-  // 🔹 Corrige URLs relativas
-  const fixUrl = (url) => {
-    if (!url) return "/default-avatar.png";
-    return url.startsWith("http") ? url : `${BASE_URL}${url}`;
-  };
-
-  // 🔹 Filtra solo imágenes o GIFs y muestra las últimas 4
-  const imagenes = chat.archivos?.filter((a) =>
-    /\.(jpg|jpeg|png|gif)$/i.test(a.archivo_url)
-  ) || [];
-  const ultimas = imagenes.slice(-4); // 👈 Solo las 4 más recientes
-
-  // 👉 Función para sacar inicial (si no hay avatar)
-  const getInitial = (text) => {
-    if (!text) return "U";
-    return text.charAt(0).toUpperCase();
-  };
-
   const [mostrarTodos, setMostrarTodos] = useState(false);
+  const [menuMiembroId, setMenuMiembroId] = useState(null);
+  const [accionMiembroId, setAccionMiembroId] = useState(null);
+  const [subiendoImagen, setSubiendoImagen] = useState(false);
+  const [mostrarMenuImagen, setMostrarMenuImagen] = useState(false);
+  const [imagenVistaPrevia, setImagenVistaPrevia] = useState(null);
+  const [modoBusqueda, setModoBusqueda] = useState(false);
+  const [textoBusqueda, setTextoBusqueda] = useState("");
+  const [resultadosBusqueda, setResultadosBusqueda] = useState([]);
+  const [buscandoMensajes, setBuscandoMensajes] = useState(false);
+  const [errorBusqueda, setErrorBusqueda] = useState("");
+  const fileInputRef = useRef(null);
+  const cameraInputRef = useRef(null);
+  const imageMenuRef = useRef(null);
 
-  // 👉 Ordenar miembros: primero yo, luego propietario, luego admins, luego el resto
-  const miembrosOrdenados = [...(chat.miembros || [])].sort((a, b) => {
-    if (a.id === chat.user_id) return -1;
-    if (b.id === chat.user_id) return 1;
-    if (a.rol === "propietario") return -1;
-    if (b.rol === "propietario") return 1;
-    if (a.rol === "admin") return -1;
-    if (b.rol === "admin") return 1;
-    return a.nombre.localeCompare(b.nombre);
-  });
+  const miembros = Array.isArray(chat?.miembros) ? chat.miembros : [];
+  const miRol = miembros.find((m) => Number(m.id) === Number(user?.id))?.rol;
+  const puedeEditar = ["propietario", "admin"].includes(miRol);
+  const esPropietario = miRol === "propietario";
 
-  // 👉 Mostrar los primeros 4 si no se han expandido
-  const miembrosVisibles = mostrarTodos
-    ? miembrosOrdenados
-    : miembrosOrdenados.slice(0, 4);
+  const miembrosOrdenados = useMemo(() => {
+    return [...miembros].sort((a, b) => {
+      if (Number(a.id) === Number(user?.id)) return -1;
+      if (Number(b.id) === Number(user?.id)) return 1;
+      if (a.rol === "propietario" && b.rol !== "propietario") return -1;
+      if (b.rol === "propietario" && a.rol !== "propietario") return 1;
+      if (a.rol === "admin" && b.rol !== "admin") return -1;
+      if (b.rol === "admin" && a.rol !== "admin") return 1;
+      return getMemberName(a).localeCompare(getMemberName(b));
+    });
+  }, [miembros, user?.id]);
 
-  // 🧩 Editar nombre o descripción (ya sin setChats)
+  const miembrosVisibles = mostrarTodos ? miembrosOrdenados : miembrosOrdenados.slice(0, 8);
+
+  const archivos = Array.isArray(chat?.archivos) ? chat.archivos : [];
+  const ultimasImagenes = archivos
+    .filter((a) => /image\//i.test(a.tipo_archivo || "") || /\.(jpg|jpeg|png|gif|webp)$/i.test(a.archivo_url || ""))
+    .slice(-4)
+    .reverse();
+
+  const fixUrl = (url) => {
+    if (!url) return "";
+    return String(url).startsWith("http") ? url : `${BASE_URL}${url}`;
+  };
+
+  const actualizarCampoLocal = (campo, valor) => {
+    if (!onActualizarChat) return;
+    onActualizarChat(campo, valor);
+    if (campo === "usuario_nombre") onActualizarChat("nombre", valor);
+  };
+
   const handleEditarGrupo = async (campo, valor) => {
+    const cleanValue = String(valor || "").trim();
+    if (!cleanValue && campo === "nombre") {
+      toast.error("El nombre del grupo no puede estar vacío");
+      return;
+    }
+
     try {
-      const res = await fetch(
-        `${BASE_URL}/api/grupos/${chat.grupo_id}/editar-info`,
-        {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            usuarioId: user.id,
-            [campo]: valor,
-          }),
-        }
-      );
+      const res = await fetch(`${BASE_URL}/api/grupos/${chat.grupo_id}/editar-info`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          usuarioId: user.id,
+          [campo]: cleanValue,
+        }),
+      });
 
-      const data = await res.json();
-      if (data.success) {
-        toast.success("✅ Grupo actualizado correctamente");
-
-        // 🔹 Actualiza localmente para feedback inmediato
-        chat[campo === "nombre" ? "usuario_nombre" : "descripcion"] = valor;
-
-        // 🔹 Cierra edición
-        setEditandoCampo(null);
-        setMostrarEmojisNombre(false);
-        setMostrarEmojisDesc(false);
-      } else {
-        toast.error(data.error || "Error al actualizar");
+      const result = await res.json();
+      if (!res.ok || !result.success) {
+        toast.error(result.error || "Error al actualizar");
+        return;
       }
+
+      if (campo === "nombre") actualizarCampoLocal("usuario_nombre", cleanValue);
+      if (campo === "descripcion") actualizarCampoLocal("descripcion", cleanValue);
+
+      setEditandoCampo(null);
+      setMostrarEmojisNombre(false);
+      setMostrarEmojisDesc(false);
+      toast.success("Grupo actualizado");
     } catch (err) {
       console.error(err);
       toast.error("Error de conexión");
     }
   };
 
-  // 🧩 Cambiar privacidad (también sin setChats)
-  const handleCambiarPrivacidad = async (nuevoValor) => {
+  const handleCambiarPrivacidad = async (nuevoEstado) => {
     try {
-      const res = await fetch(
-        `${BASE_URL}/api/grupos/${chat.grupo_id}/privacidad`,
-        {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            usuarioId: user.id,
-            privacidad: nuevoValor,
-          }),
-        }
-      );
+      const res = await fetch(`${BASE_URL}/api/grupos/${chat.grupo_id}/privacidad`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ usuarioId: user.id, privacidad: nuevoEstado }),
+      });
 
-      const data = await res.json();
-      if (data.success) {
-        toast.success("🔒 Privacidad actualizada");
-        // ✅ Actualiza localmente para feedback inmediato
-        onActualizarChat("privacidad", nuevoValor);
-      } else {
-        toast.error(data.error || "Error al cambiar privacidad");
+      const result = await res.json();
+      if (!res.ok || !result.success) {
+        toast.error(result.error || "Error al cambiar privacidad");
+        return;
       }
+
+      actualizarCampoLocal("privacidad", nuevoEstado);
+      toast.success("Privacidad actualizada");
     } catch (err) {
       console.error(err);
       toast.error("Error de conexión");
     }
+  };
+
+  const handleImagenGrupo = async (event) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+
+    if (!file.type.startsWith("image/")) {
+      toast.error("Selecciona una imagen válida");
+      return;
+    }
+
+    const formData = new FormData();
+    formData.append("imagen", file);
+    formData.append("usuarioId", user.id);
+
+    setSubiendoImagen(true);
+    try {
+      const res = await fetch(`${BASE_URL}/api/grupos/${chat.grupo_id}/imagen`, {
+        method: "PUT",
+        body: formData,
+      });
+      const result = await res.json();
+
+      if (!res.ok || !result.success) {
+        toast.error(result.error || "No se pudo actualizar la imagen");
+        return;
+      }
+
+      actualizarCampoLocal("imagen_url", result.imagen_url);
+      toast.success("Imagen del grupo actualizada");
+    } catch (err) {
+      console.error(err);
+      toast.error("Error al subir la imagen");
+    } finally {
+      setSubiendoImagen(false);
+    }
+  };
+
+  const handleEliminarImagenGrupo = async () => {
+    if (!chat?.imagen_url) {
+      setMostrarMenuImagen(false);
+      return;
+    }
+
+    if (!window.confirm("¿Quitar la foto del grupo?")) return;
+
+    setSubiendoImagen(true);
+    try {
+      const res = await fetch(`${BASE_URL}/api/grupos/${chat.grupo_id}/imagen`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ usuarioId: user.id }),
+      });
+      const result = await res.json();
+
+      if (!res.ok || !result.success) {
+        toast.error(result.error || "No se pudo quitar la foto");
+        return;
+      }
+
+      actualizarCampoLocal("imagen_url", null);
+      setMostrarMenuImagen(false);
+      toast.success("Foto del grupo quitada");
+    } catch (err) {
+      console.error(err);
+      toast.error("Error al quitar la foto");
+    } finally {
+      setSubiendoImagen(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!mostrarMenuImagen) return;
+
+    const cerrarMenu = (event) => {
+      if (imageMenuRef.current && !imageMenuRef.current.contains(event.target)) {
+        setMostrarMenuImagen(false);
+      }
+    };
+
+    document.addEventListener("mousedown", cerrarMenu);
+    return () => document.removeEventListener("mousedown", cerrarMenu);
+  }, [mostrarMenuImagen]);
+
+  useEffect(() => {
+    if (!modoBusqueda || !chat?.grupo_id) return;
+
+    const query = textoBusqueda.trim();
+    if (!query) {
+      setResultadosBusqueda([]);
+      setErrorBusqueda("");
+      setBuscandoMensajes(false);
+      return;
+    }
+
+    const controller = new AbortController();
+    const timer = setTimeout(async () => {
+      setBuscandoMensajes(true);
+      setErrorBusqueda("");
+
+      try {
+        const params = new URLSearchParams({ q: query, limit: "40" });
+        const res = await fetch(`${BASE_URL}/api/mensajes/grupo/${chat.grupo_id}/buscar?${params.toString()}`, {
+          signal: controller.signal,
+        });
+        const result = await res.json();
+
+        if (!res.ok) {
+          setErrorBusqueda(result.error || "No se pudo buscar");
+          setResultadosBusqueda([]);
+          return;
+        }
+
+        setResultadosBusqueda(Array.isArray(result.mensajes) ? result.mensajes : []);
+      } catch (err) {
+        if (err.name !== "AbortError") {
+          console.error(err);
+          setErrorBusqueda("Error al buscar mensajes");
+        }
+      } finally {
+        if (!controller.signal.aborted) setBuscandoMensajes(false);
+      }
+    }, 250);
+
+    return () => {
+      controller.abort();
+      clearTimeout(timer);
+    };
+  }, [modoBusqueda, textoBusqueda, chat?.grupo_id]);
+
+  const abrirBusquedaGrupo = () => {
+    setModoBusqueda(true);
+    setTextoBusqueda("");
+    setResultadosBusqueda([]);
+    setErrorBusqueda("");
+  };
+
+  const cerrarBusquedaGrupo = () => {
+    setModoBusqueda(false);
+    setTextoBusqueda("");
+    setResultadosBusqueda([]);
+    setErrorBusqueda("");
+  };
+
+  useEffect(() => {
+    if (!visible || !searchRequestToken) return;
+    abrirBusquedaGrupo();
+  }, [visible, searchRequestToken]);
+
+  const seleccionarResultadoBusqueda = (messageId) => {
+    if (!messageId) return;
+    if (onJumpToMessage) onJumpToMessage(messageId);
+  };
+
+  const actualizarMiembrosLocal = (nuevosMiembros = []) => {
+    actualizarCampoLocal("miembros", nuevosMiembros);
+  };
+
+  const handleCambiarRolMiembro = async (member, rolDestino) => {
+    setAccionMiembroId(member.id);
+    try {
+      const res = await fetch(`${BASE_URL}/api/grupos/${chat.grupo_id}/miembros/${member.id}/rol`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ usuarioId: user.id, rol: rolDestino }),
+      });
+      const result = await res.json();
+
+      if (!res.ok || !result.success) {
+        toast.error(result.error || "No se pudo actualizar el rol");
+        return;
+      }
+
+      actualizarMiembrosLocal(result.miembros);
+      setMenuMiembroId(null);
+      toast.success(
+        rolDestino === "admin"
+          ? `${getMemberName(member)} ahora es admin del grupo`
+          : `${getMemberName(member)} dejó de ser admin del grupo`
+      );
+    } catch (err) {
+      console.error(err);
+      toast.error("Error de conexión");
+    } finally {
+      setAccionMiembroId(null);
+    }
+  };
+
+  const handleDesignarAdmin = (member) => handleCambiarRolMiembro(member, "admin");
+  const handleDescartarAdmin = (member) => handleCambiarRolMiembro(member, "miembro");
+
+  const handleCederPropiedad = async (member) => {
+    if (!window.confirm(`¿Ceder la propiedad del grupo a ${getMemberName(member)}? Seguirás dentro como admin.`)) return;
+
+    setAccionMiembroId(member.id);
+    try {
+      const res = await fetch(`${BASE_URL}/api/grupos/${chat.grupo_id}/propietario`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ usuarioId: user.id, nuevoPropietarioId: member.id }),
+      });
+      const result = await res.json();
+
+      if (!res.ok || !result.success) {
+        toast.error(result.error || "No se pudo ceder la propiedad");
+        return;
+      }
+
+      actualizarMiembrosLocal(result.miembros);
+      if (result.propietario_id) actualizarCampoLocal("propietario_id", result.propietario_id);
+      setMenuMiembroId(null);
+      toast.success(`${getMemberName(member)} ahora es propietario del grupo`);
+    } catch (err) {
+      console.error(err);
+      toast.error("Error de conexión");
+    } finally {
+      setAccionMiembroId(null);
+    }
+  };
+
+  const handleQuitarMiembro = async (member) => {
+    if (!window.confirm(`¿Quitar a ${getMemberName(member)} del grupo?`)) return;
+
+    setAccionMiembroId(member.id);
+    try {
+      const res = await fetch(`${BASE_URL}/api/grupos/${chat.grupo_id}/miembros/${member.id}/quitar`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ usuarioId: user.id }),
+      });
+      const result = await res.json();
+
+      if (!res.ok || !result.success) {
+        toast.error(result.error || "No se pudo quitar el miembro");
+        return;
+      }
+
+      actualizarMiembrosLocal(result.miembros);
+      setMenuMiembroId(null);
+      toast.success("Miembro quitado del grupo");
+    } catch (err) {
+      console.error(err);
+      toast.error("Error de conexión");
+    } finally {
+      setAccionMiembroId(null);
+    }
+  };
+
+  const puedeAdministrarMiembro = (member) => {
+    if (!puedeEditar) return false;
+    if (Number(member.id) === Number(user?.id)) return false;
+    if (member.rol === "propietario") return false;
+
+    // El propietario puede administrar a cualquier miembro/admin.
+    if (esPropietario) return true;
+
+    // Un admin solo puede gestionar miembros normales; no puede tocar otros admins.
+    return miRol === "admin" && member.rol !== "admin";
+  };
+
+  const comenzarEdicion = (campo) => {
+    setEditandoCampo(campo);
+    setNuevoValor(campo === "nombre" ? chat.usuario_nombre || chat.nombre || "" : chat.descripcion || "");
   };
 
   return (
-    <div
-      className={`fixed top-0 right-0 h-full bg-white shadow-lg border-l border-gray-200 transition-all duration-300 ease-in-out z-50
-      ${visible ? "w-80 md:w-96" : "w-0 overflow-hidden"}`}
-    >
-      <div className="flex flex-col h-full"> {/* 👈 contenedor principal con flex */}
-        {/* 🔹 Header superior */}
-        {/* Header */}
-        <div className="relative profile-img text-primary rounded-top flex-shrink-0">
-          
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            fill="currentColor"
-            viewBox="0 0 400 140.74"
-          >  
-                                    
-            <defs>
-              <style>{".cls-2{fill:#fff;opacity:0.1;}"}</style>
-            </defs>
-                            
-            <g>
-              <g>
-                <path d="M400,125A1278.49,1278.49,0,0,1,0,125V0H400Z"></path>
-                  <path
-                    className="cls-2"
-                    d="M361.13,128c.07.83.15,1.65.27,2.46h0Q380.73,128,400,125V87l-1,0a38,38,0,0,0-38,38c0,.86,0,1.71.09,2.55C361.11,127.72,361.12,127.88,361.13,128Z"
-                  ></path>
-                  <path
-                    className="cls-2"
-                    d="M12.14,119.53c.07.79.15,1.57.26,2.34v0c.13.84.28,1.66.46,2.48l.07.3c.18.8.39,1.59.62,2.37h0q33.09,4.88,66.36,8,.58-1,1.09-2l.09-.18a36.35,36.35,0,0,0,1.81-4.24l.08-.24q.33-.94.6-1.9l.12-.41a36.26,36.26,0,0,0,.91-4.42c0-.19,0-.37.07-.56q.11-.86.18-1.73c0-.21,0-.42,0-.63,0-.75.08-1.51.08-2.28a36.5,36.5,0,0,0-73,0c0,.83,0,1.64.09,2.45C12.1,119.15,12.12,119.34,12.14,119.53Z"
-                  ></path>
-                    <circle className="cls-2" cx="94.5" cy="57.5" r="22.5"></circle>
-                  <path
-                    className="cls-2"
-                    d="M276,0a43,43,0,0,0,43,43A43,43,0,0,0,362,0Z"
-                  ></path>
-              </g>
-              
-            </g>
-            
-                
-          </svg>
-          <div className="absolute top-0 left-0 w-full flex items-center justify-between px-4 py-3 text-white">
-          
-            <div className="position-absolute top-0 start-0 py-6 px-5">
-              <button
-                onClick={onClose}
-                className="flex items-center gap-2 hover:text-gray-900 transition btn-close btn-close-white"
-              >
-                
-              </button>
-              <span className="position-absolute top-5 start-0 ml-20 text-white font-semibold text-base whitespace-nowrap">Info. del grupo</span>
-            </div>
-          </div>
+    <aside className={`wa-group-info-panel ${visible ? "is-open" : ""}`} aria-hidden={!visible}>
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*"
+        className="d-none"
+        onChange={handleImagenGrupo}
+      />
+      <input
+        ref={cameraInputRef}
+        type="file"
+        accept="image/*"
+        capture="environment"
+        className="d-none"
+        onChange={handleImagenGrupo}
+      />
 
-          
+      <div className="wa-group-info-inner">
+        <div className="wa-group-info-topbar">
+          {modoBusqueda ? (
+            <button type="button" className="wa-info-icon-btn" onClick={cerrarBusquedaGrupo} title="Volver">
+              <i className="fa-solid fa-arrow-left" aria-hidden="true" />
+            </button>
+          ) : (
+            <button type="button" className="wa-info-icon-btn" onClick={onClose} title="Cerrar">
+              <i className="fa-solid fa-xmark" aria-hidden="true" />
+            </button>
+          )}
+          <span>{modoBusqueda ? "Buscar mensajes" : "Info. del grupo"}</span>
         </div>
 
-        {/* 🔹 Contenido scrollable */}
-        {/* Contenido */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-5 scrollbar-hide">
-          {/* Imagen + nombre */}
-          <div className="flex flex-col items-center text-center relative">
-            <img
-              src={fixUrl(chat.imagen_url)}
-              alt={chat.usuario_nombre}
-              className="w-24 h-24 rounded-full object-cover border mb-2"
-            />
-
-            {/* ===================== NOMBRE EDITABLE ===================== */}
-            <div className="flex flex-col w-full">
-              {editandoCampo === "nombre" ? (
-                <div className="relative w-full">
-                  {/* Input flotante para editar el nombre */}
-                  <div className="form-floating">
-                    <input
-                      type="text"
-                      className="form-control"
-                      id="chatName"
-                      placeholder="Nombre del grupo"
-                      value={nuevoValor}
-                      onChange={(e) => setNuevoValor(e.target.value)}
-                    />
-                    <label htmlFor="chatName">Nombre del grupo</label>
-                  </div>
-
-                  {/* Botones de acción */}
-                  <div className="flex gap-2 mt-2 justify-end items-center">
-                    {/* Emoji SVG */}
+        {modoBusqueda ? (
+          <GroupSearchView
+            chat={chat}
+            value={textoBusqueda}
+            onChange={setTextoBusqueda}
+            results={resultadosBusqueda}
+            loading={buscandoMensajes}
+            error={errorBusqueda}
+            onSelect={seleccionarResultadoBusqueda}
+          />
+        ) : (
+        <div className="wa-group-info-scroll">
+          <section className="wa-info-card wa-group-profile-card text-center">
+            <div className="wa-group-profile-avatar-wrap">
+              <div className="wa-avatar-menu-anchor" ref={imageMenuRef}>
+                <GroupAvatar
+                  group={chat}
+                  members={miembros}
+                  size={164}
+                  editable
+                  canEdit={puedeEditar}
+                  onEditImage={() => setMostrarMenuImagen((prev) => !prev)}
+                />
+                {mostrarMenuImagen && puedeEditar && (
+                  <div className="wa-avatar-image-menu">
                     <button
-                      onClick={() => setMostrarEmojisNombre((prev) => !prev)}
-                      className="p-1 hover:bg-gray-100 rounded-full"
-                      title="Añadir emoji"
-                    >
-                      <svg
-                        xmlns="http://www.w3.org/2000/svg"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        className="w-5 h-5 text-yellow-500"
-                      >
-                        <circle cx="12" cy="12" r="10" />
-                        <path d="M8 14s1.5 2 4 2 4-2 4-2" />
-                        <line x1="9" y1="9" x2="9.01" y2="9" />
-                        <line x1="15" y1="9" x2="15.01" y2="9" />
-                      </svg>
-                    </button>
-
-                    {/* Check (guardar) */}
-                    <button
-                      onClick={() => handleEditarGrupo("nombre", nuevoValor)}
-                      className="p-1 text-green-600 hover:bg-green-100 rounded-full"
-                      title="Guardar"
-                    >
-                      <svg
-                        xmlns="http://www.w3.org/2000/svg"
-                        fill="none"
-                        viewBox="0 0 24 24"
-                        stroke="currentColor"
-                        strokeWidth="2.5"
-                        className="w-5 h-5"
-                      >
-                        <polyline points="20 6 9 17 4 12" />
-                      </svg>
-                    </button>
-
-                    {/* X (cancelar) */}
-                    <button
+                      type="button"
+                      disabled={!chat.imagen_url}
                       onClick={() => {
-                        setEditandoCampo(null);
-                        setMostrarEmojisNombre(false);
-                        setNuevoValor(chat.usuario_nombre);
+                        if (chat.imagen_url) setImagenVistaPrevia(chat.imagen_url);
+                        setMostrarMenuImagen(false);
                       }}
-                      className="p-1 text-red-500 hover:bg-red-100 rounded-full"
-                      title="Cancelar"
                     >
-                      <svg
-                        xmlns="http://www.w3.org/2000/svg"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="2.5"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        className="w-5 h-5"
-                      >
-                        <line x1="18" y1="6" x2="6" y2="18" />
-                        <line x1="6" y1="6" x2="18" y2="18" />
-                      </svg>
+                      <i className="fa-regular fa-eye" aria-hidden="true" />
+                      Ver foto
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setMostrarMenuImagen(false);
+                        cameraInputRef.current?.click();
+                      }}
+                    >
+                      <i className="fa-solid fa-camera" aria-hidden="true" />
+                      Tomar foto
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setMostrarMenuImagen(false);
+                        fileInputRef.current?.click();
+                      }}
+                    >
+                      <i className="fa-regular fa-folder" aria-hidden="true" />
+                      Subir foto
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setMostrarMenuImagen(false);
+                        toast("Emoji y sticker para imagen de grupo se puede agregar después");
+                      }}
+                    >
+                      <i className="fa-regular fa-face-smile" aria-hidden="true" />
+                      Emoji y sticker
+                    </button>
+                    <button
+                      type="button"
+                      className="danger"
+                      disabled={!chat.imagen_url}
+                      onClick={handleEliminarImagenGrupo}
+                    >
+                      <i className="fa-regular fa-trash-can" aria-hidden="true" />
+                      Quitar foto
                     </button>
                   </div>
-
-                  {/* Emoji Picker debajo del input */}
-                  {mostrarEmojisNombre && (
-                    <div className="mt-2 z-50 bg-white shadow-lg rounded-lg border w-fit">
-                      <Picker
-                        data={data}
-                        onEmojiSelect={(emoji) =>
-                          setNuevoValor((prev) => prev + emoji.native)
-                        }
-                        theme="light"
-                        previewPosition="none"
-                        searchPosition="none"
-                      />
-                    </div>
-                  )}
-                </div>
-              ) : (
-                <div className="flex justify-center items-center gap-2">
-                  <h2 className="text-lg font-bold text-gray-800 text-center m-0">
-                    {chat.usuario_nombre}
-                  </h2>
-
-                  {puedeEditar && (
-                    <button
-                      onClick={() => {
-                        setEditandoCampo("nombre");
-                        setNuevoValor(chat.usuario_nombre || "");
-                      }}
-                      className="p-1 hover:bg-gray-100 rounded-full transition"
-                      title="Editar nombre del grupo"
-                    >
-                      <svg
-                        xmlns="http://www.w3.org/2000/svg"
-                        className="w-4 h-4 text-gray-600"
-                        fill="none"
-                        viewBox="0 0 24 24"
-                        stroke="currentColor"
-                        strokeWidth={2}
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          d="M15.232 5.232l3.536 3.536M4 13.5V19h5.5l9.793-9.793a1 1 0 000-1.414L17.207 4.5a1 1 0 00-1.414 0L4 16.293z"
-                        />
-                      </svg>
-                    </button>
-                  )}
-                </div>
-              )}
+                )}
+              </div>
+              {subiendoImagen && <div className="wa-group-uploading">Subiendo...</div>}
             </div>
 
-            <p className="text-sm text-gray-500">
-              {chat.miembros?.length || 0} miembros
-            </p>
-          </div>
-
-          {/* ===================== DESCRIPCIÓN EDITABLE ===================== */}
-          <div className="flex justify-center items-start gap-2 w-full">
-            {editandoCampo === "descripcion" ? (
-              <div className="relative w-full">
-                {/* Textarea flotante */}
-                <div className="form-floating">
-                  <textarea
-                    className="form-control"
-                    placeholder="Descripción del grupo"
-                    id="chatDescription"
-                    rows="8"
-                    style={{ minHeight: "100px", resize: "none" }}
-                    value={nuevoValor}
-                    onChange={(e) => setNuevoValor(e.target.value)}
-                  />
-                  <label htmlFor="chatDescription" className="text-gray-500">
-                    ¿Cuál es su propósito?
-                  </label>
-                </div>
-
-                {/* Botones debajo del textarea */}
-                <div className="flex gap-2 mt-2 justify-end items-center relative">
-                  {/* Emoji SVG */}
-                  <button
-                    onClick={() => setMostrarEmojisDesc((prev) => !prev)}
-                    className="p-1 hover:bg-gray-100 rounded-full"
-                    title="Añadir emoji"
-                  >
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      className="w-5 h-5 text-yellow-500"
-                    >
-                      <circle cx="12" cy="12" r="10" />
-                      <path d="M8 14s1.5 2 4 2 4-2 4-2" />
-                      <line x1="9" y1="9" x2="9.01" y2="9" />
-                      <line x1="15" y1="9" x2="15.01" y2="9" />
-                    </svg>
+            {editandoCampo === "nombre" ? (
+              <EditField
+                id="group-name"
+                value={nuevoValor}
+                onChange={setNuevoValor}
+                placeholder="Nombre del grupo"
+                onSave={() => handleEditarGrupo("nombre", nuevoValor)}
+                onCancel={() => {
+                  setEditandoCampo(null);
+                  setMostrarEmojisNombre(false);
+                }}
+                showEmoji={mostrarEmojisNombre}
+                onToggleEmoji={() => setMostrarEmojisNombre((prev) => !prev)}
+                onEmoji={(emoji) => setNuevoValor((prev) => prev + emoji.native)}
+              />
+            ) : (
+              <div className="wa-group-title-row">
+                <h2>{chat.usuario_nombre || chat.nombre || "Grupo"}</h2>
+                {puedeEditar && (
+                  <button type="button" className="wa-info-small-btn" onClick={() => comenzarEdicion("nombre")} title="Editar nombre">
+                    <i className="fa-solid fa-pen" aria-hidden="true" />
                   </button>
-
-                  {/* Check (guardar) */}
-                  <button
-                    onClick={() => handleEditarGrupo("descripcion", nuevoValor)}
-                    className="p-1 text-green-600 hover:bg-green-100 rounded-full"
-                    title="Guardar"
-                  >
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      stroke="currentColor"
-                      strokeWidth="2.5"
-                      className="w-5 h-5"
-                    >
-                      <polyline points="20 6 9 17 4 12" />
-                    </svg>
-                  </button>
-
-                  {/* X (cancelar) */}
-                  <button
-                    onClick={() => {
-                      setEditandoCampo(null);
-                      setMostrarEmojisDesc(false);
-                      setNuevoValor(chat.descripcion);
-                    }}
-                    className="p-1 text-red-500 hover:bg-red-100 rounded-full"
-                    title="Cancelar"
-                  >
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2.5"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      className="w-5 h-5"
-                    >
-                      <line x1="18" y1="6" x2="6" y2="18" />
-                      <line x1="6" y1="6" x2="18" y2="18" />
-                    </svg>
-                  </button>
-                </div>
-
-                {/* Emoji Picker debajo del textarea */}
-                {mostrarEmojisDesc && (
-                  <div className="mt-2 z-50 bg-white shadow-lg rounded-lg border w-fit">
-                    <Picker
-                      data={data}
-                      onEmojiSelect={(emoji) =>
-                        setNuevoValor((prev) => prev + emoji.native)
-                      }
-                      theme="light"
-                      previewPosition="none"
-                      searchPosition="none"
-                    />
-                  </div>
                 )}
               </div>
+            )}
+
+            <p className="wa-group-subtitle">Grupo · {miembros.length} miembros</p>
+          </section>
+
+          <section className="wa-info-card wa-group-actions-grid">
+            <button type="button" className="wa-group-action-btn" disabled>
+              <i className="fa-solid fa-phone" aria-hidden="true" />
+              <span>Voz</span>
+            </button>
+            <button type="button" className="wa-group-action-btn" disabled>
+              <i className="fa-solid fa-video" aria-hidden="true" />
+              <span>Video</span>
+            </button>
+            <button type="button" className="wa-group-action-btn" onClick={() => setOffcanvasGrupo((prev) => (prev ? null : chat))} disabled={!puedeEditar}>
+              <i className="fa-solid fa-user-plus" aria-hidden="true" />
+              <span>Añadir</span>
+            </button>
+            <button type="button" className="wa-group-action-btn" onClick={abrirBusquedaGrupo}>
+              <i className="fa-solid fa-magnifying-glass" aria-hidden="true" />
+              <span>Busca</span>
+            </button>
+          </section>
+
+          <section className="wa-info-card wa-description-card">
+            {editandoCampo === "descripcion" ? (
+              <EditField
+                id="group-description"
+                textarea
+                value={nuevoValor}
+                onChange={setNuevoValor}
+                placeholder="Añade una descripción del grupo"
+                onSave={() => handleEditarGrupo("descripcion", nuevoValor)}
+                onCancel={() => {
+                  setEditandoCampo(null);
+                  setMostrarEmojisDesc(false);
+                }}
+                showEmoji={mostrarEmojisDesc}
+                onToggleEmoji={() => setMostrarEmojisDesc((prev) => !prev)}
+                onEmoji={(emoji) => setNuevoValor((prev) => prev + emoji.native)}
+              />
             ) : (
               <>
-                {/* ✅ Texto de descripción con saltos de línea y mostrar más/menos */}
-                <DescripcionConFormato texto={chat.descripcion || "Añade una descripción del grupo"} />
-
-                {puedeEditar && (
-                  <button
-                    onClick={() => {
-                      setEditandoCampo("descripcion");
-                      setNuevoValor(chat.descripcion || "");
-                    }}
-                    className="p-1 hover:bg-gray-100 rounded-full transition"
-                    title="Editar descripción"
-                  >
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      className="w-4 h-4 text-gray-600"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      stroke="currentColor"
-                      strokeWidth={2}
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        d="M15.232 5.232l3.536 3.536M4 13.5V19h5.5l9.793-9.793a1 1 0 000-1.414L17.207 4.5a1 1 0 00-1.414 0L4 16.293z"
-                      />
-                    </svg>
-                  </button>
-                )}
+                <div className="wa-description-header">
+                  <DescripcionConFormato texto={chat.descripcion || "Añade una descripción del grupo"} empty={!chat.descripcion} />
+                  {puedeEditar && (
+                    <button type="button" className="wa-info-small-btn" onClick={() => comenzarEdicion("descripcion")} title="Editar descripción">
+                      <i className="fa-solid fa-pen" aria-hidden="true" />
+                    </button>
+                  )}
+                </div>
+                <p className="wa-created-text">Grupo creado el {chat.fecha_creacion ? new Date(chat.fecha_creacion).toLocaleDateString() : ""}</p>
               </>
             )}
-          </div>
+          </section>
 
-          {/* 🔹 Archivos (solo 4 imágenes o GIFs recientes) */}
-          {ultimas.length > 0 && (
-            <div className="mt-4">
-              <div
-                className="cursor-pointer"
-                onClick={() => setMostrarVerArchivos(true)} // 👈 Abrirá el panel VerArchivos.jsx
-              >
-                <div className="flex items-center justify-between mb-2">
-                  <div className="flex items-center gap-2 text-gray-700 font-semibold">
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      width="20"
-                      height="20"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      className="text-blue-500"
-                    >
-                      <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
-                      <circle cx="8.5" cy="8.5" r="1.5"></circle>
-                      <path d="M21 15l-5-5L5 21"></path>
-                    </svg>
-                    <span>Archivos, enlaces y documentos</span>
-                  </div>
-
-                  {/* Contador total de archivos */}
-                  <span className="text-gray-500 text-sm font-medium">
-                    {chat.archivos.length}
-                  </span>
-                </div>
+          <section className="wa-info-card wa-media-card" onClick={() => setMostrarVerArchivos(true)}>
+            <div className="wa-info-section-row">
+              <div className="wa-info-section-title">
+                <i className="fa-regular fa-images" aria-hidden="true" />
+                <span>Archivos, enlaces y documentos</span>
               </div>
-
-              <div className="flex gap-2 overflow-x-auto py-1">
-                {ultimas.map((a) => (
+              <span className="wa-info-count">{archivos.length}</span>
+            </div>
+            {ultimasImagenes.length > 0 && (
+              <div className="wa-media-preview-strip">
+                {ultimasImagenes.map((archivo) => (
                   <img
-                    key={a.id}
-                    src={fixUrl(a.archivo_url)}
-                    alt={a.nombre_archivo}
-                    className="w-18 h-18 rounded-lg object-cover border border-gray-200 shadow-sm cursor-pointer hover:scale-105 hover:shadow-md transition-transform duration-200"
+                    key={archivo.id || archivo.archivo_url}
+                    src={fixUrl(archivo.archivo_url)}
+                    alt={archivo.nombre_archivo || "archivo"}
+                    className="wa-media-preview-thumb"
                   />
                 ))}
               </div>
-            </div>
-          )}
-          {/* Privacidad */}
-          <div className="border-t border-gray-200 pt-3">
-            <div className="flex justify-between items-center">
-              {/* 🟢 Título + tipo */}
-              <span className="font-medium text-gray-700">
-                Grupo {chat.privacidad === "privado" ? "Privado" : "Público"}
-              </span>
+            )}
+          </section>
 
-              {/* 🟢 Switch */}
-
-              <div className="form-check form-switch flex items-center gap-2">
-                <input
-                className="form-check-input cursor-pointer disabled:opacity-60"
-                type="checkbox"
-                checked={chat.privacidad === "privado"}
-                disabled={
-                  !chat.miembros?.some(
-                    (m) => m.id === chat.user_id && m.rol === "propietario"
-                  )
-                }
-                onChange={(e) =>
-                  handleCambiarPrivacidad(e.target.checked ? "privado" : "publico")
-                }
-              />
+          <section className="wa-info-card wa-privacy-card">
+            <div className="wa-info-section-row">
+              <div>
+                <h3>Grupo {chat.privacidad === "privado" ? "privado" : "público"}</h3>
+                <p>{chat.privacidad === "privado" ? "Solo administradores y propietario pueden añadir personas" : "Todos los miembros pueden añadir personas"}</p>
               </div>
-              
+              <label className="wa-switch">
+                <input
+                  type="checkbox"
+                  checked={chat.privacidad === "privado"}
+                  disabled={!esPropietario}
+                  onChange={(e) => handleCambiarPrivacidad(e.target.checked ? "privado" : "publico")}
+                />
+                <span />
+              </label>
             </div>
-                
-            
+          </section>
 
-            {/* 🟢 Texto explicativo debajo */}
-            <small className="text-gray-500 text-xs mt-1 block">
-              {chat.privacidad === "publico"
-                ? "Todos los miembros pueden añadir personas"
-                : "Solo el propietario puede añadir personas"}
-            </small>
-          </div>
-
-          {/* Miembros */}
-          <div>
-            <div className="flex items-center justify-between mb-2">
-              <h5 className="font-semibold text-gray-700">
-                Miembros ({chat.miembros?.length || 0})
-              </h5>
-
-              {/* 🔹 Botón "Añadir miembro" solo visible para propietario o admin */}
-              {(chat.miembros?.some(
-                (m) =>
-                  m.id === chat.user_id &&
-                  (m.rol === "propietario" || m.rol === "admin")
-              )) && (
-                <button
-                  onClick={() =>
-                    setOffcanvasGrupo((prev) =>
-                      prev ? null : chat // 🔁 si ya está abierto lo cierra, si no, lo abre
-                    )
-                  }
-                  className="flex items-center gap-2 transparent hover:bg-green-200 text-green-700 text-sm font-medium px-3 py-1 rounded-full transition"
-                >
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    className="w-4 h-4"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                    strokeWidth={2}
-                  >
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
-                  </svg>
+          <section className="wa-info-card wa-members-card">
+            <div className="wa-info-section-row mb-2">
+              <h3>Miembros ({miembros.length})</h3>
+              {puedeEditar && (
+                <button type="button" className="wa-add-member-btn" onClick={() => setOffcanvasGrupo((prev) => (prev ? null : chat))}>
+                  <i className="fa-solid fa-plus" aria-hidden="true" />
                   Añadir miembro
                 </button>
               )}
             </div>
 
-            <ul className="space-y-3">
-              {miembrosVisibles.map((m) => {
-                const tieneImagen = m.url_imagen && m.url_imagen.trim() !== "";
-                const inicial = getInitial(m.nombre);
-                const esActual = m.id === chat.user_id;
+            <ul className="wa-member-list">
+              {miembrosVisibles.map((member) => {
+                const nombre = getMemberName(member);
+                const esActual = Number(member.id) === Number(user?.id);
+                const canManage = puedeAdministrarMiembro(member);
+                const isOpen = menuMiembroId === member.id;
 
                 return (
-                  <li key={m.id} className="flex items-center gap-3 pr-2">
-                    <div className="flex items-center gap-3 h-13 flex-1 min-w-0">
-                      {tieneImagen ? (
-                        <img
-                          src={fixUrl(m.url_imagen)}
-                          alt={m.nombre}
-                          className="w-10 h-10 rounded-full object-cover border border-gray-200 flex-shrink-0"
-                        />
-                      ) : (
-                        <div
-                          className="w-10 h-10 rounded-full flex items-center justify-center text-base font-semibold text-white border border-gray-200 flex-shrink-0"
-                          style={{ backgroundColor: m.background || "#6c757d" }}
-                        >
-                          {inicial}
-                        </div>
-                      )}
-
-                      <div className="flex flex-col flex-1 min-w-0">
-                        <div className="flex items-center justify-between w-full">
-                          <p className="text-sm font-medium text-gray-800 truncate">
-                            {esActual ? "Tú" : `${m.nombre} ${m.apellido || ""}`}
-                          </p>
-
-                          {m.rol === "propietario" && (
-                            <span className="text-[11px] bg-blue-100 text-blue-600 px-2 py-0.5 rounded-full whitespace-nowrap ml-2">
-                              Propietario
-                            </span>
-                          )}
-                          {m.rol === "admin" && (
-                            <span className="text-[11px] bg-green-100 text-green-600 px-2 py-0.5 rounded-full whitespace-nowrap ml-2">
-                              Admin
-                            </span>
-                          )}
-                        </div>
-
-                        <p className="text-xs text-gray-500 truncate pl-0.5">{m.correo}</p>
+                  <li key={member.id} className="wa-member-item-wrap">
+                    <div className={`wa-member-item ${canManage ? "can-manage" : ""}`}>
+                      <div className="wa-member-avatar">
+                        {member.url_imagen ? (
+                          <img src={getAvatarUrl(member.url_imagen)} alt={nombre} />
+                        ) : (
+                          <div style={{ backgroundColor: member.background || "#6c757d" }}>{getInitial(nombre)}</div>
+                        )}
                       </div>
+
+                      <div className="wa-member-main">
+                        <div className="wa-member-name-row">
+                          <span className="wa-member-name">{esActual ? "Tú" : nombre}</span>
+                          {member.rol === "propietario" && <span className="wa-role-badge owner">Propietario</span>}
+                          {member.rol === "admin" && <span className="wa-role-badge admin">Admin. del grupo</span>}
+                        </div>
+                        <span className="wa-member-subtitle">{member.correo || member.estado || "Disponible"}</span>
+                      </div>
+
+                      {canManage && (
+                        <button
+                          type="button"
+                          className="wa-member-menu-btn"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setMenuMiembroId((prev) => (prev === member.id ? null : member.id));
+                          }}
+                          title="Opciones del miembro"
+                        >
+                          <i className="fa-solid fa-chevron-down" aria-hidden="true" />
+                        </button>
+                      )}
                     </div>
+
+                    {canManage && isOpen && (
+                      <div className="wa-member-context-menu">
+                        {member.rol === "admin" ? (
+                          esPropietario && (
+                            <button type="button" disabled={accionMiembroId === member.id} onClick={() => handleDescartarAdmin(member)}>
+                              <i className="fa-solid fa-user-minus" aria-hidden="true" />
+                              Descartar como admin.
+                            </button>
+                          )
+                        ) : (
+                          <button type="button" disabled={accionMiembroId === member.id} onClick={() => handleDesignarAdmin(member)}>
+                            <i className="fa-solid fa-user-shield" aria-hidden="true" />
+                            Designar como admin. del grupo
+                          </button>
+                        )}
+
+                        {esPropietario && (
+                          <button type="button" disabled={accionMiembroId === member.id} onClick={() => handleCederPropiedad(member)}>
+                            <i className="fa-solid fa-crown" aria-hidden="true" />
+                            Ceder propiedad del grupo
+                          </button>
+                        )}
+
+                        <button type="button" className="danger" disabled={accionMiembroId === member.id} onClick={() => handleQuitarMiembro(member)}>
+                          <i className="fa-regular fa-circle-minus" aria-hidden="true" />
+                          Quitar
+                        </button>
+                      </div>
+                    )}
                   </li>
                 );
               })}
             </ul>
 
-            {/* Mostrar más / menos */}
-            {chat.miembros?.length > 4 && (
-              <div className="mt-3 text-center">
-                <button
-                  onClick={() => setMostrarTodos(!mostrarTodos)}
-                  className="text-sm text-blue-600 hover:underline font-medium"
-                >
-                  {mostrarTodos
-                    ? "Mostrar menos"
-                    : `${chat.miembros.length - 4} más`}
-                </button>
-              </div>
+            {miembros.length > 8 && (
+              <button type="button" className="wa-show-more-members" onClick={() => setMostrarTodos((prev) => !prev)}>
+                {mostrarTodos ? "Mostrar menos" : `Ver ${miembros.length - 8} miembros más`}
+              </button>
             )}
-          </div>
+          </section>
 
-          {/* Botones finales */}
-          <div className="pt-4 border-t border-gray-200 space-y-2">
-            {(() => {
-              const miRol = chat.miembros?.find((m) => m.id === user.id)?.rol;
-
-              // 🧩 Si soy propietario → botón eliminar grupo
-              if (miRol === "propietario") {
-                return (
-                  <button
-                    onClick={async () => {
-                      if (!window.confirm("¿Seguro que deseas eliminar este grupo? Esta acción no se puede deshacer.")) return;
-
-                      try {
-                        const res = await fetch(`${BASE_URL}/api/grupos/${chat.grupo_id}/eliminar`, {
-                          method: "DELETE",
-                          headers: { "Content-Type": "application/json" },
-                          body: JSON.stringify({ usuarioId: user.id }),
-                        });
-                        const data = await res.json();
-
-                        if (data.success) {
-                          toast.success("🗑️ Grupo eliminado correctamente");
-                          // ✅ Ya no emitimos nada: el backend emite el evento "grupoEliminado"
-                          onClose();
-                        } else {
-                          toast.error(data.error || "Error al eliminar grupo");
-                        }
-                      } catch (err) {
-                        console.error(err);
-                        toast.error("Error de conexión al eliminar grupo");
-                      }
-                    }}
-                    className="w-full py-2 text-sm font-semibold text-red-600 hover:bg-red-50 rounded-lg"
-                  >
-                    🗑️ Eliminar grupo
-                  </button>
-                );
-              }
-
-              // 🧩 Si soy miembro o admin → botón salir del grupo
-              return (
-                <button
-                  onClick={async () => {
-                    if (!window.confirm("¿Seguro que deseas salir de este grupo?")) return;
-
-                    try {
-                      const res = await fetch(`${BASE_URL}/api/grupos/${chat.grupo_id}/salir`, {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ usuarioId: user.id }),
-                      });
-                      const data = await res.json();
-
-                      if (data.success) {
-                        toast.success("🚪 Has salido del grupo");
-                        // ✅ El backend emite "grupoEliminado" solo para ti
-                        onClose();
-                      } else {
-                        toast.error(data.error || "Error al salir del grupo");
-                      }
-                    } catch (err) {
-                      console.error(err);
-                      toast.error("Error de conexión al salir del grupo");
+          <section className="wa-info-card wa-danger-card">
+            {miRol === "propietario" ? (
+              <button
+                type="button"
+                className="wa-danger-action"
+                onClick={async () => {
+                  if (!window.confirm("¿Seguro que deseas eliminar este grupo? Esta acción no se puede deshacer.")) return;
+                  try {
+                    const res = await fetch(`${BASE_URL}/api/grupos/${chat.grupo_id}/eliminar`, {
+                      method: "DELETE",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ usuarioId: user.id }),
+                    });
+                    const result = await res.json();
+                    if (!res.ok || !result.success) {
+                      toast.error(result.error || "Error al eliminar grupo");
+                      return;
                     }
-                  }}
-                  className="w-full py-2 text-sm font-semibold text-red-500 hover:bg-red-50 rounded-lg"
-                >
-                  🚪 Salir del grupo
-                </button>
-              );
-            })()}
-          </div>
+                    toast.success("Grupo eliminado");
+                    onClose();
+                  } catch (err) {
+                    console.error(err);
+                    toast.error("Error de conexión al eliminar grupo");
+                  }
+                }}
+              >
+                <i className="fa-regular fa-trash-can" aria-hidden="true" />
+                Eliminar grupo
+              </button>
+            ) : (
+              <button
+                type="button"
+                className="wa-danger-action"
+                onClick={async () => {
+                  if (!window.confirm("¿Seguro que deseas salir de este grupo?")) return;
+                  try {
+                    const res = await fetch(`${BASE_URL}/api/grupos/${chat.grupo_id}/salir`, {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ usuarioId: user.id }),
+                    });
+                    const result = await res.json();
+                    if (!res.ok || !result.success) {
+                      toast.error(result.error || "Error al salir del grupo");
+                      return;
+                    }
+                    toast.success("Has salido del grupo");
+                    onClose();
+                  } catch (err) {
+                    console.error(err);
+                    toast.error("Error de conexión al salir del grupo");
+                  }
+                }}
+              >
+                <i className="fa-solid fa-arrow-right-from-bracket" aria-hidden="true" />
+                Salir del grupo
+              </button>
+            )}
+          </section>
+        </div>
+        )}
+      </div>
+
+      {imagenVistaPrevia && (
+        <div className="wa-photo-viewer-backdrop" onClick={() => setImagenVistaPrevia(null)}>
+          <button type="button" className="wa-photo-viewer-close" onClick={() => setImagenVistaPrevia(null)} title="Cerrar">
+            <i className="fa-solid fa-xmark" aria-hidden="true" />
+          </button>
+          <img src={fixUrl(imagenVistaPrevia)} alt={chat.usuario_nombre || chat.nombre || "Foto del grupo"} onClick={(e) => e.stopPropagation()} />
+        </div>
+      )}
+    </aside>
+  );
+};
+
+const formatSearchDate = (value) => {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return date.toLocaleDateString([], { day: "2-digit", month: "2-digit", year: "numeric" });
+};
+
+const GroupSearchView = ({ chat, value, onChange, results, loading, error, onSelect }) => {
+  const groupName = chat?.usuario_nombre || chat?.nombre || "este grupo";
+
+  return (
+    <div className="wa-group-search-view">
+      <div className="wa-group-search-input-row">
+        <i className="fa-regular fa-calendar" aria-hidden="true" />
+        <div className="wa-group-search-input-wrap">
+          <i className="fa-solid fa-magnifying-glass" aria-hidden="true" />
+          <input
+            autoFocus
+            value={value}
+            onChange={(e) => onChange(e.target.value)}
+            placeholder="Busca"
+          />
+          {value && (
+            <button type="button" onClick={() => onChange("")} title="Limpiar búsqueda">
+              <i className="fa-solid fa-xmark" aria-hidden="true" />
+            </button>
+          )}
         </div>
       </div>
+
+      {!value.trim() ? (
+        <div className="wa-search-empty-state">Buscar mensajes con {groupName}</div>
+      ) : loading ? (
+        <div className="wa-search-empty-state">Buscando...</div>
+      ) : error ? (
+        <div className="wa-search-empty-state text-danger">{error}</div>
+      ) : results.length === 0 ? (
+        <div className="wa-search-empty-state">No se encontraron mensajes</div>
+      ) : (
+        <div className="wa-search-results-list">
+          {results.map((message) => {
+            const preview = getMessagePreview(message);
+            const author = getMemberName(message);
+
+            return (
+              <button
+                type="button"
+                key={message.id}
+                className="wa-search-result-item"
+                onClick={() => onSelect(message.id)}
+              >
+                <div className="wa-search-result-avatar">
+                  {message.url_imagen ? (
+                    <img src={getAvatarUrl(message.url_imagen)} alt={author} />
+                  ) : (
+                    <div style={{ backgroundColor: message.background || "#6c757d" }}>{getInitial(author)}</div>
+                  )}
+                </div>
+                <div className="wa-search-result-main">
+                  <div className="wa-search-result-title">
+                    <span>{author}</span>
+                    <time>{formatSearchDate(message.fecha_envio)}</time>
+                  </div>
+                  <div className="wa-search-result-preview">
+                    {preview.iconClass && <i className={preview.iconClass} aria-hidden="true" />}
+                    <span>{preview.text}</span>
+                  </div>
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 };
 
-// 🔹 Componente para mostrar descripción con saltos de línea + mostrar más/menos
-const DescripcionConFormato = ({ texto }) => {
+const EditField = ({
+  id,
+  value,
+  onChange,
+  placeholder,
+  onSave,
+  onCancel,
+  showEmoji,
+  onToggleEmoji,
+  onEmoji,
+  textarea = false,
+}) => (
+  <div className="wa-edit-field">
+    {textarea ? (
+      <textarea id={id} value={value} placeholder={placeholder} onChange={(e) => onChange(e.target.value)} rows={3} />
+    ) : (
+      <input id={id} value={value} placeholder={placeholder} onChange={(e) => onChange(e.target.value)} />
+    )}
+
+    <div className="wa-edit-actions">
+      <button type="button" onClick={onToggleEmoji} title="Añadir emoji">
+        <i className="fa-regular fa-face-smile" aria-hidden="true" />
+      </button>
+      <button type="button" className="success" onClick={onSave} title="Guardar">
+        <i className="fa-solid fa-check" aria-hidden="true" />
+      </button>
+      <button type="button" className="danger" onClick={onCancel} title="Cancelar">
+        <i className="fa-solid fa-xmark" aria-hidden="true" />
+      </button>
+    </div>
+
+    {showEmoji && (
+      <div className="wa-edit-emoji-picker">
+        <Picker
+          data={data}
+          onEmojiSelect={onEmoji}
+          theme="light"
+          previewPosition="none"
+          searchPosition="none"
+        />
+      </div>
+    )}
+  </div>
+);
+
+const DescripcionConFormato = ({ texto, empty = false }) => {
   const [mostrarTodo, setMostrarTodo] = useState(false);
-
-  if (!texto) {
-    return <p className="text-gray-500 italic">Añade una descripción del grupo</p>;
-  }
-
-  // 🔹 Dividimos el texto en líneas (respetando los saltos de línea)
-  const lineas = texto.split(/\r?\n/);
-  const limiteLineas = 3;
-  const esLargo = lineas.length > limiteLineas;
-  const textoVisible = mostrarTodo
-    ? lineas.join("\n")
-    : lineas.slice(0, limiteLineas).join("\n");
+  const lineas = String(texto || "").split(/\r?\n/);
+  const limiteLineas = 4;
+  const esLargo = lineas.length > limiteLineas || String(texto || "").length > 160;
+  const textoVisible = mostrarTodo ? lineas.join("\n") : lineas.slice(0, limiteLineas).join("\n");
 
   return (
-    <div className="text-gray-700 whitespace-pre-line break-words text-left">
+    <div className={`wa-description-text ${empty ? "is-empty" : ""}`}>
       {textoVisible}
       {esLargo && (
-        <div className="text-center mt-1">
-          <button
-            onClick={() => setMostrarTodo((prev) => !prev)}
-            className="text-blue-600 hover:underline text-sm font-medium"
-          >
-            {mostrarTodo ? "Mostrar menos" : "...Mostrar más"}
-          </button>
-        </div>
+        <button type="button" onClick={() => setMostrarTodo((prev) => !prev)}>
+          {mostrarTodo ? "Mostrar menos" : "...Mostrar más"}
+        </button>
       )}
     </div>
   );

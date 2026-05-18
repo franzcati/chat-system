@@ -4,8 +4,10 @@ import socket from "../socket";
 import { logDev } from "../utils/logger";
 import { formatChatTime, parseToDate } from "../utils/date";
 import { getAvatarUrl } from "../utils/url";
+import { getMessagePreview } from "../utils/messagePreview";
 import { Star } from "lucide-react";
 import toast from "react-hot-toast";
+import GroupAvatar from "../components/GroupAvatar";
 
 
 
@@ -21,6 +23,8 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat }) => {
   const [usuariosComunes, setUsuariosComunes] = useState([]);
   const [silenciados, setSilenciados] = useState([]);
   const [menuChatAbierto, setMenuChatAbierto] = useState(null);
+  const [activeFilter, setActiveFilter] = useState("todos");
+  const [filterMenuOpen, setFilterMenuOpen] = useState(false);
 
  // ----------------------------
  // SILENCIAR NOTIFICACIONES
@@ -115,9 +119,34 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat }) => {
   };
   const getInitial = (text) => (text ? text.charAt(0).toUpperCase() : "U");
 
+  const getChatPreviewSource = (chat = {}) => ({
+    ...chat,
+    mensaje: chat.mensaje ?? chat.ultimo_mensaje,
+    archivo_url: chat.archivo_url || chat.ultimo_archivo_url,
+    tipo_archivo: chat.tipo_archivo || chat.ultimo_tipo_archivo,
+    nombre_archivo: chat.nombre_archivo || chat.ultimo_nombre_archivo,
+  });
+
+  const renderChatPreview = (chat) => {
+    const preview = getMessagePreview(getChatPreviewSource(chat));
+
+    return (
+      <span className="wa-preview-line chat-list-preview-line">
+        {preview.iconClass && <i className={`wa-preview-icon ${preview.iconClass}`} aria-hidden="true" />}
+        <span className="wa-preview-label">{preview.text}</span>
+      </span>
+    );
+  };
+
+  const getPreviewText = (message) => {
+    const preview = getMessagePreview(message);
+    return preview.text;
+  };
+
   useEffect(() => {
     const handleClickOutside = () => {
       setMenuChatAbierto(null);
+      setFilterMenuOpen(false);
     };
 
     document.addEventListener("click", handleClickOutside);
@@ -158,6 +187,9 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat }) => {
           mensajes_no_leidos: msg.usuario_recibe_id === userId && msg.visto === 0 ? 1 : 0,
           eliminado,
           ultimo_mensaje: mensajeMostrado,
+          ultimo_archivo_url: msg.archivo_url || null,
+          ultimo_tipo_archivo: msg.tipo_archivo || "",
+          ultimo_nombre_archivo: msg.nombre_archivo || "",
           ultimo_mensaje_id: msg.id,
           fecha_envio: msg.fecha_envio,
           tipo_mensaje: esEmisor ? "enviado" : "recibido",
@@ -174,6 +206,9 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat }) => {
 
         if (msgTime > grouped[otherUserId].lastTime) {
           grouped[otherUserId].ultimo_mensaje = mensajeMostrado;
+          grouped[otherUserId].ultimo_archivo_url = msg.archivo_url || null;
+          grouped[otherUserId].ultimo_tipo_archivo = msg.tipo_archivo || "";
+          grouped[otherUserId].ultimo_nombre_archivo = msg.nombre_archivo || "";
           grouped[otherUserId].ultimo_mensaje_id = msg.id;
           grouped[otherUserId].fecha_envio = msg.fecha_envio;
           grouped[otherUserId].tipo_mensaje = esEmisor ? "enviado" : "recibido";
@@ -233,9 +268,7 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat }) => {
           cuerpo:
             msg.eliminado === 1
               ? "Se eliminó este mensaje"
-              : msg.mensaje?.startsWith("/uploads/")
-              ? "📎 Archivo adjunto"
-              : msg.mensaje || "Nuevo mensaje",
+              : getPreviewText(msg),
           uniqueId: msg.id,
           chat: {
             tipo: "privado",
@@ -321,6 +354,9 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat }) => {
         mensajes_no_leidos: mensajesNoLeidos,
         eliminado: g.eliminado,
         ultimo_mensaje: mensajeMostrado,
+        ultimo_archivo_url: g.ultimo_archivo_url || g.archivo_url || null,
+        ultimo_tipo_archivo: g.ultimo_tipo_archivo || g.tipo_archivo || "",
+        ultimo_nombre_archivo: g.ultimo_nombre_archivo || g.nombre_archivo || "",
         ultimo_mensaje_id: g.ultimo_mensaje_id || null,
         ultimo_remitente: g.ultimo_remitente || null,
         ultimo_remitente_avatar: g.ultimo_remitente_avatar || null,
@@ -395,6 +431,9 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat }) => {
               mensajes_no_leidos: esEmisor ? 0 : ((msg.visto ?? 0) === 0 ? 1 : 0),
               eliminado: msg.eliminado ?? 0,
               ultimo_mensaje: msg.eliminado ? "Se eliminó este mensaje" : msg.mensaje,
+              ultimo_archivo_url: msg.archivo_url || null,
+              ultimo_tipo_archivo: msg.tipo_archivo || "",
+              ultimo_nombre_archivo: msg.nombre_archivo || "",
               ultimo_mensaje_id: msg.id,
               fecha_envio: msg.fecha_envio,
               tipo_mensaje: esEmisor ? "enviado" : "recibido",
@@ -452,6 +491,9 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat }) => {
               ...g,
               eliminado: 0,
               ultimo_mensaje: msg.mensaje,
+              ultimo_archivo_url: msg.archivo_url || null,
+              ultimo_tipo_archivo: msg.tipo_archivo || "",
+              ultimo_nombre_archivo: msg.nombre_archivo || "",
               ultimo_mensaje_id: msg.id,
               ultimo_remitente: `${msg.nombre} ${msg.apellido}`,
               ultimo_remitente_id: msg.usuario_id,
@@ -479,6 +521,9 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat }) => {
             mensajes_no_leidos: g.mensajes_no_leidos || 0,
             eliminado: g.eliminado,
             ultimo_mensaje: g.ultimo_mensaje,
+            ultimo_archivo_url: g.ultimo_archivo_url || g.archivo_url || null,
+            ultimo_tipo_archivo: g.ultimo_tipo_archivo || g.tipo_archivo || "",
+            ultimo_nombre_archivo: g.ultimo_nombre_archivo || g.nombre_archivo || "",
             ultimo_mensaje_id: g.ultimo_mensaje_id,
             ultimo_remitente: g.ultimo_remitente,
             ultimo_remitente_avatar: g.ultimo_remitente_avatar,
@@ -511,9 +556,7 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat }) => {
           cuerpo: `${msg.nombre || "Usuario"}: ${
             msg.eliminado === 1
               ? "Se eliminó este mensaje"
-              : msg.mensaje?.startsWith("/uploads/")
-              ? "📎 Archivo adjunto"
-              : msg.mensaje || "Nuevo mensaje"
+              : getPreviewText(msg)
           }`,
           uniqueId: msg.id,
           chat: {
@@ -638,6 +681,7 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat }) => {
                 ...g,
                 nombre: data.nombre ?? g.nombre,
                 descripcion: data.descripcion ?? g.descripcion,
+                imagen_url: data.imagen_url ?? g.imagen_url,
               }
             : g
         )
@@ -649,7 +693,9 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat }) => {
             ? {
                 ...c,
                 usuario_nombre: data.nombre ?? c.usuario_nombre,
+                nombre: data.nombre ?? c.nombre,
                 descripcion: data.descripcion ?? c.descripcion,
+                imagen_url: data.imagen_url ?? c.imagen_url,
               }
             : c
         )
@@ -795,6 +841,9 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat }) => {
               ultimo_mensaje: msg.eliminado
                 ? "Mensaje eliminado"
                 : msg.mensaje ?? g.ultimo_mensaje,
+              ultimo_archivo_url: msg.archivo_url ?? g.ultimo_archivo_url ?? null,
+              ultimo_tipo_archivo: msg.tipo_archivo ?? g.ultimo_tipo_archivo ?? "",
+              ultimo_nombre_archivo: msg.nombre_archivo ?? g.ultimo_nombre_archivo ?? "",
               ultimo_mensaje_id: msg.id,
               ultimo_remitente: msg.nombre
                 ? `${msg.nombre} ${msg.apellido}`
@@ -861,6 +910,9 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat }) => {
               ultimo_mensaje: msg.eliminado
                 ? "Mensaje eliminado"
                 : msg.mensaje ?? chat.ultimo_mensaje,
+              ultimo_archivo_url: msg.archivo_url ?? chat.ultimo_archivo_url ?? null,
+              ultimo_tipo_archivo: msg.tipo_archivo ?? chat.ultimo_tipo_archivo ?? "",
+              ultimo_nombre_archivo: msg.nombre_archivo ?? chat.ultimo_nombre_archivo ?? "",
               eliminado: msg.eliminado ?? chat.eliminado,
               editado: msg.editado ?? chat.editado,
             };
@@ -903,26 +955,27 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat }) => {
   // -------------------------------
   // 🔹 Funciones
   const toggleFavorito = async (chat) => {
+    const chatId = chat.tipo === "grupo" ? chat.grupo_id : chat.usuario_id;
     const isFavorito = favoritos.some(
-      (f) => f.chat_id === (chat.tipo === "grupo" ? chat.grupo_id : chat.usuario_id) && f.tipo === chat.tipo
+      (f) => Number(f.chat_id) === Number(chatId) && f.tipo === chat.tipo
     );
 
     if (isFavorito) {
       await axios.delete("/api/chats/favoritos", {
-        data: { usuarioId: userId, chatId: chat.usuario_id, tipo: chat.tipo },
+        data: { usuarioId: userId, chatId, tipo: chat.tipo },
       });
       setFavoritos((prev) =>
-        prev.filter((f) => !(f.chat_id === chat.usuario_id && f.tipo === chat.tipo))
+        prev.filter((f) => !(Number(f.chat_id) === Number(chatId) && f.tipo === chat.tipo))
       );
     } else {
       await axios.post("/api/chats/favoritos", {
         usuarioId: userId,
-        chatId: chat.usuario_id,
+        chatId,
         tipo: chat.tipo,
       });
       setFavoritos((prev) => [
         ...prev,
-        { usuario_id: userId, chat_id: chat.usuario_id, tipo: chat.tipo },
+        { usuario_id: userId, chat_id: chatId, tipo: chat.tipo },
       ]);
     }
   };
@@ -951,28 +1004,60 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat }) => {
   };
 
   // -------------------------------
-  // 🔹 Filtrar chats por búsqueda
-  const filteredChats = chats.filter((chat) => {
-    const search = searchTerm.toLowerCase();
-    const nombre =
-      chat.tipo === "grupo" ? (chat.usuario_nombre || "").toLowerCase() : (chat.usuario_nombre || "").toLowerCase();
-    const apellido = (chat.usuario_apellido || "").toLowerCase();
-    const ultimoMensaje = (chat.ultimo_mensaje || "").toLowerCase();
+  // 🔹 Filtrar chats por búsqueda y chips tipo WhatsApp
+  const isFavoriteChat = (chat) =>
+    favoritos.some(
+      (f) =>
+        Number(f.chat_id) === Number(chat.tipo === "grupo" ? chat.grupo_id : chat.usuario_id) &&
+        f.tipo === chat.tipo
+    );
+
+  const isUnreadChat = (chat) => Number(chat.mensajes_no_leidos || 0) > 0;
+
+  const normalizeText = (value = "") =>
+    String(value)
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "");
+
+  const chatMatchesSearch = (chat, term) => {
+    const search = normalizeText(term).trim();
+    if (!search) return true;
+
+    const nombre = normalizeText(chat.usuario_nombre || "");
+    const apellido = normalizeText(chat.usuario_apellido || "");
+    const ultimoMensaje = normalizeText(chat.ultimo_mensaje || "");
+    const preview = normalizeText(getPreviewText(getChatPreviewSource(chat)) || "");
     const miembros = chat.miembros
-      ? chat.miembros.map((m) => `${m.nombre} ${m.apellido}`.toLowerCase()).join(" ")
+      ? normalizeText(chat.miembros.map((m) => `${m.nombre || ""} ${m.apellido || ""}`).join(" "))
       : "";
 
-    return nombre.includes(search) || apellido.includes(search) || ultimoMensaje.includes(search) || miembros.includes(search);
+    return (
+      nombre.includes(search) ||
+      apellido.includes(search) ||
+      ultimoMensaje.includes(search) ||
+      preview.includes(search) ||
+      miembros.includes(search)
+    );
+  };
+
+  const searchFilteredChats = chats.filter((chat) => chatMatchesSearch(chat, searchTerm));
+
+  const filterCounts = {
+    todos: searchFilteredChats.length,
+    unread: searchFilteredChats.filter(isUnreadChat).length,
+    favoritos: searchFilteredChats.filter(isFavoriteChat).length,
+    grupos: searchFilteredChats.filter((chat) => chat.tipo === "grupo").length,
+    privados: searchFilteredChats.filter((chat) => chat.tipo === "privado").length,
+  };
+
+  const filteredChats = searchFilteredChats.filter((chat) => {
+    if (activeFilter === "unread") return isUnreadChat(chat);
+    if (activeFilter === "favoritos") return isFavoriteChat(chat);
+    if (activeFilter === "grupos") return chat.tipo === "grupo";
+    if (activeFilter === "privados") return chat.tipo === "privado";
+    return true;
   });
-
-  const favoritosChats = filteredChats.filter((chat) =>
-    favoritos.some((f) => f.chat_id === (chat.tipo === "grupo" ? chat.grupo_id : chat.usuario_id) && f.tipo === chat.tipo)
-  );
-
-  const otrosChats = filteredChats.filter(
-    (chat) =>
-      !favoritos.some((f) => f.chat_id === (chat.tipo === "grupo" ? chat.grupo_id : chat.usuario_id) && f.tipo === chat.tipo)
-  );
 
   const handleSelectChat = async (chat) => {
     onSelectChat(chat);
@@ -1014,6 +1099,205 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat }) => {
     }
   };
 
+  const getChatId = (chat) => (chat.tipo === "grupo" ? chat.grupo_id : chat.usuario_id);
+
+  const getChatTitle = (chat) => chat.usuario_nombre || (chat.tipo === "grupo" ? "Grupo" : "Usuario");
+
+  const getPreviewPrefix = (chat) => {
+    if (chat.eliminado === 1) return "";
+    if (chat.tipo !== "grupo") return "";
+    if (chat.tipo_mensaje === "enviado") return "Tú: ";
+    if (chat.ultimo_remitente) return `${chat.ultimo_remitente}: `;
+    return "";
+  };
+
+  const renderAvatar = (chat) => {
+    const title = getChatTitle(chat);
+
+    if (chat.tipo === "grupo") {
+      return <GroupAvatar group={chat} members={chat.miembros} size={44} />;
+    }
+
+    if (chat.url_imagen) {
+      return (
+        <img
+          src={getAvatarUrl(chat.url_imagen)}
+          alt={title}
+          className="avatar-img rounded-circle"
+          style={{ width: "44px", height: "44px", objectFit: "cover" }}
+        />
+      );
+    }
+
+    return (
+      <div
+        className="rounded-circle d-flex align-items-center justify-content-center text-white fw-bold"
+        style={{
+          width: "44px",
+          height: "44px",
+          backgroundColor: chat.background || "#6c757d",
+          fontSize: "18px",
+        }}
+      >
+        {getInitial(title)}
+      </div>
+    );
+  };
+
+  const renderReadStatus = (chat) => {
+    if (chat.tipo_mensaje !== "enviado" || chat.eliminado === 1) return null;
+
+    return (
+      <span className="me-1 d-inline-flex wa-chat-checks" aria-label={chat.visto === 0 ? "Enviado" : "Visto"}>
+        {chat.visto === 0 ? (
+          <span className="svg15 double-check"></span>
+        ) : (
+          <span className="svg15 double-check-blue"></span>
+        )}
+      </span>
+    );
+  };
+
+  const renderChatMenu = (chat) => (
+    <>
+      <button
+        onClick={(e) => {
+          e.stopPropagation();
+          toggleFavorito(chat);
+        }}
+        className="btn btn-sm border-0 bg-transparent p-0 ms-2 wa-chat-action-btn"
+        title={isFavoriteChat(chat) ? "Quitar de favoritos" : "Agregar a favoritos"}
+      >
+        <Star
+          size={16}
+          fill={isFavoriteChat(chat) ? "currentColor" : "none"}
+          stroke="currentColor"
+          className={isFavoriteChat(chat) ? "text-warning" : "text-muted"}
+        />
+      </button>
+
+      <button
+        onClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          setMenuChatAbierto((prev) =>
+            prev === getChatKey(chat) ? null : getChatKey(chat)
+          );
+        }}
+        className="btn btn-sm border-0 bg-transparent p-0 ms-2 text-muted chat-options-btn wa-chat-action-btn"
+        title="Opciones"
+      >
+        <i className="fa-solid fa-chevron-down" aria-hidden="true" />
+      </button>
+
+      {menuChatAbierto === getChatKey(chat) && (
+        <div
+          className="shadow-sm border rounded-3 bg-white position-absolute wa-chat-options-menu"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <button
+            className="dropdown-item d-flex align-items-center justify-content-between px-3 py-2"
+            onClick={(e) => {
+              e.stopPropagation();
+              toggleSilencio(chat);
+              setMenuChatAbierto(null);
+            }}
+          >
+            <span>
+              {estaSilenciado(
+                chat.tipo,
+                chat.tipo === "grupo" ? chat.grupo_id : chat.usuario_id
+              )
+                ? "Reactivar notificación"
+                : "Silenciar"}
+            </span>
+            <i
+              className={`fa-solid ${
+                estaSilenciado(chat.tipo, chat.tipo === "grupo" ? chat.grupo_id : chat.usuario_id)
+                  ? "fa-bell"
+                  : "fa-bell-slash"
+              }`}
+              aria-hidden="true"
+            />
+          </button>
+        </div>
+      )}
+    </>
+  );
+
+  const renderChatItem = (chat) => {
+    const isSelected =
+      selectedChat?.tipo === chat.tipo &&
+      Number(getChatId(selectedChat)) === Number(getChatId(chat));
+    const isMuted = estaSilenciado(chat.tipo, getChatId(chat));
+    const previewPrefix = getPreviewPrefix(chat);
+
+    return (
+      <a
+        key={`${chat.tipo}-${getChatId(chat)}`}
+        href="#"
+        className={`card border-0 text-reset chat-card-hover wa-chat-list-card ${isSelected ? "active" : ""}`}
+        onClick={(e) => {
+          e.preventDefault();
+          handleSelectChat(chat);
+        }}
+      >
+        <div className="card-body wa-chat-list-card-body">
+          <div className="wa-chat-list-row">
+            <div className="avatar avatar-xl wa-chat-list-avatar">
+              {renderAvatar(chat)}
+            </div>
+
+            <div className="wa-chat-list-main">
+              <div className="wa-chat-list-top">
+                <h5 className="wa-chat-list-title">
+                  <span className="text-truncate">{getChatTitle(chat)}</span>
+                  {isMuted && (
+                    <i className="fa-solid fa-bell-slash wa-muted-icon" title="Chat silenciado" aria-hidden="true" />
+                  )}
+                </h5>
+                <span className={`wa-chat-list-time ${chat.mensajes_no_leidos > 0 ? "has-unread" : ""}`}>
+                  {formatChatTime(chat.fecha_envio)}
+                </span>
+                {renderChatMenu(chat)}
+              </div>
+
+              <div className="wa-chat-list-bottom">
+                {renderReadStatus(chat)}
+                <div className="line-clamp wa-chat-list-preview">
+                  {chat.eliminado === 1 ? (
+                    <span className="fst-italic text-muted d-inline-flex align-items-center gap-1">
+                      <i className="fa-solid fa-ban" aria-hidden="true" />
+                      Se eliminó este mensaje
+                    </span>
+                  ) : (
+                    <>
+                      {previewPrefix && <span className="wa-preview-prefix">{previewPrefix}</span>}
+                      {renderChatPreview(chat)}
+                    </>
+                  )}
+                </div>
+                {chat.mensajes_no_leidos > 0 && (
+                  <div className="wa-unread-badge">
+                    <span>{chat.mensajes_no_leidos}</span>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      </a>
+    );
+  };
+
+  const filterLabel = {
+    todos: "Todos",
+    unread: "No leídos",
+    favoritos: "Favoritos",
+    grupos: "Grupos",
+    privados: "Individuales",
+  }[activeFilter];
+
   return (
     <aside className="sidebar bg-light">
       <div className="tab-pane fade h-100 active show" id="tab-content-chats" role="tabpanel">
@@ -1024,9 +1308,8 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat }) => {
                 <h2 className="fw-bold m-0">Chats</h2>
               </div>
 
-              {/* Search */}
-              <div className="mb-6">
-                <div className="input-group">
+              <div className="mb-3">
+                <div className="input-group wa-chat-search">
                   <div className="input-group-text">
                     <div className="icon icon-lg">
                       <svg
@@ -1049,642 +1332,133 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat }) => {
                   <input
                     type="text"
                     className="form-control form-control-lg ps-0"
-                    placeholder="Buscar mensajes o usuarios"
+                    placeholder="Buscar un chat o iniciar uno nuevo"
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
                   />
                 </div>
               </div>
 
-              {/* Chats */}
-              <div className="card-list">
-                {usuariosComunes.length > 0 && (
-                    <div className="mt-3">
-                      <h6 className="fw-bold text-muted mb-2">👥 Personas en proyectos comunes</h6>
-                      {usuariosComunes.map((u) => (
-                        <div
-                          key={u.id}
-                          className="card border-0 text-reset chat-card-hover"
-                          style={{ cursor: "pointer" }}
-                          onClick={(e) => {
-                            e.preventDefault();
-                            handleSelectUsuarioComun(u);
-                          }}// función para crear nuevo chat privado
-                        >
-                          <div className="card-body d-flex align-items-center">
-                            {u.url_imagen ? (
-                              <img
-                                src={getAvatarUrl(u.url_imagen)}
-                                alt={u.nombre}
-                                className="rounded-circle me-2"
-                                style={{ width: "40px", height: "40px", objectFit: "cover" }}
-                              />
-                            ) : (
-                              <div
-                                className="rounded-circle d-flex align-items-center justify-content-center text-white fw-bold me-2"
-                                style={{
-                                  width: "40px",
-                                  height: "40px",
-                                  backgroundColor: u.background || "#6c757d",
-                                }}
-                              >
-                                {u.nombre.charAt(0).toUpperCase()}
-                              </div>
-                            )}
+              <div className="wa-filter-row" onClick={(e) => e.stopPropagation()}>
+                <button
+                  type="button"
+                  className={`wa-filter-chip ${activeFilter === "todos" ? "active" : ""}`}
+                  onClick={() => setActiveFilter("todos")}
+                >
+                  Todos
+                </button>
+                <button
+                  type="button"
+                  className={`wa-filter-chip ${activeFilter === "unread" ? "active" : ""}`}
+                  onClick={() => setActiveFilter("unread")}
+                >
+                  No leídos{filterCounts.unread > 0 ? ` ${filterCounts.unread}` : ""}
+                </button>
+                <button
+                  type="button"
+                  className={`wa-filter-chip ${activeFilter === "favoritos" ? "active" : ""}`}
+                  onClick={() => setActiveFilter("favoritos")}
+                >
+                  Favoritos
+                </button>
+                <div className="wa-filter-more-wrap">
+                  <button
+                    type="button"
+                    className={`wa-filter-chip wa-filter-more ${["grupos", "privados"].includes(activeFilter) ? "active" : ""}`}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setFilterMenuOpen((prev) => !prev);
+                    }}
+                    title="Más filtros"
+                  >
+                    <span>{["grupos", "privados"].includes(activeFilter) ? filterLabel : ""}</span>
+                    <i className="fa-solid fa-chevron-down" aria-hidden="true" />
+                  </button>
 
-                            <div>
-                              <div className="fw-bold">{u.nombre} {u.apellido}</div>
-                              <div className="fst-italic text-muted">¡Iniciar conversación!</div>
-                            </div>
-                          </div>
-                        </div>
-                      ))}
+                  {filterMenuOpen && (
+                    <div className="wa-filter-dropdown shadow-sm">
+                      <button
+                        type="button"
+                        className={activeFilter === "grupos" ? "active" : ""}
+                        onClick={() => {
+                          setActiveFilter("grupos");
+                          setFilterMenuOpen(false);
+                        }}
+                      >
+                        <span>Grupos</span>
+                        <span>{filterCounts.grupos}</span>
+                      </button>
+                      <button
+                        type="button"
+                        className={activeFilter === "privados" ? "active" : ""}
+                        onClick={() => {
+                          setActiveFilter("privados");
+                          setFilterMenuOpen(false);
+                        }}
+                      >
+                        <span>Chats individuales</span>
+                        <span>{filterCounts.privados}</span>
+                      </button>
                     </div>
-                )}
-                {/* ⭐ Favoritos */}
-                {favoritosChats.length > 0 && (
-                  <div className="mb-4">
-                    <h6 className="fw-bold text-muted mb-2">⭐ Favoritos</h6>
-                    <div className="card-list">
-                      {favoritosChats.map((chat) => (
-                        <a
-                          key={`${chat.tipo}-${chat.tipo === "grupo" ? chat.grupo_id : chat.usuario_id}`}
-                          href="#"
-                          className="card border-0 text-reset chat-card-hover"
-                          onClick={(e) => {
-                            e.preventDefault();
-                            handleSelectChat(chat);
-                          }}
-                        >
-                          {/* 🔹 Reutilizo tu render de arriba */}
-                          <div className="card-body">
-                            <div className="row gx-5">
-                              <div className="chat-row">
-                                <div className="col-auto">
-                                  <div className="avatar avatar-xl">
-                                    {/* 👇 Avatares / iniciales (igual que tu código) */}
-                                    {chat.tipo === "grupo" && chat.ultimo_mensaje ? (
-                                      chat.ultimo_remitente_avatar ? (
-                                        <img
-                                          src={getAvatarUrl(chat.ultimo_remitente_avatar)}
-                                          alt={chat.ultimo_remitente}
-                                          className="avatar-img rounded-circle"
-                                          style={{ width: "40px", height: "40px", objectFit: "cover" }}
-                                        />
-                                      ) : chat.ultimo_remitente_background ? (
-                                        <div
-                                          className="rounded-circle d-flex align-items-center justify-content-center text-white fw-bold"
-                                          style={{
-                                            width: "40px",
-                                            height: "40px",
-                                            backgroundColor: chat.ultimo_remitente_background || "#6c757d",
-                                            fontSize: "18px",
-                                          }}
-                                        >
-                                          {chat.ultimo_remitente?.[0] || "?"}
-                                        </div>
-                                      ) : chat.imagen_url ? (
-                                        <img
-                                          src={chat.imagen_url}
-                                          alt={chat.usuario_nombre}
-                                          className="avatar-img rounded-circle"
-                                          style={{ width: "40px", height: "40px", objectFit: "cover" }}
-                                        />
-                                      ) : (
-                                        <div
-                                          className="rounded-circle d-flex align-items-center justify-content-center text-white fw-bold"
-                                          style={{
-                                            width: "40px",
-                                            height: "40px",
-                                            backgroundColor: chat.background || "#6c757d",
-                                            fontSize: "18px",
-                                          }}
-                                        >
-                                          {getInitial(chat.usuario_nombre)}
-                                        </div>
-                                      )
-                                    ) : chat.url_imagen ? (
-                                      <img
-                                        src={getAvatarUrl(chat.url_imagen)}
-                                        alt={chat.usuario_nombre}
-                                        className="avatar-img rounded-circle"
-                                        style={{ width: "40px", height: "40px", objectFit: "cover" }}
-                                      />
-                                    ) : (
-                                      <div
-                                        className="rounded-circle d-flex align-items-center justify-content-center text-white fw-bold"
-                                        style={{
-                                          width: "40px",
-                                          height: "40px",
-                                          backgroundColor: chat.background || "#6c757d",
-                                          fontSize: "18px",
-                                        }}
-                                      >
-                                        {getInitial(chat.usuario_nombre)}
-                                      </div>
-                                    )}
-                                  </div>
-                                </div>
+                  )}
+                </div>
+              </div>
 
-                                <div className="col">
-                                  <div className="d-flex align-items-center mb-3 position-relative">
-                                    <h5 className="me-auto mb-0 d-flex align-items-center gap-2">
-                                      <span>
-                                        {chat.tipo === "grupo"
-                                          ? chat.ultimo_remitente || chat.usuario_nombre
-                                          : chat.usuario_nombre}
-                                      </span>
-
-                                      {estaSilenciado(
-                                        chat.tipo,
-                                        chat.tipo === "grupo" ? chat.grupo_id : chat.usuario_id
-                                      ) && (
-                                        <span title="Chat silenciado" className="text-muted" style={{ fontSize: "14px" }}>
-                                          🔕
-                                        </span>
-                                      )}
-                                    </h5>
-
-                                    <span className="text-muted extra-small ms-2">
-                                      {formatChatTime(chat.fecha_envio)}
-                                    </span>
-
-                                    <button
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        toggleFavorito(chat);
-                                      }}
-                                      className="btn btn-sm border-0 bg-transparent p-0 ms-2"
-                                    >
-                                      <Star
-                                        size={18}
-                                        fill="currentColor"
-                                        stroke="currentColor"
-                                        className="text-warning"
-                                      />
-                                    </button>
-
-                                    <button
-                                      onClick={(e) => {
-                                        e.preventDefault();
-                                        e.stopPropagation();
-                                        setMenuChatAbierto((prev) =>
-                                          prev === getChatKey(chat) ? null : getChatKey(chat)
-                                        );
-                                      }}
-                                      className="btn btn-sm border-0 bg-transparent p-0 ms-2 text-muted chat-options-btn"
-                                      style={{
-                                        opacity: menuChatAbierto === getChatKey(chat) ? 1 : undefined,
-                                        fontSize: "18px",
-                                        lineHeight: 1,
-                                      }}
-                                      title="Opciones"
-                                    >
-                                      ⋯
-                                    </button>
-
-                                    {menuChatAbierto === getChatKey(chat) && (
-                                      <div
-                                        className="shadow-sm border rounded-3 bg-white position-absolute"
-                                        style={{
-                                          top: "30px",
-                                          right: "0",
-                                          minWidth: "220px",
-                                          zIndex: 2000,
-                                          padding: "8px 0",
-                                        }}
-                                        onClick={(e) => e.stopPropagation()}
-                                      >
-                                        <button
-                                          className="dropdown-item d-flex align-items-center justify-content-between px-3 py-2"
-                                          onClick={(e) => {
-                                            e.stopPropagation();
-                                            toggleSilencio(chat);
-                                            setMenuChatAbierto(null);
-                                          }}
-                                        >
-                                          <span>
-                                            {estaSilenciado(
-                                              chat.tipo,
-                                              chat.tipo === "grupo" ? chat.grupo_id : chat.usuario_id
-                                            )
-                                              ? "Reactivar notificación"
-                                              : "Silenciar"}
-                                          </span>
-                                          <span>
-                                            {estaSilenciado(
-                                              chat.tipo,
-                                              chat.tipo === "grupo" ? chat.grupo_id : chat.usuario_id
-                                            )
-                                              ? "🔔"
-                                              : "🔕"}
-                                          </span>
-                                        </button>
-                                      </div>
-                                    )}
-                                  </div>
-
-                                  <div className="d-flex align-items-baseline">
-                                    {/* ✅ Vistos (igual que tu código) */}
-                                    {chat.tipo_mensaje === "enviado" && chat.eliminado === 0 && (
-                                      <span className="me-2 d-inline-flex">
-                                        {chat.visto === 0 ? (
-                                          <span className="svg15 double-check"></span>
-                                        ) : (
-                                          <span className="svg15 double-check-blue"></span>
-                                        )}
-                                      </span>
-                                    )}
-                                    <div className="line-clamp me-auto d-flex align-items-center gap-1">
-                                      {chat.eliminado === 1 && (
-                                        <svg
-                                          xmlns="http://www.w3.org/2000/svg"
-                                          width="14"
-                                          height="14"
-                                          fill="currentColor"
-                                          viewBox="0 0 24 24"
-                                          strokeWidth={2}
-                                        >
-                                          <path
-                                            strokeLinecap="round"
-                                            strokeLinejoin="round"
-                                            d="M12 17a2 2 0 1 0 0-4 2 2 0 0 0 0 4Zm6-7h-1V7a5 5 0 0 0-10 0v3H6a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-9a2 2 0 0 0-2-2Zm-3 0H9V7a3 3 0 0 1 6 0v3Z"
-                                          />
-                                        </svg>
-                                      )}
-                                      <span className={chat.eliminado === 1 ? "fst-italic text-muted" : "text-truncate"}>
-                                        {chat.eliminado === 1 ? "Se eliminó este mensaje" : chat.ultimo_mensaje}
-                                      </span>
-                                    </div>
-                                    {chat.mensajes_no_leidos > 0 && (
-                                      <div className="badge badge-circle bg-primary ms-3">
-                                        <span>{chat.mensajes_no_leidos}</span>
-                                      </div>
-                                    )}
-                                  </div>
-                                </div>
-                              </div>
-                            </div>
-                          </div>
-
-                          {/* Footer SOLO si es grupo */}
-                          {chat.tipo === "grupo" && (
-                            <div className="card-footer">
-                              <div className="row align-items-center gx-4">
-                                <div className="col-auto">
-                                  <div className="avatar avatar-xs">
-                                    <img
-                                      src={chat.imagen_url || "/default-group.png"}
-                                      alt={chat.usuario_nombre}
-                                      className="avatar-img"
-                                    />
-                                  </div>
-                                </div>
-                                <div className="col">
-                                  <h6 className="mb-0">{chat.usuario_nombre}</h6>
-                                </div>
-                                <div className="col-auto">
-                                  <div className="avatar-group">
-                                    {chat.miembros?.slice(0, 3).map((m) => {
-                                      const initials = `${m.nombre?.[0] || ""}`.toUpperCase();
-                                      return (
-                                        <div
-                                          className="avatar avatar-xs rounded-circle d-flex align-items-center justify-content-center text-white fw-bold"
-                                          key={m.id}
-                                          style={{
-                                            backgroundColor: !m.url_imagen ? m.background || "#ccc" : "transparent",
-                                          }}
-                                        >
-                                          {m.url_imagen ? (
-                                            <img
-                                              src={getAvatarUrl(m.url_imagen)}
-                                              alt={m.nombre}
-                                              className="avatar-img"
-                                            />
-                                          ) : (
-                                            <span>{initials}</span>
-                                          )}
-                                        </div>
-                                      );
-                                    })}
-                                    {chat.miembros?.length > 3 && (
-                                      <div className="avatar avatar-xs" style={{ fontSize: "0.7rem" }}>
-                                        <span className="avatar-text">
-                                          +{chat.miembros.length - 3}
-                                        </span>
-                                      </div>
-                                    )}
-                                  </div>
-                                </div>
-                              </div>
-                            </div>
-                          )}
-                        </a>
-                      ))}
-                    </div>
-                  </div>
-                )}
-                {/* 🔽 Otros chats */}
-                <div className="card-list">
-                  {otrosChats.map((chat) => (
-                    <a
-                      key={`${chat.tipo}-${chat.tipo === "grupo" ? chat.grupo_id : chat.usuario_id}`}
-                      href="#"
-                      className="card border-0 text-reset chat-card-hover"
+              {usuariosComunes.length > 0 && searchTerm.trim() !== "" && (
+                <div className="mt-3 mb-3 wa-common-users">
+                  <h6 className="fw-bold text-muted mb-2">Personas en proyectos comunes</h6>
+                  {usuariosComunes.map((u) => (
+                    <button
+                      type="button"
+                      key={u.id}
+                      className="wa-common-user-card"
                       onClick={(e) => {
                         e.preventDefault();
-                        handleSelectChat(chat);
+                        handleSelectUsuarioComun(u);
                       }}
                     >
-                      {/* 🔹 Reutilizo tu mismo render de arriba */}
-                      <div className="card-body">
-                        <div className="row gx-5">
-                          <div className="chat-row">
-                            <div className="col-auto">
-                              <div className="avatar avatar-xl">
-                                    {/* 👇 Avatares / iniciales (igual que tu código) */}
-                                    {chat.tipo === "grupo" && chat.ultimo_mensaje ? (
-                                      chat.ultimo_remitente_avatar ? (
-                                        <img
-                                          src={getAvatarUrl(chat.ultimo_remitente_avatar)}
-                                          alt={chat.ultimo_remitente}
-                                          className="avatar-img rounded-circle"
-                                          style={{ width: "40px", height: "40px", objectFit: "cover" }}
-                                        />
-                                      ) : chat.ultimo_remitente_background ? (
-                                        <div
-                                          className="rounded-circle d-flex align-items-center justify-content-center text-white fw-bold"
-                                          style={{
-                                            width: "40px",
-                                            height: "40px",
-                                            backgroundColor: chat.ultimo_remitente_background || "#6c757d",
-                                            fontSize: "18px",
-                                          }}
-                                        >
-                                          {chat.ultimo_remitente?.[0] || "?"}
-                                        </div>
-                                      ) : chat.imagen_url ? (
-                                        <img
-                                          src={chat.imagen_url}
-                                          alt={chat.usuario_nombre}
-                                          className="avatar-img rounded-circle"
-                                          style={{ width: "40px", height: "40px", objectFit: "cover" }}
-                                        />
-                                      ) : (
-                                        <div
-                                          className="rounded-circle d-flex align-items-center justify-content-center text-white fw-bold"
-                                          style={{
-                                            width: "40px",
-                                            height: "40px",
-                                            backgroundColor: chat.background || "#6c757d",
-                                            fontSize: "18px",
-                                          }}
-                                        >
-                                          {getInitial(chat.usuario_nombre)}
-                                        </div>
-                                      )
-                                    ) : chat.url_imagen ? (
-                                      <img
-                                        src={getAvatarUrl(chat.url_imagen)}
-                                        alt={chat.usuario_nombre}
-                                        className="avatar-img rounded-circle"
-                                        style={{ width: "40px", height: "40px", objectFit: "cover" }}
-                                      />
-                                    ) : (
-                                      <div
-                                        className="rounded-circle d-flex align-items-center justify-content-center text-white fw-bold"
-                                        style={{
-                                          width: "40px",
-                                          height: "40px",
-                                          backgroundColor: chat.background || "#6c757d",
-                                          fontSize: "18px",
-                                        }}
-                                      >
-                                        {getInitial(chat.usuario_nombre)}
-                                      </div>
-                                    )}
-                              </div>
-                            </div>
-
-                            <div className="col">
-                                  <div className="d-flex align-items-center mb-3 position-relative">
-                                    <h5 className="me-auto mb-0 d-flex align-items-center gap-2">
-                                      <span>
-                                        {chat.tipo === "grupo"
-                                          ? chat.ultimo_remitente || chat.usuario_nombre
-                                          : chat.usuario_nombre}
-                                      </span>
-
-                                      {estaSilenciado(
-                                        chat.tipo,
-                                        chat.tipo === "grupo" ? chat.grupo_id : chat.usuario_id
-                                      ) && (
-                                        <span
-                                          title="Chat silenciado"
-                                          className="text-muted"
-                                          style={{ fontSize: "14px" }}
-                                        >
-                                          🔕
-                                        </span>
-                                      )}
-                                    </h5>
-
-                                    <span className="text-muted extra-small ms-2">
-                                      {formatChatTime(chat.fecha_envio)}
-                                    </span>
-
-                                    {/* ⭐ Favorito */}
-                                    <button
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        toggleFavorito(chat);
-                                      }}
-                                      className="btn btn-sm border-0 bg-transparent p-0 ms-2"
-                                    >
-                                      <Star
-                                        size={18}
-                                        className={`transition-colors ${
-                                          esFavorito(chat) ? "text-warning fill-warning" : "text-muted"
-                                        }`}
-                                      />
-                                    </button>
-
-                                    {/* ⋮ Menú */}
-                                    <button
-                                      onClick={(e) => {
-                                        e.preventDefault();
-                                        e.stopPropagation();
-                                        setMenuChatAbierto((prev) =>
-                                          prev === getChatKey(chat) ? null : getChatKey(chat)
-                                        );
-                                      }}
-                                      className="btn btn-sm border-0 bg-transparent p-0 ms-2 text-muted chat-options-btn"
-                                      style={{
-                                        opacity: menuChatAbierto === getChatKey(chat) ? 1 : 0.65,
-                                        fontSize: "18px",
-                                        lineHeight: 1,
-                                      }}
-                                      title="Opciones"
-                                    >
-                                      ⋯
-                                    </button>
-
-                                    {menuChatAbierto === getChatKey(chat) && (
-                                      <div
-                                        className="shadow-sm border rounded-3 bg-white position-absolute"
-                                        style={{
-                                          top: "30px",
-                                          right: "0",
-                                          minWidth: "220px",
-                                          zIndex: 2000,
-                                          padding: "8px 0",
-                                        }}
-                                        onClick={(e) => e.stopPropagation()}
-                                      >
-                                        <button
-                                          className="dropdown-item d-flex align-items-center justify-content-between px-3 py-2"
-                                          onClick={(e) => {
-                                            e.stopPropagation();
-                                            toggleSilencio(chat);
-                                            setMenuChatAbierto(null);
-                                          }}
-                                        >
-                                          <span>
-                                            {estaSilenciado(
-                                              chat.tipo,
-                                              chat.tipo === "grupo" ? chat.grupo_id : chat.usuario_id
-                                            )
-                                              ? "Reactivar notificación"
-                                              : "Silenciar"}
-                                          </span>
-                                          <span>
-                                            {estaSilenciado(
-                                              chat.tipo,
-                                              chat.tipo === "grupo" ? chat.grupo_id : chat.usuario_id
-                                            )
-                                              ? "🔔"
-                                              : "🔕"}
-                                          </span>
-                                        </button>
-                                      </div>
-                                    )}
-                                  </div>
-
-                                  <div className="d-flex align-items-baseline">
-                                    {/* ✅ Vistos (igual que tu código) */}
-                                    {chat.tipo_mensaje === "enviado" && chat.eliminado === 0 && (
-                                      <span className="me-2 d-inline-flex">
-                                        {chat.visto === 0 ? (
-                                          <span className="svg15 double-check"></span>
-                                        ) : (
-                                          <span className="svg15 double-check-blue"></span>
-                                        )}
-                                      </span>
-                                    )}
-                                    <div className="line-clamp me-auto d-flex align-items-center gap-1">
-                                      {chat.eliminado === 1 && (
-                                        <svg
-                                          xmlns="http://www.w3.org/2000/svg"
-                                          width="14"
-                                          height="14"
-                                          fill="currentColor"
-                                          viewBox="0 0 24 24"
-                                          strokeWidth={2}
-                                        >
-                                          <path
-                                            strokeLinecap="round"
-                                            strokeLinejoin="round"
-                                            d="M12 17a2 2 0 1 0 0-4 2 2 0 0 0 0 4Zm6-7h-1V7a5 5 0 0 0-10 0v3H6a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-9a2 2 0 0 0-2-2Zm-3 0H9V7a3 3 0 0 1 6 0v3Z"
-                                          />
-                                        </svg>
-                                      )}
-                                      <span className={chat.eliminado === 1 ? "fst-italic text-muted" : "text-truncate"}>
-                                        {chat.eliminado === 1 ? "Se eliminó este mensaje" : chat.ultimo_mensaje}
-                                      </span>
-                                    </div>
-                                    {chat.mensajes_no_leidos > 0 && (
-                                      <div className="badge badge-circle bg-primary ms-3">
-                                        <span>{chat.mensajes_no_leidos}</span>
-                                      </div>
-                                    )}
-                                  </div>
-                            </div>
-                          </div>
+                      {u.url_imagen ? (
+                        <img
+                          src={getAvatarUrl(u.url_imagen)}
+                          alt={u.nombre}
+                          className="rounded-circle me-2"
+                          style={{ width: "40px", height: "40px", objectFit: "cover" }}
+                        />
+                      ) : (
+                        <div
+                          className="rounded-circle d-flex align-items-center justify-content-center text-white fw-bold me-2"
+                          style={{
+                            width: "40px",
+                            height: "40px",
+                            backgroundColor: u.background || "#6c757d",
+                          }}
+                        >
+                          {getInitial(u.nombre)}
                         </div>
-                      </div>
-
-                      {/* Footer SOLO si es grupo */}
-                      {chat.tipo === "grupo" && (
-                            <div className="card-footer">
-                              <div className="row align-items-center gx-4">
-                                <div className="col-auto">
-                                  <div className="avatar avatar-xs">
-                                    {chat.imagen_url ? (
-                                      <img
-                                        src={chat.imagen_url || "/default-group.png"}
-                                        alt={chat.usuario_nombre}
-                                        className="avatar-img"
-                                      />
-                                    ) : (
-                                      <div
-                                        className="rounded-circle d-flex align-items-center justify-content-center text-white fw-bold"
-                                        style={{
-                                          width: "22px",
-                                          height: "22px",
-                                          backgroundColor: chat.background || "#6c757d",
-                                          fontSize: "9px",
-                                        }}
-                                      >
-                                        {getInitial(chat.usuario_nombre)}
-                                      </div>
-                                    )}
-                                    
-                                  </div>
-                                </div>
-                                <div className="col">
-                                  <h6 className="mb-0">{chat.usuario_nombre}</h6>
-                                </div>
-                                <div className="col-auto">
-                                  <div className="avatar-group">
-                                    {chat.miembros?.slice(0, 3).map((m) => {
-                                      const initials = `${m.nombre?.[0] || ""}`.toUpperCase();
-                                      return (
-                                        <div
-                                          className="avatar avatar-xs rounded-circle d-flex align-items-center justify-content-center text-white fw-bold"
-                                          key={m.id}
-                                          style={{
-                                            backgroundColor: !m.url_imagen ? m.background || "#ccc" : "transparent",
-                                          }}
-                                        >
-                                          {m.url_imagen ? (
-                                            <img
-                                              src={getAvatarUrl(m.url_imagen)}
-                                              alt={m.nombre}
-                                              className="avatar-img"
-                                            />
-                                          ) : (
-                                            <span>{initials}</span>
-                                          )}
-                                        </div>
-                                      );
-                                    })}
-                                    {chat.miembros?.length > 3 && (
-                                      <div className="avatar avatar-xs" style={{ fontSize: "0.7rem" }}>
-                                        <span className="avatar-text">
-                                          +{chat.miembros.length - 3}
-                                        </span>
-                                      </div>
-                                    )}
-                                  </div>
-                                </div>
-                              </div>
-                            </div>
                       )}
-                    </a>
+                      <div className="text-start">
+                        <div className="fw-bold">{u.nombre} {u.apellido}</div>
+                        <div className="fst-italic text-muted">Iniciar conversación</div>
+                      </div>
+                    </button>
                   ))}
-
-                  
                 </div>
+              )}
+
+              <div className="card-list wa-chat-list">
+                {filteredChats.length > 0 ? (
+                  filteredChats.map(renderChatItem)
+                ) : (
+                  <div className="wa-empty-filter">
+                    <i className="fa-regular fa-comment-dots" aria-hidden="true" />
+                    <p className="mb-1">No hay chats para este filtro</p>
+                    <span>
+                      {activeFilter === "todos"
+                        ? "Prueba buscando otro nombre o mensaje."
+                        : "Cambia a Todos para ver todas tus conversaciones."}
+                    </span>
+                  </div>
+                )}
               </div>
             </div>
           </div>

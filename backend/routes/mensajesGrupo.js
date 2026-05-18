@@ -14,6 +14,90 @@ function formatDateToMySQL(date) {
   return date.toISOString().slice(0, 19).replace("T", " ");
 }
 
+function getPaginationOptions(query) {
+  const paginated =
+    query.paginated === "1" ||
+    query.paginado === "1" ||
+    query.limit !== undefined ||
+    query.beforeId !== undefined;
+
+  const parsedLimit = Number.parseInt(query.limit, 10);
+  const limit = Number.isFinite(parsedLimit)
+    ? Math.min(Math.max(parsedLimit, 1), 80)
+    : 50;
+
+  const parsedBeforeId = Number.parseInt(query.beforeId, 10);
+  const beforeId =
+    Number.isFinite(parsedBeforeId) && parsedBeforeId > 0 ? parsedBeforeId : null;
+
+  return { paginated, limit, beforeId };
+}
+
+let replyColumnReadyPromise = null;
+
+async function ensureReplyColumn() {
+  if (!replyColumnReadyPromise) {
+    replyColumnReadyPromise = (async () => {
+      const [columns] = await db.query("SHOW COLUMNS FROM mensajes_grupo LIKE 'reply_to_id'");
+      if (!columns.length) {
+        await db.query("ALTER TABLE mensajes_grupo ADD COLUMN reply_to_id INT NULL AFTER lote_id");
+      }
+    })().catch((err) => {
+      replyColumnReadyPromise = null;
+      throw err;
+    });
+  }
+
+  return replyColumnReadyPromise;
+}
+
+async function getReplyMessagesByIds(ids = []) {
+  const cleanIds = [...new Set(ids.map((id) => Number(id)).filter(Boolean))];
+  if (!cleanIds.length) return new Map();
+
+  const [rows] = await db.query(
+    `SELECT
+       qmg.id,
+       qmg.mensaje,
+       qmg.eliminado,
+       qmg.usuario_id,
+       COALESCE(qga_direct.archivo_url, qga_lote.archivo_url) AS archivo_url,
+       COALESCE(qga_direct.tipo_archivo, qga_lote.tipo_archivo) AS tipo_archivo,
+       COALESCE(qga_direct.nombre_archivo, qga_lote.nombre_archivo) AS nombre_archivo,
+       u.nombre,
+       u.apellido
+     FROM mensajes_grupo qmg
+     JOIN usuario u ON u.id = qmg.usuario_id
+     LEFT JOIN mensajes_grupo_archivos qga_direct
+       ON qga_direct.grupo_id = qmg.grupo_id
+      AND qga_direct.usuario_id = qmg.usuario_id
+      AND qga_direct.archivo_url = qmg.mensaje
+     LEFT JOIN (
+       SELECT grupo_id, lote_id, MIN(id) AS media_message_id
+       FROM mensajes_grupo
+       WHERE lote_id IS NOT NULL AND mensaje LIKE '/uploads/%'
+       GROUP BY grupo_id, lote_id
+     ) qgm_idx
+       ON qgm_idx.grupo_id = qmg.grupo_id
+      AND qgm_idx.lote_id = qmg.lote_id
+     LEFT JOIN mensajes_grupo qgm_media
+       ON qgm_media.id = qgm_idx.media_message_id
+     LEFT JOIN mensajes_grupo_archivos qga_lote
+       ON qga_lote.grupo_id = qgm_media.grupo_id
+      AND qga_lote.usuario_id = qgm_media.usuario_id
+      AND qga_lote.archivo_url = qgm_media.mensaje
+     WHERE qmg.id IN (?)`,
+    [cleanIds]
+  );
+
+  return new Map(rows.map((row) => [Number(row.id), row]));
+}
+
+async function getReplyMessageById(id) {
+  const map = await getReplyMessagesByIds([id]);
+  return map.get(Number(id)) || null;
+}
+
 // =======================
 // 📦 Configuración de Multer (con carpetas dinámicas por grupo y tipo)
 // =======================
@@ -68,14 +152,291 @@ const upload = multer({
 });
 
 // =======================
-// Obtener mensajes de un grupo (con fijados)
+// Obtener contexto alrededor de un mensaje de grupo
 // =======================
-router.get("/:grupoId", async (req, res) => {
-  const { grupoId } = req.params;
+router.get("/:grupoId/contexto/:mensajeId", async (req, res) => {
+  await ensureReplyColumn();
+  const { grupoId, mensajeId } = req.params;
+  const parsedLimit = Number.parseInt(req.query.limit, 10);
+  const limit = Number.isFinite(parsedLimit)
+    ? Math.min(Math.max(parsedLimit, 20), 100)
+    : 80;
+  const beforeLimit = Math.floor(limit / 2);
+  const afterLimit = limit - beforeLimit;
 
   try {
-    // 1️⃣ Traer mensajes del grupo
-    const [mensajes] = await db.query(
+    const [targetRows] = await db.query(
+      "SELECT id FROM mensajes_grupo WHERE grupo_id = ? AND id = ? LIMIT 1",
+      [grupoId, mensajeId]
+    );
+
+    if (!targetRows.length) {
+      return res.status(404).json({ error: "Mensaje de grupo no encontrado" });
+    }
+
+    const baseSelect = `SELECT 
+        mg.id,
+        mg.grupo_id,
+        mg.usuario_id,
+        mg.mensaje,
+        mg.eliminado,
+        mg.fecha_envio,
+        mg.editado,
+        mg.lote_id,
+        mg.reply_to_id,
+        mga.archivo_url,
+        mga.tipo_archivo,
+        mga.nombre_archivo,
+        mga.tamano,
+        u.nombre,
+        u.apellido,
+        u.url_imagen,
+        u.background,
+        u.correo
+       FROM mensajes_grupo mg
+       JOIN usuario u ON u.id = mg.usuario_id
+       LEFT JOIN mensajes_grupo_archivos mga
+         ON mga.grupo_id = mg.grupo_id
+        AND mga.usuario_id = mg.usuario_id
+        AND mga.archivo_url = mg.mensaje`;
+
+    const [beforeRows] = await db.query(
+      `${baseSelect}
+       WHERE mg.grupo_id = ? AND mg.id < ?
+       ORDER BY mg.id DESC
+       LIMIT ?`,
+      [grupoId, mensajeId, beforeLimit]
+    );
+
+    const [targetAndAfterRows] = await db.query(
+      `${baseSelect}
+       WHERE mg.grupo_id = ? AND mg.id >= ?
+       ORDER BY mg.id ASC
+       LIMIT ?`,
+      [grupoId, mensajeId, afterLimit]
+    );
+
+    const mensajes = [
+      ...beforeRows.slice().reverse(),
+      ...targetAndAfterRows,
+    ];
+
+    const ids = mensajes.map((m) => m.id);
+
+    const [reacciones] = ids.length > 0
+      ? await db.query(
+          `SELECT 
+             r.mensaje_grupo_id, 
+             r.usuario_id, 
+             r.emoji, 
+             u.nombre, 
+             u.apellido, 
+             u.url_imagen, 
+             u.background
+           FROM reacciones r
+           JOIN usuario u ON u.id = r.usuario_id
+           WHERE r.mensaje_grupo_id IN (?)`,
+          [ids]
+        )
+      : [[]];
+
+    const [miembros] = await db.query(
+      `SELECT usuario_id FROM usuario_grupo WHERE grupo_id = ?`,
+      [grupoId]
+    );
+    const miembroIds = miembros.map((m) => m.usuario_id);
+
+    const [vistos] = ids.length
+      ? await db.query(
+          `SELECT mensaje_id, usuario_id 
+             FROM mensajes_grupo_vistos 
+            WHERE mensaje_id IN (?)`,
+          [ids]
+        )
+      : [[]];
+
+    const [fijados] = await db.query(
+      `SELECT 
+          mgf.id AS fijado_id,
+          mgf.grupo_id,
+          mgf.mensaje_id,
+          mg.mensaje,
+          COALESCE(mga_direct.archivo_url, mga_lote.archivo_url) AS archivo_url,
+          COALESCE(mga_direct.tipo_archivo, mga_lote.tipo_archivo) AS tipo_archivo,
+          COALESCE(mga_direct.nombre_archivo, mga_lote.nombre_archivo) AS nombre_archivo,
+          COALESCE(mga_direct.tamano, mga_lote.tamano) AS tamano,
+          mgf.usuario_id AS fijado_por_id,
+          u.nombre AS fijado_por_nombre,
+          u.apellido AS fijado_por_apellido,
+          u.url_imagen AS fijado_por_imagen,
+          u.background AS fijado_por_background,
+          mgf.fecha_fijado,
+          mgf.duracion,
+          mgf.fecha_expiracion
+       FROM mensajes_grupo_fijados mgf
+       JOIN mensajes_grupo mg ON mg.id = mgf.mensaje_id
+       LEFT JOIN mensajes_grupo_archivos mga_direct
+         ON mga_direct.grupo_id = mg.grupo_id
+        AND mga_direct.usuario_id = mg.usuario_id
+        AND mga_direct.archivo_url = mg.mensaje
+       LEFT JOIN (
+         SELECT grupo_id, lote_id, MIN(id) AS media_message_id
+         FROM mensajes_grupo
+         WHERE lote_id IS NOT NULL AND mensaje LIKE '/uploads/%'
+         GROUP BY grupo_id, lote_id
+       ) mg_media_idx
+         ON mg_media_idx.grupo_id = mg.grupo_id
+        AND mg_media_idx.lote_id = mg.lote_id
+       LEFT JOIN mensajes_grupo mg_media
+         ON mg_media.id = mg_media_idx.media_message_id
+       LEFT JOIN mensajes_grupo_archivos mga_lote
+         ON mga_lote.grupo_id = mg_media.grupo_id
+        AND mga_lote.usuario_id = mg_media.usuario_id
+        AND mga_lote.archivo_url = mg_media.mensaje
+       JOIN usuario u ON u.id = mgf.usuario_id
+       WHERE mgf.grupo_id = ?
+       ORDER BY mgf.fecha_fijado ASC
+       LIMIT 3`,
+      [grupoId]
+    );
+
+    const replyMap = await getReplyMessagesByIds(mensajes.map((m) => m.reply_to_id));
+
+    const formatFechaEnvio = (fecha) => {
+      if (!fecha) return null;
+      if (fecha instanceof Date) return fecha.toISOString();
+      return new Date(String(fecha).replace(" ", "T") + "Z").toISOString();
+    };
+
+    const mensajesConReacciones = mensajes.map((m) => {
+      const vistosMensaje = vistos
+        .filter((v) => v.mensaje_id === m.id)
+        .map((v) => v.usuario_id);
+
+      const otrosMiembros = miembroIds.filter((id) => id !== m.usuario_id);
+      const visto = otrosMiembros.every((id) => vistosMensaje.includes(id)) ? 1 : 0;
+
+      return {
+        ...m,
+        fecha_envio: formatFechaEnvio(m.fecha_envio),
+        reply_to: m.reply_to_id ? replyMap.get(Number(m.reply_to_id)) || null : null,
+        visto,
+        reacciones: reacciones
+          .filter((r) => r.mensaje_grupo_id === m.id)
+          .map((r) => ({
+            mensaje_id: r.mensaje_grupo_id,
+            usuario_id: r.usuario_id,
+            emoji: r.emoji,
+            usuario: {
+              id: r.usuario_id,
+              nombre: r.nombre,
+              apellido: r.apellido,
+              url_imagen: r.url_imagen,
+              background: r.background || "#6c757d",
+            },
+          })),
+      };
+    });
+
+    return res.json({
+      mensajes: mensajesConReacciones,
+      mensajes_fijados: fijados,
+      hasMore: beforeRows.length >= beforeLimit,
+      nextBeforeId: mensajesConReacciones.length ? mensajesConReacciones[0].id : null,
+      targetMessageId: Number(mensajeId),
+    });
+  } catch (err) {
+    console.error("❌ Error al obtener contexto de mensaje de grupo:", err);
+    if (!res.headersSent) {
+      res.status(500).json({ error: "Error en el servidor" });
+    }
+  }
+});
+
+// =======================
+// Obtener mensajes de un grupo (con fijados)
+// =======================
+// =======================
+// Buscar mensajes dentro de un grupo
+// =======================
+router.get("/:grupoId/buscar", async (req, res) => {
+  const { grupoId } = req.params;
+  const query = String(req.query.q || "").trim();
+  const parsedLimit = Number.parseInt(req.query.limit, 10);
+  const limit = Number.isFinite(parsedLimit) ? Math.min(Math.max(parsedLimit, 1), 80) : 40;
+
+  if (!query) {
+    return res.json({ mensajes: [] });
+  }
+
+  try {
+    const like = `%${query}%`;
+    const [rows] = await db.query(
+      `SELECT
+         mg.id,
+         mg.grupo_id,
+         mg.usuario_id,
+         mg.mensaje,
+         mg.eliminado,
+         mg.fecha_envio,
+         mg.editado,
+         mg.lote_id,
+         mg.reply_to_id,
+         mga.archivo_url,
+         mga.tipo_archivo,
+         mga.nombre_archivo,
+         mga.tamano,
+         u.nombre,
+         u.apellido,
+         u.url_imagen,
+         u.background,
+         u.correo
+       FROM mensajes_grupo mg
+       JOIN usuario u ON u.id = mg.usuario_id
+       LEFT JOIN mensajes_grupo_archivos mga
+         ON mga.grupo_id = mg.grupo_id
+        AND mga.usuario_id = mg.usuario_id
+        AND mga.archivo_url = mg.mensaje
+       WHERE mg.grupo_id = ?
+         AND COALESCE(mg.eliminado, 0) = 0
+         AND (mg.mensaje LIKE ? OR mga.nombre_archivo LIKE ?)
+       ORDER BY mg.id DESC
+       LIMIT ?`,
+      [grupoId, like, like, limit]
+    );
+
+    res.json({ mensajes: rows });
+  } catch (err) {
+    console.error("❌ Error al buscar mensajes de grupo:", err);
+    res.status(500).json({ error: "Error al buscar mensajes" });
+  }
+});
+
+router.get("/:grupoId", async (req, res) => {
+  await ensureReplyColumn();
+  const { grupoId } = req.params;
+  const { paginated, limit, beforeId } = getPaginationOptions(req.query);
+
+  try {
+    const params = [grupoId];
+    let beforeClause = "";
+
+    if (paginated && beforeId) {
+      beforeClause = "AND mg.id < ?";
+      params.push(beforeId);
+    }
+
+    const limitClause = paginated
+      ? "ORDER BY mg.id DESC LIMIT ?"
+      : "ORDER BY mg.fecha_envio ASC, mg.id ASC";
+
+    if (paginated) {
+      params.push(limit + 1);
+    }
+
+    // 1️⃣ Traer últimos mensajes del grupo. Con paginación se cargan sólo
+    // los últimos N primero, y los anteriores se piden al hacer scroll arriba.
+    const [rows] = await db.query(
       `SELECT 
         mg.id,
         mg.grupo_id,
@@ -85,6 +446,11 @@ router.get("/:grupoId", async (req, res) => {
         mg.fecha_envio,
         mg.editado,
         mg.lote_id,
+        mg.reply_to_id,
+        mga.archivo_url,
+        mga.tipo_archivo,
+        mga.nombre_archivo,
+        mga.tamano,
         u.nombre,
         u.apellido,
         u.url_imagen,
@@ -92,21 +458,22 @@ router.get("/:grupoId", async (req, res) => {
         u.correo
        FROM mensajes_grupo mg
        JOIN usuario u ON u.id = mg.usuario_id
+       LEFT JOIN mensajes_grupo_archivos mga
+         ON mga.grupo_id = mg.grupo_id
+        AND mga.usuario_id = mg.usuario_id
+        AND mga.archivo_url = mg.mensaje
        WHERE mg.grupo_id = ?
-       ORDER BY mg.fecha_envio ASC`,
-      [grupoId]
+       ${beforeClause}
+       ${limitClause}`,
+      params
     );
 
-    if (mensajes.length === 0) {
-      return res.json({
-        mensajes: [],
-        mensajes_fijados: []
-      });
-    }
+    const hasMore = paginated && rows.length > limit;
+    const mensajes = paginated ? rows.slice(0, limit).reverse() : rows;
 
     const ids = mensajes.map(m => m.id);
 
-    // 2️⃣ Traer reacciones
+    // 2️⃣ Traer reacciones sólo de los mensajes cargados en esta página
     const [reacciones] =
       ids.length > 0
         ? await db.query(
@@ -132,7 +499,7 @@ router.get("/:grupoId", async (req, res) => {
     );
     const miembroIds = miembros.map(m => m.usuario_id);
 
-    // 4️⃣ Traer vistos
+    // 4️⃣ Traer vistos sólo de los mensajes cargados
     const [vistos] = ids.length
       ? await db.query(
           `SELECT mensaje_id, usuario_id 
@@ -142,13 +509,18 @@ router.get("/:grupoId", async (req, res) => {
         )
       : [[]];
 
-    // 5️⃣ Traer mensajes fijados (máximo 3)
+    // 5️⃣ Traer mensajes fijados (máximo 3). Esto siempre se carga completo,
+    // aunque el mensaje fijado no esté dentro de la página actual.
     const [fijados] = await db.query(
       `SELECT 
           mgf.id AS fijado_id,
           mgf.grupo_id,
           mgf.mensaje_id,
           mg.mensaje,
+          COALESCE(mga_direct.archivo_url, mga_lote.archivo_url) AS archivo_url,
+          COALESCE(mga_direct.tipo_archivo, mga_lote.tipo_archivo) AS tipo_archivo,
+          COALESCE(mga_direct.nombre_archivo, mga_lote.nombre_archivo) AS nombre_archivo,
+          COALESCE(mga_direct.tamano, mga_lote.tamano) AS tamano,
           mgf.usuario_id AS fijado_por_id,
           u.nombre AS fijado_por_nombre,
           u.apellido AS fijado_por_apellido,
@@ -159,12 +531,32 @@ router.get("/:grupoId", async (req, res) => {
           mgf.fecha_expiracion
        FROM mensajes_grupo_fijados mgf
        JOIN mensajes_grupo mg ON mg.id = mgf.mensaje_id
+       LEFT JOIN mensajes_grupo_archivos mga_direct
+         ON mga_direct.grupo_id = mg.grupo_id
+        AND mga_direct.usuario_id = mg.usuario_id
+        AND mga_direct.archivo_url = mg.mensaje
+       LEFT JOIN (
+         SELECT grupo_id, lote_id, MIN(id) AS media_message_id
+         FROM mensajes_grupo
+         WHERE lote_id IS NOT NULL AND mensaje LIKE '/uploads/%'
+         GROUP BY grupo_id, lote_id
+       ) mg_media_idx
+         ON mg_media_idx.grupo_id = mg.grupo_id
+        AND mg_media_idx.lote_id = mg.lote_id
+       LEFT JOIN mensajes_grupo mg_media
+         ON mg_media.id = mg_media_idx.media_message_id
+       LEFT JOIN mensajes_grupo_archivos mga_lote
+         ON mga_lote.grupo_id = mg_media.grupo_id
+        AND mga_lote.usuario_id = mg_media.usuario_id
+        AND mga_lote.archivo_url = mg_media.mensaje
        JOIN usuario u ON u.id = mgf.usuario_id
        WHERE mgf.grupo_id = ?
        ORDER BY mgf.fecha_fijado ASC
        LIMIT 3`,
       [grupoId]
     );
+
+    const replyMap = await getReplyMessagesByIds(mensajes.map((m) => m.reply_to_id));
 
     // 6️⃣ Armar los mensajes con reacciones y vistos
     const mensajesConReacciones = mensajes.map(m => {
@@ -180,6 +572,7 @@ router.get("/:grupoId", async (req, res) => {
         fecha_envio: m.fecha_envio
           ? new Date(m.fecha_envio.replace(" ", "T") + "Z").toISOString()
           : null,
+        reply_to: m.reply_to_id ? replyMap.get(Number(m.reply_to_id)) || null : null,
         visto,
         reacciones: reacciones
           .filter(r => r.mensaje_grupo_id === m.id)
@@ -198,10 +591,12 @@ router.get("/:grupoId", async (req, res) => {
       };
     });
 
-    // 7️⃣ Responder con ambos conjuntos de datos
+    // 7️⃣ Responder con página + datos de paginación
     return res.json({
       mensajes: mensajesConReacciones,
-      mensajes_fijados: fijados
+      mensajes_fijados: fijados,
+      hasMore,
+      nextBeforeId: mensajesConReacciones.length ? mensajesConReacciones[0].id : null,
     });
   } catch (err) {
     console.error("❌ Error al obtener mensajes de grupo:", err);
@@ -215,7 +610,8 @@ router.get("/:grupoId", async (req, res) => {
 // Enviar mensaje a un grupo
 // =======================
 router.post("/", async (req, res) => {
-  const { grupoId, usuarioId, mensaje, loteId } = req.body;
+  const { grupoId, usuarioId, mensaje, loteId, replyToId } = req.body;
+  const replyToIdNum = Number(replyToId) || null;
 
   if (!grupoId || !usuarioId || !mensaje) {
     return res.status(400).json({ error: "Faltan campos obligatorios" });
@@ -227,10 +623,12 @@ router.post("/", async (req, res) => {
   const { enviarEventoAlUsuario } = req.app.get("socketUtils");
 
   try {
+    await ensureReplyColumn();
+
     const [result] = await db.query(
-      `INSERT INTO mensajes_grupo (grupo_id, usuario_id, mensaje, fecha_envio, lote_id)
-       VALUES (?, ?, ?, UTC_TIMESTAMP(3), ?)`,
-      [grupoId, usuarioId, mensaje, loteId || null]
+      `INSERT INTO mensajes_grupo (grupo_id, usuario_id, mensaje, fecha_envio, lote_id, reply_to_id)
+       VALUES (?, ?, ?, UTC_TIMESTAMP(3), ?, ?)`,
+      [grupoId, usuarioId, mensaje, loteId || null, replyToIdNum]
     );
 
     const [usuarioInfo] = await db.query(
@@ -249,6 +647,8 @@ router.post("/", async (req, res) => {
       editado: 0,
       correo: usuario.correo,
       lote_id: loteId || null,
+      reply_to_id: replyToIdNum,
+      reply_to: replyToIdNum ? await getReplyMessageById(replyToIdNum) : null,
       ...usuario,
     };
 
@@ -759,6 +1159,10 @@ router.get("/fijados/:grupoId", async (req, res) => {
          mgf.duracion,
          mgf.fecha_expiracion,
          mg.mensaje,
+         COALESCE(mga_direct.archivo_url, mga_lote.archivo_url) AS archivo_url,
+         COALESCE(mga_direct.tipo_archivo, mga_lote.tipo_archivo) AS tipo_archivo,
+         COALESCE(mga_direct.nombre_archivo, mga_lote.nombre_archivo) AS nombre_archivo,
+         COALESCE(mga_direct.tamano, mga_lote.tamano) AS tamano,
          mg.usuario_id AS autor_id,
          ua.nombre AS autor_nombre,
          ua.apellido AS autor_apellido,
@@ -768,6 +1172,24 @@ router.get("/fijados/:grupoId", async (req, res) => {
          uf.url_imagen AS fijado_por_imagen
        FROM mensajes_grupo_fijados mgf
        JOIN mensajes_grupo mg ON mg.id = mgf.mensaje_id
+       LEFT JOIN mensajes_grupo_archivos mga_direct
+         ON mga_direct.grupo_id = mg.grupo_id
+        AND mga_direct.usuario_id = mg.usuario_id
+        AND mga_direct.archivo_url = mg.mensaje
+       LEFT JOIN (
+         SELECT grupo_id, lote_id, MIN(id) AS media_message_id
+         FROM mensajes_grupo
+         WHERE lote_id IS NOT NULL AND mensaje LIKE '/uploads/%'
+         GROUP BY grupo_id, lote_id
+       ) mg_media_idx
+         ON mg_media_idx.grupo_id = mg.grupo_id
+        AND mg_media_idx.lote_id = mg.lote_id
+       LEFT JOIN mensajes_grupo mg_media
+         ON mg_media.id = mg_media_idx.media_message_id
+       LEFT JOIN mensajes_grupo_archivos mga_lote
+         ON mga_lote.grupo_id = mg_media.grupo_id
+        AND mga_lote.usuario_id = mg_media.usuario_id
+        AND mga_lote.archivo_url = mg_media.mensaje
        JOIN usuario ua ON ua.id = mg.usuario_id
        JOIN usuario uf ON uf.id = mgf.usuario_id
        WHERE mgf.grupo_id = ?
@@ -796,6 +1218,7 @@ router.post("/archivo", upload.single("archivo"), async (req, res) => {
       req.query.loteId ||
       req.query.lote_id ||
       null;
+    const replyToIdNum = Number(req.body.replyToId || req.query.replyToId) || null;
 
     if (!grupo_id || !usuario_id || isNaN(grupo_id) || isNaN(usuario_id)) {
       console.error("❌ grupo_id o usuario_id inválido:", grupo_id, usuario_id);
@@ -815,10 +1238,12 @@ router.post("/archivo", upload.single("archivo"), async (req, res) => {
     const urlArchivo = `/uploads/${relativePath.replace(/\\/g, "/")}`;
 
     // 1️⃣ Crear mensaje en mensajes_grupo (mensaje = ruta de la imagen)
+    await ensureReplyColumn();
+
     const [resultadoMsg] = await db.query(
-      `INSERT INTO mensajes_grupo (grupo_id, usuario_id, mensaje, fecha_envio, lote_id)
-      VALUES (?, ?, ?, UTC_TIMESTAMP(3), ?)`,
-      [grupo_id, usuario_id, urlArchivo, loteId || null]   // 👈 usamos el lote
+      `INSERT INTO mensajes_grupo (grupo_id, usuario_id, mensaje, fecha_envio, lote_id, reply_to_id)
+      VALUES (?, ?, ?, UTC_TIMESTAMP(3), ?, ?)`,
+      [grupo_id, usuario_id, urlArchivo, loteId || null, replyToIdNum]   // 👈 usamos el lote
     );
     const mensajeId = resultadoMsg.insertId;
 
@@ -851,6 +1276,8 @@ router.post("/archivo", upload.single("archivo"), async (req, res) => {
       fijado: 0,
       fecha_envio: new Date().toISOString(),
       lote_id: loteId || null,       // 👈 AQUÍ
+      reply_to_id: replyToIdNum,
+      reply_to: replyToIdNum ? await getReplyMessageById(replyToIdNum) : null,
       ...usuarioInfo,
     };
 
