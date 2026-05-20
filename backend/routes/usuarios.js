@@ -20,7 +20,7 @@ const storagePerfil = multer.diskStorage({
 
 const uploadPerfil = multer({
   storage: storagePerfil,
-  limits: { fileSize: 8 * 1024 * 1024 },
+  limits: { fileSize: 25 * 1024 * 1024 },
   fileFilter: (req, file, cb) => {
     if (!file.mimetype || !file.mimetype.startsWith("image/")) {
       return cb(new Error("Solo se permiten imágenes"));
@@ -49,6 +49,8 @@ async function asegurarColumnasPerfil() {
 
   const columnas = [
     ["perfil_cartel", "VARCHAR(255) NULL"],
+    ["perfil_avatar_transform", "TEXT NULL"],
+    ["perfil_cartel_transform", "TEXT NULL"],
     ["perfil_biografia", "TEXT NULL"],
     ["perfil_estado_mensaje", "VARCHAR(255) NULL"],
     ["perfil_estado_expira", "DATETIME NULL"],
@@ -84,6 +86,38 @@ function parseJsonArray(value) {
   }
 }
 
+function parseJsonObject(value) {
+  if (!value) return null;
+  if (typeof value === "object") return value;
+  try {
+    const parsed = JSON.parse(value);
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : null;
+  } catch (error) {
+    return null;
+  }
+}
+
+function limitarNumero(value, min, max, fallback) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.min(Math.max(parsed, min), max);
+}
+
+function limpiarTransformImagen(value) {
+  const parsed = parseJsonObject(value);
+  if (!parsed) return null;
+
+  const transform = {
+    fit: parsed.fit === "contain" ? "contain" : "cover",
+    zoom: limitarNumero(parsed.zoom, 1, 6, 1),
+    rotation: ((limitarNumero(parsed.rotation, -3600, 3600, 0) % 360) + 360) % 360,
+    offsetXRatio: limitarNumero(parsed.offsetXRatio, -1, 1, 0),
+    offsetYRatio: limitarNumero(parsed.offsetYRatio, -1, 1, 0),
+  };
+
+  return JSON.stringify(transform);
+}
+
 async function guardarAvatarReciente(id, url) {
   if (!url) return;
   await asegurarColumnasPerfil();
@@ -102,6 +136,8 @@ function normalizarPerfilUsuario(row) {
     perfil_estado_expira: row.perfil_estado_expira || null,
     perfil_tema_principal: row.perfil_tema_principal || "#030202",
     perfil_tema_secundario: row.perfil_tema_secundario || "#e7b5bf",
+    perfil_avatar_transform: parseJsonObject(row.perfil_avatar_transform),
+    perfil_cartel_transform: parseJsonObject(row.perfil_cartel_transform),
     perfil_avatares_recientes: parseJsonArray(row.perfil_avatares_recientes),
   };
 }
@@ -110,9 +146,9 @@ async function obtenerPerfilUsuario(id) {
   await asegurarColumnasPerfil();
   const [rows] = await pool.query(
     `SELECT id, nombre, apellido, correo, url_imagen, background,
-            perfil_cartel, perfil_biografia, perfil_estado_mensaje,
-            perfil_estado_expira, perfil_tema_principal, perfil_tema_secundario,
-            perfil_avatares_recientes
+            perfil_cartel, perfil_avatar_transform, perfil_cartel_transform,
+            perfil_biografia, perfil_estado_mensaje, perfil_estado_expira,
+            perfil_tema_principal, perfil_tema_secundario, perfil_avatares_recientes
        FROM usuario
       WHERE id = ?
       LIMIT 1`,
@@ -214,7 +250,8 @@ router.post("/:id/perfil/avatar", uploadPerfil.single("imagen"), async (req, res
     await asegurarColumnasPerfil();
     if (!req.file) return res.status(400).json({ error: "Imagen requerida" });
     const url = `/uploads/perfiles/${req.file.filename}`;
-    await pool.query("UPDATE usuario SET url_imagen = ? WHERE id = ?", [url, req.params.id]);
+    const transform = limpiarTransformImagen(req.body?.transform);
+    await pool.query("UPDATE usuario SET url_imagen = ?, perfil_avatar_transform = ? WHERE id = ?", [url, transform, req.params.id]);
     await guardarAvatarReciente(req.params.id, url);
     const perfil = await obtenerPerfilUsuario(req.params.id);
     res.json({ mensaje: "Foto de perfil actualizada", url_imagen: url, usuario: perfil });
@@ -234,7 +271,8 @@ router.put("/:id/perfil/avatar-url", async (req, res) => {
       return res.status(400).json({ error: "Avatar inválido" });
     }
 
-    await pool.query("UPDATE usuario SET url_imagen = ? WHERE id = ?", [url, req.params.id]);
+    const transform = limpiarTransformImagen(req.body?.transform);
+    await pool.query("UPDATE usuario SET url_imagen = ?, perfil_avatar_transform = ? WHERE id = ?", [url, transform, req.params.id]);
     await guardarAvatarReciente(req.params.id, url);
     const perfil = await obtenerPerfilUsuario(req.params.id);
     res.json({ mensaje: "Foto de perfil actualizada", url_imagen: url, usuario: perfil });
@@ -249,7 +287,8 @@ router.post("/:id/perfil/cartel", uploadPerfil.single("imagen"), async (req, res
     await asegurarColumnasPerfil();
     if (!req.file) return res.status(400).json({ error: "Imagen requerida" });
     const url = `/uploads/perfiles/${req.file.filename}`;
-    await pool.query("UPDATE usuario SET perfil_cartel = ? WHERE id = ?", [url, req.params.id]);
+    const transform = limpiarTransformImagen(req.body?.transform);
+    await pool.query("UPDATE usuario SET perfil_cartel = ?, perfil_cartel_transform = ? WHERE id = ?", [url, transform, req.params.id]);
     const perfil = await obtenerPerfilUsuario(req.params.id);
     res.json({ mensaje: "Cartel actualizado", perfil_cartel: url, usuario: perfil });
   } catch (error) {
@@ -261,7 +300,7 @@ router.post("/:id/perfil/cartel", uploadPerfil.single("imagen"), async (req, res
 router.delete("/:id/perfil/cartel", async (req, res) => {
   try {
     await asegurarColumnasPerfil();
-    await pool.query("UPDATE usuario SET perfil_cartel = NULL WHERE id = ?", [req.params.id]);
+    await pool.query("UPDATE usuario SET perfil_cartel = NULL, perfil_cartel_transform = NULL WHERE id = ?", [req.params.id]);
     const perfil = await obtenerPerfilUsuario(req.params.id);
     res.json({ mensaje: "Cartel eliminado", usuario: perfil });
   } catch (error) {
@@ -288,6 +327,8 @@ router.get("/", async (req, res) => {
         u.url_imagen,
         u.background,
         u.perfil_cartel,
+        u.perfil_avatar_transform,
+        u.perfil_cartel_transform,
         u.perfil_biografia,
         u.perfil_estado_mensaje,
         u.perfil_estado_expira,
@@ -317,6 +358,8 @@ router.get("/", async (req, res) => {
 
     const data = rows.map((u) => ({
       ...u,
+      perfil_avatar_transform: parseJsonObject(u.perfil_avatar_transform),
+      perfil_cartel_transform: parseJsonObject(u.perfil_cartel_transform),
       permisos_chat: JSON.parse(u.permisos_chat),
       proyectos_detallados: u.proyectos_detallados
         ? JSON.parse(u.proyectos_detallados)

@@ -66,6 +66,152 @@ const getExpirationDate = (value) => {
 };
 
 
+const CROP_CONFIG = {
+  avatar: {
+    title: "Editar foto de perfil",
+    helper: "Arrastra la imagen para centrarla. Usa el zoom y la rotación antes de aplicar.",
+    frameWidth: 310,
+    frameHeight: 310,
+    outputWidth: 512,
+    outputHeight: 512,
+    minZoom: 1,
+    maxZoom: 4,
+    initialZoom: 1,
+    initialFit: "cover",
+  },
+  cover: {
+    title: "Editar cartel",
+    helper: "Arrastra el cartel para elegir qué parte se verá en tu perfil.",
+    frameWidth: 460,
+    frameHeight: 161,
+    outputWidth: 1280,
+    outputHeight: 448,
+    minZoom: 1,
+    maxZoom: 4,
+    initialZoom: 1,
+    initialFit: "contain",
+  },
+};
+
+const clamp = (value, min, max) => Math.min(Math.max(value, min), max);
+
+const isGifImage = (file) => file?.type === "image/gif" || /\.gif$/i.test(file?.name || "");
+
+const normalizeCropTransform = (value, kind = "cover") => {
+  const config = CROP_CONFIG[kind] || CROP_CONFIG.cover;
+  let parsed = value;
+
+  if (typeof value === "string") {
+    try {
+      parsed = JSON.parse(value);
+    } catch (error) {
+      parsed = null;
+    }
+  }
+
+  const fit = parsed?.fit === "contain" ? "contain" : parsed?.fit === "cover" ? "cover" : config.initialFit;
+  const zoom = clamp(Number(parsed?.zoom) || config.initialZoom, config.minZoom, 6);
+  const rotation = ((Number(parsed?.rotation) || 0) % 360 + 360) % 360;
+  const offsetXRatio = clamp(Number(parsed?.offsetXRatio) || 0, -1, 1);
+  const offsetYRatio = clamp(Number(parsed?.offsetYRatio) || 0, -1, 1);
+
+  return { fit, zoom, rotation, offsetXRatio, offsetYRatio };
+};
+
+const getMediaTransformVars = (value, kind = "cover") => {
+  const transform = normalizeCropTransform(value, kind);
+  return {
+    "--media-fit": transform.fit,
+    "--media-zoom": transform.zoom,
+    "--media-rotation": `${transform.rotation}deg`,
+    "--media-offset-x": `${transform.offsetXRatio * 100}%`,
+    "--media-offset-y": `${transform.offsetYRatio * 100}%`,
+  };
+};
+
+const getCropOffsetLimits = (kind, zoom) => {
+  const config = CROP_CONFIG[kind] || CROP_CONFIG.avatar;
+  return {
+    maxX: (config.frameWidth * Math.max(Number(zoom) - 1, 0)) / 2,
+    maxY: (config.frameHeight * Math.max(Number(zoom) - 1, 0)) / 2,
+  };
+};
+
+const clampCropOffset = (kind, zoom, offsetX, offsetY) => {
+  const limits = getCropOffsetLimits(kind, zoom);
+  return {
+    offsetX: clamp(Number(offsetX) || 0, -limits.maxX, limits.maxX),
+    offsetY: clamp(Number(offsetY) || 0, -limits.maxY, limits.maxY),
+  };
+};
+
+const getCropTransformPayload = (editor) => {
+  const config = CROP_CONFIG[editor.kind] || CROP_CONFIG.avatar;
+  return {
+    fit: editor.fit === "contain" ? "contain" : "cover",
+    zoom: clamp(Number(editor.zoom) || config.initialZoom, config.minZoom, 6),
+    rotation: ((Number(editor.rotation) || 0) % 360 + 360) % 360,
+    offsetXRatio: clamp((Number(editor.offsetX) || 0) / config.frameWidth, -1, 1),
+    offsetYRatio: clamp((Number(editor.offsetY) || 0) / config.frameHeight, -1, 1),
+  };
+};
+
+const ProfileMedia = ({ src, transform, kind = "cover", alt = "" }) => {
+  if (!src) return null;
+  const normalized = normalizeCropTransform(transform, kind);
+  return (
+    <span className={`wa-profile-media ${normalized.fit === "contain" ? "is-contain" : "is-cover"}`} style={getMediaTransformVars(normalized, kind)}>
+      {normalized.fit === "contain" && (
+        <img className="wa-profile-media-bg" src={src} alt="" aria-hidden="true" draggable="false" />
+      )}
+      <img className="wa-profile-media-img" src={src} alt={alt} draggable="false" />
+    </span>
+  );
+};
+
+const getCoverImageVars = (url) => (url ? { "--profile-cover-image": `url(${url})` } : undefined);
+
+const loadImageElement = (src) =>
+  new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error("No se pudo cargar la imagen"));
+    image.src = src;
+  });
+
+const createCroppedFile = async (editor) => {
+  const config = CROP_CONFIG[editor.kind] || CROP_CONFIG.avatar;
+  const image = await loadImageElement(editor.previewUrl);
+  const canvas = document.createElement("canvas");
+  canvas.width = config.outputWidth;
+  canvas.height = config.outputHeight;
+
+  const ctx = canvas.getContext("2d");
+  if (!ctx) throw new Error("No se pudo preparar el editor de imagen");
+
+  const scaleX = config.outputWidth / config.frameWidth;
+  const scaleY = config.outputHeight / config.frameHeight;
+  const baseScale = Math.max(config.frameWidth / image.naturalWidth, config.frameHeight / image.naturalHeight);
+  const finalScale = baseScale * editor.zoom;
+  const drawWidth = image.naturalWidth * finalScale;
+  const drawHeight = image.naturalHeight * finalScale;
+
+  ctx.save();
+  ctx.scale(scaleX, scaleY);
+  ctx.translate(config.frameWidth / 2 + editor.offsetX, config.frameHeight / 2 + editor.offsetY);
+  ctx.rotate((editor.rotation * Math.PI) / 180);
+  ctx.drawImage(image, -drawWidth / 2, -drawHeight / 2, drawWidth, drawHeight);
+  ctx.restore();
+
+  const mimeType = editor.file?.type === "image/jpeg" ? "image/jpeg" : "image/png";
+  const blob = await new Promise((resolve) => canvas.toBlob(resolve, mimeType, 0.92));
+  if (!blob) throw new Error("No se pudo recortar la imagen");
+
+  const extension = mimeType === "image/jpeg" ? "jpg" : "png";
+  return new File([blob], `perfil_${editor.kind}_${Date.now()}.${extension}`, { type: mimeType });
+};
+
+
 const getDefaultProfileTheme = (isDark) => ({
   primary: isDark ? "#2f8ee8" : "#2f96f2",
   secondary: isDark ? "#0b2a44" : "#bfe7ff",
@@ -160,7 +306,9 @@ const SidebarProfilePanel = ({ usuario, show, onClose, onLogout, onUsuarioUpdate
   const avatarInputRef = useRef(null);
   const coverInputRef = useRef(null);
   const [imagePicker, setImagePicker] = useState(null);
+  const [cropEditor, setCropEditor] = useState(null);
   const [recentAvatars, setRecentAvatars] = useState([]);
+  const cropDragRef = useRef(null);
 
   const userId = usuario?.id;
 
@@ -168,6 +316,8 @@ const SidebarProfilePanel = ({ usuario, show, onClose, onLogout, onUsuarioUpdate
   const profileName = getFullName(currentUser);
   const avatarUrl = getAvatarUrl(currentUser?.url_imagen);
   const coverUrl = getAvatarUrl(currentUser?.perfil_cartel);
+  const avatarTransform = normalizeCropTransform(currentUser?.perfil_avatar_transform, "avatar");
+  const coverTransform = normalizeCropTransform(currentUser?.perfil_cartel_transform, "cover");
   const statusMessage = currentUser?.perfil_estado_mensaje || "";
   const biografia = currentUser?.perfil_biografia || "";
   const hasSavedProfileTheme = hasSavedThemeValue(currentUser?.perfil_tema_principal) && hasSavedThemeValue(currentUser?.perfil_tema_secundario);
@@ -240,14 +390,22 @@ const SidebarProfilePanel = ({ usuario, show, onClose, onLogout, onUsuarioUpdate
     if (!show) return;
     const onKeyDown = (event) => {
       if (event.key === "Escape") {
-        if (statusModalOpen) setStatusModalOpen(false);
+        if (cropEditor) closeCropEditor();
+        else if (imagePicker) setImagePicker(null);
+        else if (statusModalOpen) setStatusModalOpen(false);
         else if (editOpen) setEditOpen(false);
         else onClose?.();
       }
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [show, statusModalOpen, editOpen, onClose]);
+  }, [show, cropEditor, imagePicker, statusModalOpen, editOpen, onClose]);
+
+  useEffect(() => {
+    return () => {
+      if (cropEditor?.previewUrl) URL.revokeObjectURL(cropEditor.previewUrl);
+    };
+  }, [cropEditor?.previewUrl]);
 
   if (!show) return null;
 
@@ -335,10 +493,11 @@ const SidebarProfilePanel = ({ usuario, show, onClose, onLogout, onUsuarioUpdate
     }
   };
 
-  const uploadImage = async (kind, file) => {
-    if (!file) return;
+  const uploadImage = async (kind, file, transform = null) => {
+    if (!file) return false;
     const formData = new FormData();
     formData.append("imagen", file);
+    if (transform) formData.append("transform", JSON.stringify(transform));
     try {
       const endpoint = kind === "avatar" ? "avatar" : "cartel";
       const res = await axios.post(`/api/usuarios/${userId}/perfil/${endpoint}`, formData, {
@@ -349,9 +508,11 @@ const SidebarProfilePanel = ({ usuario, show, onClose, onLogout, onUsuarioUpdate
       if (kind === "avatar") rememberRecentAvatar(res.data?.url_imagen || nextUser?.url_imagen);
       setImagePicker(null);
       toast.success(kind === "avatar" ? "Foto de perfil actualizada" : "Cartel actualizado");
+      return true;
     } catch (error) {
       console.error("❌ Error subiendo imagen:", error);
       toast.error("No se pudo subir la imagen");
+      return false;
     }
   };
 
@@ -370,7 +531,123 @@ const SidebarProfilePanel = ({ usuario, show, onClose, onLogout, onUsuarioUpdate
   };
 
   const openImagePicker = (kind) => {
+    setPresenceMenuOpen(false);
     setImagePicker(kind);
+  };
+
+  const closeCropEditor = () => {
+    setCropEditor((current) => {
+      if (current?.previewUrl) URL.revokeObjectURL(current.previewUrl);
+      return null;
+    });
+    cropDragRef.current = null;
+  };
+
+  const handleImageFileSelected = (kind, file) => {
+    if (!file) return;
+    if (!file.type?.startsWith("image/")) {
+      toast.error("Selecciona una imagen válida");
+      return;
+    }
+    const config = CROP_CONFIG[kind] || CROP_CONFIG.avatar;
+    setImagePicker(null);
+    setCropEditor((current) => {
+      if (current?.previewUrl) URL.revokeObjectURL(current.previewUrl);
+      return {
+        kind,
+        file,
+        previewUrl: URL.createObjectURL(file),
+        isGif: isGifImage(file),
+        fit: config.initialFit,
+        zoom: config.initialZoom,
+        rotation: 0,
+        offsetX: 0,
+        offsetY: 0,
+      };
+    });
+  };
+
+  const startCropDrag = (event) => {
+    if (!cropEditor) return;
+    event.preventDefault();
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+    cropDragRef.current = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      offsetX: cropEditor.offsetX,
+      offsetY: cropEditor.offsetY,
+    };
+  };
+
+  const moveCropDrag = (event) => {
+    const drag = cropDragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    event.preventDefault();
+    setCropEditor((current) => {
+      if (!current) return current;
+      const nextOffset = clampCropOffset(
+        current.kind,
+        current.zoom,
+        drag.offsetX + event.clientX - drag.startX,
+        drag.offsetY + event.clientY - drag.startY
+      );
+      return {
+        ...current,
+        ...nextOffset,
+      };
+    });
+  };
+
+  const stopCropDrag = (event) => {
+    if (cropDragRef.current?.pointerId === event.pointerId) {
+      cropDragRef.current = null;
+    }
+  };
+
+  const zoomCrop = (value) => {
+    setCropEditor((current) => {
+      if (!current) return current;
+      const config = CROP_CONFIG[current.kind] || CROP_CONFIG.avatar;
+      const zoom = clamp(Number(value), config.minZoom, config.maxZoom);
+      return { ...current, zoom, ...clampCropOffset(current.kind, zoom, current.offsetX, current.offsetY) };
+    });
+  };
+
+  const rotateCrop = (degrees) => {
+    setCropEditor((current) => (current ? { ...current, rotation: (current.rotation + degrees + 360) % 360 } : current));
+  };
+
+  const resetCrop = () => {
+    setCropEditor((current) => {
+      if (!current) return current;
+      const config = CROP_CONFIG[current.kind] || CROP_CONFIG.avatar;
+      return { ...current, fit: config.initialFit, zoom: config.initialZoom, rotation: 0, offsetX: 0, offsetY: 0 };
+    });
+  };
+
+  const toggleCropFit = () => {
+    setCropEditor((current) => {
+      if (!current) return current;
+      return {
+        ...current,
+        fit: current.fit === "contain" ? "cover" : "contain",
+        offsetX: 0,
+        offsetY: 0,
+      };
+    });
+  };
+
+  const applyCrop = async () => {
+    if (!cropEditor) return;
+    try {
+      const transform = getCropTransformPayload(cropEditor);
+      const uploaded = await uploadImage(cropEditor.kind, cropEditor.file, transform);
+      if (uploaded) closeCropEditor();
+    } catch (error) {
+      console.error("❌ Error recortando imagen:", error);
+      toast.error("No se pudo aplicar el recorte");
+    }
   };
 
   const deleteCover = async () => {
@@ -391,8 +668,9 @@ const SidebarProfilePanel = ({ usuario, show, onClose, onLogout, onUsuarioUpdate
         <div className="wa-profile-card" style={profileThemeStyle}>
           <div
             className={`wa-profile-cover ${coverUrl ? "has-image" : ""}`}
-            style={coverUrl ? { backgroundImage: `url(${coverUrl})` } : undefined}
+            style={getCoverImageVars(coverUrl)}
           >
+            {coverUrl && <ProfileMedia src={coverUrl} transform={coverTransform} kind="cover" alt="Cartel de perfil" />}
             <button type="button" className="wa-profile-close" onClick={onClose} aria-label="Cerrar">
               <i className="fa-solid fa-xmark" />
             </button>
@@ -412,10 +690,10 @@ const SidebarProfilePanel = ({ usuario, show, onClose, onLogout, onUsuarioUpdate
                 type="button"
                 className="wa-profile-avatar"
                 onClick={() => openImagePicker("avatar")}
-                title="Cambiar foto de perfil"
+                aria-label="Cambiar foto de perfil"
               >
                 {avatarUrl ? (
-                  <img src={avatarUrl} alt={profileName} />
+                  <ProfileMedia src={avatarUrl} transform={avatarTransform} kind="avatar" alt={profileName} />
                 ) : (
                   <span style={{ backgroundColor: currentUser?.background || "#2787f5" }}>{getInitial(currentUser)}</span>
                 )}
@@ -507,18 +785,24 @@ const SidebarProfilePanel = ({ usuario, show, onClose, onLogout, onUsuarioUpdate
         type="file"
         accept="image/*"
         hidden
-        onChange={(e) => uploadImage("avatar", e.target.files?.[0])}
+        onChange={(e) => {
+          handleImageFileSelected("avatar", e.target.files?.[0]);
+          e.target.value = "";
+        }}
       />
       <input
         ref={coverInputRef}
         type="file"
         accept="image/*"
         hidden
-        onChange={(e) => uploadImage("cover", e.target.files?.[0])}
+        onChange={(e) => {
+          handleImageFileSelected("cover", e.target.files?.[0]);
+          e.target.value = "";
+        }}
       />
 
       {imagePicker && (
-        <div className="wa-profile-modal-backdrop">
+        <div className="wa-profile-modal-backdrop wa-profile-image-picker-layer">
           <div className="wa-profile-image-picker-modal" role="dialog" aria-label="Seleccionar una imagen">
             <button type="button" className="wa-profile-modal-close" onClick={() => setImagePicker(null)}>
               <i className="fa-solid fa-xmark" />
@@ -575,7 +859,7 @@ const SidebarProfilePanel = ({ usuario, show, onClose, onLogout, onUsuarioUpdate
       )}
 
       {statusModalOpen && (
-        <div className="wa-profile-modal-backdrop">
+        <div className="wa-profile-modal-backdrop wa-profile-status-layer">
           <div className="wa-profile-status-modal">
             <button type="button" className="wa-profile-modal-close" onClick={() => setStatusModalOpen(false)}>
               <i className="fa-solid fa-xmark" />
@@ -583,12 +867,13 @@ const SidebarProfilePanel = ({ usuario, show, onClose, onLogout, onUsuarioUpdate
             <h3>Establecer tu estado</h3>
             <div
               className={`wa-profile-status-preview ${coverUrl ? "has-image" : ""}`}
-              style={coverUrl ? { ...profileThemeStyle, backgroundImage: `url(${coverUrl})` } : profileThemeStyle}
+              style={coverUrl ? { ...profileThemeStyle, ...getCoverImageVars(coverUrl) } : profileThemeStyle}
             >
+              {coverUrl && <ProfileMedia src={coverUrl} transform={coverTransform} kind="cover" alt="Cartel de perfil" />}
               <div className="wa-profile-status-preview-fade" />
               <div className="wa-profile-status-preview-content">
                 <div className="wa-profile-status-preview-avatar">
-                  {avatarUrl ? <img src={avatarUrl} alt={profileName} /> : <span>{getInitial(currentUser)}</span>}
+                  {avatarUrl ? <ProfileMedia src={avatarUrl} transform={avatarTransform} kind="avatar" alt={profileName} /> : <span>{getInitial(currentUser)}</span>}
                 </div>
                 <div>
                   <strong>{profileName}</strong>
@@ -625,7 +910,7 @@ const SidebarProfilePanel = ({ usuario, show, onClose, onLogout, onUsuarioUpdate
       )}
 
       {editOpen && (
-        <div className="wa-profile-modal-backdrop">
+        <div className="wa-profile-modal-backdrop wa-profile-edit-layer">
           <div className="wa-profile-edit-modal" style={editThemeStyle}>
             <button type="button" className="wa-profile-modal-close" onClick={() => setEditOpen(false)}>
               <i className="fa-solid fa-xmark" />
@@ -672,19 +957,20 @@ const SidebarProfilePanel = ({ usuario, show, onClose, onLogout, onUsuarioUpdate
                 <div className="wa-profile-preview-card" style={editThemeStyle}>
                   <div
                     className={`wa-profile-preview-cover-area ${coverUrl ? "has-image" : ""}`}
-                    style={coverUrl ? { backgroundImage: `url(${coverUrl})` } : undefined}
+                    style={getCoverImageVars(coverUrl)}
                   >
+                    {coverUrl && <ProfileMedia src={coverUrl} transform={coverTransform} kind="cover" alt="Cartel de perfil" />}
                     <button type="button" className="wa-profile-preview-cover" onClick={() => openImagePicker("cover")}>
                       <i className="fa-solid fa-pen" /> Cambiar cartel
                     </button>
                   </div>
                   <div className="wa-profile-preview-body">
                     <div className="wa-profile-preview-avatar">
-                      {avatarUrl ? <img src={avatarUrl} alt={profileName} /> : <span>{getInitial(currentUser)}</span>}
+                      {avatarUrl ? <ProfileMedia src={avatarUrl} transform={avatarTransform} kind="avatar" alt={profileName} /> : <span>{getInitial(currentUser)}</span>}
                       <span className={`wa-profile-preview-presence-dot ${currentPresence.className}`}>
                         <i className={currentPresence.icon} />
                       </span>
-                      <button type="button" onClick={() => openImagePicker("avatar")} title="Cambiar foto de perfil">
+                      <button type="button" onClick={() => openImagePicker("avatar")} aria-label="Cambiar foto de perfil">
                         <i className="fa-solid fa-pen" />
                       </button>
                     </div>
@@ -715,6 +1001,89 @@ const SidebarProfilePanel = ({ usuario, show, onClose, onLogout, onUsuarioUpdate
           </div>
         </div>
       )}
+
+      {cropEditor && (() => {
+        const config = CROP_CONFIG[cropEditor.kind] || CROP_CONFIG.avatar;
+        return (
+          <div className="wa-profile-modal-backdrop wa-profile-crop-layer">
+            <div className="wa-profile-crop-modal" role="dialog" aria-label={config.title}>
+              <button type="button" className="wa-profile-modal-close" onClick={closeCropEditor}>
+                <i className="fa-solid fa-xmark" />
+              </button>
+              <h3>{config.title}</h3>
+              <p>{config.helper}</p>
+
+              <div
+                className={`wa-profile-crop-stage ${cropEditor.kind}`}
+                style={{
+                  "--crop-frame-width": `${config.frameWidth}px`,
+                  "--crop-frame-aspect": `${config.frameWidth} / ${config.frameHeight}`,
+                }}
+                onPointerDown={startCropDrag}
+                onPointerMove={moveCropDrag}
+                onPointerUp={stopCropDrag}
+                onPointerCancel={stopCropDrag}
+                onWheel={(event) => {
+                  event.preventDefault();
+                  const nextZoom = cropEditor.zoom + (event.deltaY > 0 ? -0.08 : 0.08);
+                  zoomCrop(Number(nextZoom.toFixed(2)));
+                }}
+              >
+                <img
+                  className="wa-profile-crop-stage-bg"
+                  src={cropEditor.previewUrl}
+                  alt=""
+                  aria-hidden="true"
+                  draggable="false"
+                />
+                <img
+                  className="wa-profile-crop-stage-img"
+                  src={cropEditor.previewUrl}
+                  alt="Imagen seleccionada"
+                  draggable="false"
+                  style={{
+                    objectFit: cropEditor.fit === "contain" ? "contain" : "cover",
+                    left: `calc(50% + ${cropEditor.offsetX}px)`,
+                    top: `calc(50% + ${cropEditor.offsetY}px)`,
+                    transform: `translate(-50%, -50%) rotate(${cropEditor.rotation}deg) scale(${cropEditor.zoom})`,
+                  }}
+                />
+              </div>
+
+              <div className="wa-profile-crop-toolbar">
+                <button type="button" onClick={() => rotateCrop(-90)} title="Rotar a la izquierda">
+                  <i className="fa-solid fa-rotate-left" />
+                </button>
+                <button type="button" className="wa-profile-crop-fit" onClick={toggleCropFit} title="Cambiar ajuste">
+                  {cropEditor.fit === "contain" ? "Completo" : "Cubrir"}
+                </button>
+                <label>
+                  <i className="fa-solid fa-image" />
+                  <input
+                    type="range"
+                    min={config.minZoom}
+                    max={config.maxZoom}
+                    step="0.01"
+                    value={cropEditor.zoom}
+                    onChange={(event) => zoomCrop(event.target.value)}
+                  />
+                  <i className="fa-solid fa-image portrait" />
+                </label>
+                <button type="button" onClick={() => rotateCrop(90)} title="Rotar a la derecha">
+                  <i className="fa-solid fa-rotate-right" />
+                </button>
+              </div>
+
+              <div className="wa-profile-crop-footer">
+                <button type="button" className="ghost" onClick={resetCrop}>Reiniciar</button>
+                <span />
+                <button type="button" className="secondary" onClick={closeCropEditor}>Cancelar</button>
+                <button type="button" onClick={applyCrop}>Aplicar</button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </>
   );
 };

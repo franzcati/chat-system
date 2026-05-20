@@ -4541,3 +4541,1141 @@ body > #root > .flex.h-screen > .wa-app-rail {
     left: 112px !important;
   }
 }
+
+
+/* Fix perfil: capas de modales, cartel real y editor de recorte tipo Discord */
+.wa-profile-edit-layer {
+  z-index: 140000;
+}
+
+.wa-profile-status-layer {
+  z-index: 150000;
+}
+
+.wa-profile-image-picker-layer {
+  z-index: 160000;
+}
+
+.wa-profile-crop-layer {
+  z-index: 170000;
+}
+
+.wa-profile-cover.has-image,
+.wa-profile-preview-cover-area.has-image,
+.wa-profile-status-preview.has-image {
+  background-image: linear-gradient(180deg, rgba(0,0,0,0.04), rgba(0,0,0,0.28)), var(--profile-cover-image) !important;
+  background-size: cover, cover !important;
+  background-position: center, center !important;
+  background-repeat: no-repeat, no-repeat !important;
+}
+
+.wa-profile-crop-modal {
+  position: relative;
+  width: min(560px, 100%);
+  max-height: min(92vh, 820px);
+  overflow: auto;
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: #1f1b2d;
+  color: #f8fafc;
+  box-shadow: 0 28px 90px rgba(0, 0, 0, 0.62);
+  padding: 24px;
+}
+
+.wa-profile-crop-modal h3 {
+  margin: 0 44px 8px 0;
+  color: #f8fafc;
+  font-size: 1.35rem;
+  font-weight: 850;
+}
+
+.wa-profile-crop-modal > p {
+  margin: 0 44px 18px 0;
+  color: #b8b2cc;
+  font-size: 0.9rem;
+}
+
+.wa-profile-crop-stage {
+  position: relative;
+  width: min(var(--crop-frame-width), calc(100vw - 88px));
+  aspect-ratio: var(--crop-frame-aspect);
+  margin: 0 auto 18px;
+  overflow: hidden;
+  border-radius: 12px;
+  background: #202128;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+
+.wa-profile-crop-stage:active {
+  cursor: grabbing;
+}
+
+.wa-profile-crop-stage.avatar {
+  border-radius: 18px;
+}
+
+.wa-profile-crop-stage img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transform-origin: center;
+  pointer-events: none;
+  user-select: none;
+  will-change: transform;
+}
+
+.wa-profile-crop-stage::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border: 3px solid rgba(255, 255, 255, 0.95);
+  border-radius: inherit;
+  box-shadow: inset 0 0 0 999px rgba(0, 0, 0, 0.08);
+}
+
+.wa-profile-crop-stage.avatar::after {
+  border-radius: 999px;
+  box-shadow: 0 0 0 999px rgba(0, 0, 0, 0.32), inset 0 0 0 2px rgba(255,255,255,0.70);
+  inset: 3px;
+}
+
+.wa-profile-crop-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  margin: 6px 0 22px;
+}
+
+.wa-profile-crop-toolbar button {
+  width: 38px;
+  height: 38px;
+  border: 0;
+  border-radius: 10px;
+  background: #312d3f;
+  color: #f8fafc;
+  cursor: pointer;
+}
+
+.wa-profile-crop-toolbar button:hover {
+  background: #3b3650;
+}
+
+.wa-profile-crop-toolbar label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: min(300px, calc(100vw - 190px));
+  color: #c9c4dc;
+}
+
+.wa-profile-crop-toolbar input[type="range"] {
+  width: 100%;
+  accent-color: #5865f2;
+}
+
+.wa-profile-crop-toolbar .portrait {
+  font-size: 1.35rem;
+}
+
+.wa-profile-crop-footer {
+  display: grid;
+  grid-template-columns: auto 1fr auto auto;
+  align-items: center;
+  gap: 10px;
+}
+
+.wa-profile-crop-footer button {
+  border: 0;
+  border-radius: 10px;
+  padding: 11px 16px;
+  background: #5865f2;
+  color: #fff;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.wa-profile-crop-footer button.secondary {
+  background: #2f2b3f;
+  color: #f8fafc;
+}
+
+.wa-profile-crop-footer button.ghost {
+  background: transparent;
+  color: #8ea0ff;
+  padding-left: 0;
+}
+
+:root[data-theme="light"] .wa-profile-crop-modal {
+  background: #ffffff;
+  color: #0f172a;
+  border-color: rgba(15, 23, 42, 0.10);
+  box-shadow: 0 28px 90px rgba(15, 23, 42, 0.28);
+}
+
+:root[data-theme="light"] .wa-profile-crop-modal h3 {
+  color: #14213d;
+}
+
+:root[data-theme="light"] .wa-profile-crop-modal > p {
+  color: #475569;
+}
+
+:root[data-theme="light"] .wa-profile-crop-toolbar button,
+:root[data-theme="light"] .wa-profile-crop-footer button.secondary {
+  background: #e9e7f2;
+  color: #14213d;
+}
+
+@media (max-width: 640px) {
+  .wa-profile-crop-modal {
+    padding: 20px;
+  }
+
+  .wa-profile-crop-footer {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .wa-profile-crop-footer span {
+    display: none;
+  }
+}
+
+/* Fix GIF/cartel: no convertir GIF a canvas, conservar animacion y guardar ajuste visual */
+.wa-profile-media {
+  position: absolute;
+  inset: 0;
+  display: block;
+  overflow: hidden;
+  border-radius: inherit;
+  pointer-events: none;
+  z-index: 0;
+  background: transparent;
+}
+
+.wa-profile-media-bg,
+.wa-profile-media-img {
+  position: absolute;
+  display: block;
+  max-width: none;
+  user-select: none;
+  pointer-events: none;
+}
+
+.wa-profile-media-bg {
+  inset: -24px;
+  width: calc(100% + 48px);
+  height: calc(100% + 48px);
+  object-fit: cover;
+  filter: blur(20px);
+  opacity: 0.9;
+  transform: scale(1.12);
+}
+
+.wa-profile-media-img {
+  width: 100%;
+  height: 100%;
+  left: calc(50% + var(--media-offset-x, 0%));
+  top: calc(50% + var(--media-offset-y, 0%));
+  object-fit: var(--media-fit, cover);
+  transform: translate(-50%, -50%) rotate(var(--media-rotation, 0deg)) scale(var(--media-zoom, 1));
+  transform-origin: center;
+  will-change: transform;
+}
+
+.wa-profile-cover.has-image,
+.wa-profile-preview-cover-area.has-image,
+.wa-profile-status-preview.has-image {
+  background-image: none !important;
+  background-color: #111827 !important;
+}
+
+.wa-profile-cover.has-image::after,
+.wa-profile-preview-cover-area.has-image::after,
+.wa-profile-status-preview-fade {
+  z-index: 1;
+}
+
+.wa-profile-cover > :not(.wa-profile-media),
+.wa-profile-preview-cover-area > :not(.wa-profile-media),
+.wa-profile-status-preview-content {
+  position: relative;
+  z-index: 2;
+}
+
+.wa-profile-avatar .wa-profile-media,
+.wa-profile-preview-avatar .wa-profile-media,
+.wa-profile-status-preview-avatar .wa-profile-media {
+  border-radius: 999px;
+  z-index: 0;
+}
+
+.wa-profile-avatar .wa-profile-media-img,
+.wa-profile-preview-avatar .wa-profile-media-img,
+.wa-profile-status-preview-avatar .wa-profile-media-img {
+  border-radius: 999px;
+}
+
+.wa-profile-avatar-hover,
+.wa-profile-preview-avatar button,
+.wa-profile-preview-presence-dot,
+.wa-profile-status-dot {
+  z-index: 5;
+}
+
+.wa-profile-crop-stage {
+  background: #14131c;
+}
+
+.wa-profile-crop-stage .wa-profile-crop-stage-bg {
+  position: absolute;
+  inset: -28px;
+  width: calc(100% + 56px);
+  height: calc(100% + 56px);
+  object-fit: cover;
+  filter: blur(22px);
+  opacity: 0.9;
+  transform: scale(1.12);
+  pointer-events: none;
+  user-select: none;
+}
+
+.wa-profile-crop-stage .wa-profile-crop-stage-img {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  transform-origin: center;
+  pointer-events: none;
+  user-select: none;
+  will-change: transform;
+}
+
+.wa-profile-crop-stage::after {
+  z-index: 2;
+}
+
+.wa-profile-crop-fit {
+  width: auto !important;
+  min-width: 82px;
+  padding: 0 12px;
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.wa-profile-crop-toolbar {
+  flex-wrap: wrap;
+}
+
+.wa-profile-image-picker-help {
+  color: #b8b2cc;
+}
+
+/* =========================================================
+   Fix final Discord profile: cartel detras, X correcta y estado hover tipo Discord
+   ========================================================= */
+.wa-profile-card {
+  overflow: visible !important;
+  isolation: isolate !important;
+}
+
+.wa-profile-cover,
+.wa-profile-preview-cover-area {
+  position: relative !important;
+  z-index: 1 !important;
+  overflow: hidden !important;
+}
+
+.wa-profile-cover {
+  border-radius: 16px 16px 0 0 !important;
+}
+
+.wa-profile-main,
+.wa-profile-preview-body {
+  position: relative !important;
+  z-index: 4 !important;
+}
+
+.wa-profile-main {
+  border-radius: 0 0 16px 16px !important;
+}
+
+.wa-profile-media {
+  z-index: 0 !important;
+}
+
+.wa-profile-cover::after,
+.wa-profile-preview-cover-area::after {
+  z-index: 1 !important;
+}
+
+.wa-profile-cover > .wa-profile-close,
+.wa-profile-cover > .wa-profile-cover-edit,
+.wa-profile-preview-cover-area > .wa-profile-preview-cover {
+  position: absolute !important;
+  z-index: 8 !important;
+}
+
+.wa-profile-cover > .wa-profile-close {
+  top: 10px !important;
+  right: 10px !important;
+  left: auto !important;
+  bottom: auto !important;
+  width: 32px !important;
+  height: 32px !important;
+  min-width: 32px !important;
+  min-height: 32px !important;
+  padding: 0 !important;
+  border-radius: 999px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  background: rgba(15, 23, 42, 0.30) !important;
+  color: #ffffff !important;
+  line-height: 1 !important;
+}
+
+.wa-profile-cover > .wa-profile-close:hover {
+  background: rgba(15, 23, 42, 0.56) !important;
+}
+
+.wa-profile-cover > .wa-profile-cover-edit,
+.wa-profile-preview-cover-area > .wa-profile-preview-cover {
+  top: 50% !important;
+  left: 50% !important;
+  right: auto !important;
+  bottom: auto !important;
+  transform: translate(-50%, -50%) !important;
+}
+
+.wa-profile-avatar-wrap,
+.wa-profile-status-bubble,
+.wa-profile-preview-avatar,
+.wa-profile-preview-status {
+  z-index: 9 !important;
+}
+
+.wa-profile-avatar,
+.wa-profile-preview-avatar {
+  position: relative !important;
+  z-index: 10 !important;
+}
+
+.wa-profile-status-dot,
+.wa-profile-preview-presence-dot {
+  z-index: 14 !important;
+}
+
+.wa-profile-avatar .wa-profile-media,
+.wa-profile-preview-avatar .wa-profile-media,
+.wa-profile-status-preview-avatar .wa-profile-media {
+  z-index: 0 !important;
+}
+
+.wa-profile-avatar > :not(.wa-profile-media),
+.wa-profile-preview-avatar > :not(.wa-profile-media),
+.wa-profile-status-preview-avatar > :not(.wa-profile-media) {
+  position: relative !important;
+  z-index: 2 !important;
+}
+
+.wa-profile-status-bubble,
+.wa-profile-preview-status {
+  top: -32px !important;
+  left: 124px !important;
+  right: auto !important;
+  width: fit-content !important;
+  min-width: 0 !important;
+  max-width: min(210px, calc(100% - 138px)) !important;
+  min-height: 40px !important;
+  max-height: 56px !important;
+  padding: 8px 12px !important;
+  overflow: visible !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  transition: max-width 0.16s ease, max-height 0.16s ease, background 0.16s ease, box-shadow 0.16s ease, transform 0.16s ease !important;
+}
+
+.wa-profile-status-bubble:hover,
+.wa-profile-preview-status:hover {
+  max-width: min(284px, calc(100vw - 120px)) !important;
+  max-height: none !important;
+  padding-right: 12px !important;
+  transform: translateY(0) !important;
+}
+
+.wa-profile-status-text,
+.wa-profile-preview-status span {
+  flex: 1 1 auto !important;
+  min-width: 0 !important;
+  max-width: 186px !important;
+  display: -webkit-box !important;
+  -webkit-line-clamp: 2 !important;
+  -webkit-box-orient: vertical !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  white-space: normal !important;
+  word-break: break-word !important;
+}
+
+.wa-profile-status-bubble:hover .wa-profile-status-text,
+.wa-profile-preview-status:hover span {
+  display: block !important;
+  -webkit-line-clamp: unset !important;
+  max-width: 250px !important;
+  overflow: visible !important;
+  text-overflow: unset !important;
+}
+
+.wa-profile-status-actions,
+.wa-profile-preview-status-actions {
+  position: absolute !important;
+  top: -34px !important;
+  right: -4px !important;
+  width: auto !important;
+  height: 32px !important;
+  min-width: 0 !important;
+  max-width: none !important;
+  padding: 3px !important;
+  border-radius: 999px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 4px !important;
+  background: rgba(15, 23, 42, 0.88) !important;
+  border: 1px solid rgba(255, 255, 255, 0.10) !important;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.28) !important;
+  opacity: 0 !important;
+  overflow: visible !important;
+  pointer-events: none !important;
+  transform: translateY(5px) scale(0.96) !important;
+  transition: opacity 0.14s ease, transform 0.14s ease !important;
+  z-index: 30 !important;
+}
+
+.wa-profile-status-bubble:hover .wa-profile-status-actions,
+.wa-profile-preview-status:hover .wa-profile-status-actions,
+.wa-profile-preview-status:hover .wa-profile-preview-status-actions {
+  width: auto !important;
+  opacity: 1 !important;
+  pointer-events: auto !important;
+  transform: translateY(0) scale(1) !important;
+}
+
+.wa-profile-status-actions button,
+.wa-profile-preview-status-actions button {
+  width: 26px !important;
+  height: 26px !important;
+  min-width: 26px !important;
+  min-height: 26px !important;
+  padding: 0 !important;
+  flex: 0 0 26px !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.wa-profile-status-actions button:hover,
+.wa-profile-preview-status-actions button:hover {
+  background: rgba(255, 255, 255, 0.12) !important;
+}
+
+.wa-profile-preview-status {
+  max-width: min(188px, calc(100% - 136px)) !important;
+}
+
+.wa-profile-preview-status:hover {
+  max-width: min(246px, calc(100vw - 120px)) !important;
+}
+
+.wa-profile-preview-status:hover span {
+  max-width: 220px !important;
+}
+
+@media (max-width: 640px) {
+  .wa-profile-status-bubble,
+  .wa-profile-preview-status {
+    top: -30px !important;
+    left: 112px !important;
+    max-width: min(196px, calc(100% - 124px)) !important;
+  }
+
+  .wa-profile-status-bubble:hover,
+  .wa-profile-preview-status:hover {
+    max-width: min(250px, calc(100vw - 44px)) !important;
+  }
+}
+
+/* =========================================================
+   Fix final perfil v2: hover del avatar completo y avatar
+   de previsualizacion alineado como Discord
+   ========================================================= */
+.wa-profile-avatar-wrap {
+  top: -70px !important;
+  left: 18px !important;
+  z-index: 22 !important;
+}
+
+.wa-profile-avatar,
+.wa-profile-preview-avatar {
+  overflow: hidden !important;
+  isolation: isolate !important;
+}
+
+.wa-profile-avatar > .wa-profile-media,
+.wa-profile-preview-avatar > .wa-profile-media {
+  position: absolute !important;
+  inset: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+  border-radius: 999px !important;
+  z-index: 1 !important;
+}
+
+.wa-profile-avatar .wa-profile-avatar-hover {
+  position: absolute !important;
+  inset: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+  min-width: 100% !important;
+  min-height: 100% !important;
+  border-radius: 999px !important;
+  clip-path: circle(50% at 50% 50%) !important;
+  background: rgba(0, 0, 0, 0.56) !important;
+  color: #ffffff !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+  z-index: 24 !important;
+  transition: opacity 0.16s ease !important;
+}
+
+.wa-profile-avatar:hover .wa-profile-avatar-hover {
+  opacity: 1 !important;
+}
+
+.wa-profile-avatar .wa-profile-avatar-hover i,
+.wa-profile-preview-avatar button i {
+  font-size: 1.06rem !important;
+  line-height: 1 !important;
+}
+
+.wa-profile-status-dot,
+.wa-profile-preview-presence-dot {
+  z-index: 30 !important;
+}
+
+.wa-profile-status-bubble {
+  top: -40px !important;
+  z-index: 21 !important;
+}
+
+.wa-profile-preview-body {
+  padding-top: 58px !important;
+}
+
+.wa-profile-preview-avatar {
+  top: -72px !important;
+  left: 18px !important;
+  z-index: 22 !important;
+}
+
+.wa-profile-preview-status {
+  top: -38px !important;
+  left: 124px !important;
+  z-index: 21 !important;
+}
+
+.wa-profile-preview-avatar button {
+  position: absolute !important;
+  inset: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+  min-width: 100% !important;
+  min-height: 100% !important;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 999px !important;
+  clip-path: circle(50% at 50% 50%) !important;
+  background: rgba(0, 0, 0, 0.56) !important;
+  color: #ffffff !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  opacity: 0 !important;
+  cursor: pointer !important;
+  z-index: 24 !important;
+  transition: opacity 0.16s ease !important;
+}
+
+.wa-profile-preview-avatar:hover button {
+  opacity: 1 !important;
+}
+
+@media (max-width: 640px) {
+  .wa-profile-avatar-wrap {
+    top: -66px !important;
+  }
+
+  .wa-profile-preview-avatar {
+    top: -68px !important;
+  }
+
+  .wa-profile-status-bubble,
+  .wa-profile-preview-status {
+    top: -36px !important;
+  }
+}
+
+/* =========================================================
+   Fix final preview perfil: igualar posicion al perfil real
+   ========================================================= */
+.wa-profile-preview-card {
+  overflow: hidden !important;
+}
+
+.wa-profile-preview-cover-area {
+  height: 126px !important;
+  flex: 0 0 126px !important;
+}
+
+.wa-profile-preview-body {
+  position: relative !important;
+  padding: 52px 16px 16px !important;
+}
+
+.wa-profile-preview-avatar {
+  position: absolute !important;
+  top: -70px !important;
+  left: 18px !important;
+  width: 94px !important;
+  height: 94px !important;
+  margin: 0 !important;
+  z-index: 22 !important;
+}
+
+.wa-profile-preview-status {
+  position: absolute !important;
+  top: -40px !important;
+  left: 124px !important;
+  right: auto !important;
+  z-index: 21 !important;
+}
+
+.wa-profile-preview-body > strong {
+  display: block !important;
+  margin-top: 0 !important;
+}
+
+@media (max-width: 640px) {
+  .wa-profile-preview-body {
+    padding-top: 50px !important;
+  }
+
+  .wa-profile-preview-avatar {
+    top: -66px !important;
+    left: 16px !important;
+    width: 88px !important;
+    height: 88px !important;
+  }
+
+  .wa-profile-preview-status {
+    top: -36px !important;
+    left: 112px !important;
+  }
+}
+
+/* =========================================================
+   Fix perfil v3: avatar a mitad del cartel + preview de estado
+   ========================================================= */
+.wa-profile-main {
+  padding: 74px 16px 16px !important;
+}
+
+.wa-profile-avatar-wrap {
+  top: -47px !important;
+  left: 18px !important;
+  z-index: 22 !important;
+}
+
+.wa-profile-status-bubble {
+  top: -23px !important;
+  left: 124px !important;
+  right: auto !important;
+  z-index: 21 !important;
+}
+
+.wa-profile-preview-body {
+  padding: 74px 16px 16px !important;
+}
+
+.wa-profile-preview-avatar {
+  top: -47px !important;
+  left: 18px !important;
+  width: 94px !important;
+  height: 94px !important;
+  z-index: 22 !important;
+}
+
+.wa-profile-preview-status {
+  top: -23px !important;
+  left: 124px !important;
+  right: auto !important;
+  z-index: 21 !important;
+  max-width: min(196px, calc(100% - 138px)) !important;
+}
+
+.wa-profile-status-bubble:hover,
+.wa-profile-preview-status:hover {
+  max-width: min(284px, calc(100vw - 120px)) !important;
+}
+
+.wa-profile-status-preview {
+  width: min(100%, 310px) !important;
+  height: 238px !important;
+  margin: 6px auto 28px !important;
+  border-radius: 8px !important;
+  border: 3px solid var(--profile-avatar-ring, rgba(255,255,255,0.24)) !important;
+  overflow: hidden !important;
+  background: var(--profile-cover-gradient, linear-gradient(135deg, #2787f5, #32b5ff)) !important;
+  background-size: cover !important;
+  background-position: center !important;
+}
+
+.wa-profile-status-preview.has-image {
+  background-color: #111827 !important;
+  background-image: none !important;
+}
+
+.wa-profile-status-preview-fade {
+  position: absolute !important;
+  inset: 0 !important;
+  z-index: 1 !important;
+  background: linear-gradient(180deg, rgba(2, 6, 23, 0.05) 0%, rgba(2, 6, 23, 0.10) 38%, rgba(2, 6, 23, 0.58) 100%) !important;
+  backdrop-filter: none !important;
+}
+
+.wa-profile-status-preview-content {
+  position: absolute !important;
+  inset: 0 !important;
+  z-index: 2 !important;
+  display: block !important;
+  left: auto !important;
+  right: auto !important;
+  bottom: auto !important;
+}
+
+.wa-profile-status-preview-avatar {
+  position: absolute !important;
+  left: 22px !important;
+  top: 54px !important;
+  width: 82px !important;
+  height: 82px !important;
+  border: 4px solid var(--profile-avatar-ring, rgba(15, 23, 42, 0.86)) !important;
+  border-radius: 999px !important;
+  overflow: hidden !important;
+  background: #475569 !important;
+  z-index: 4 !important;
+}
+
+.wa-profile-status-preview-avatar .wa-profile-media {
+  position: absolute !important;
+  inset: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+  border-radius: 999px !important;
+  overflow: hidden !important;
+  z-index: 1 !important;
+}
+
+.wa-profile-status-preview-avatar .wa-profile-media-bg {
+  display: none !important;
+}
+
+.wa-profile-status-preview-avatar .wa-profile-media-img,
+.wa-profile-status-preview-avatar img,
+.wa-profile-status-preview-avatar span {
+  position: absolute !important;
+  inset: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+  border-radius: 999px !important;
+  object-fit: cover !important;
+}
+
+.wa-profile-status-preview-content > div:not(.wa-profile-status-preview-avatar) {
+  position: absolute !important;
+  left: 22px !important;
+  right: 18px !important;
+  bottom: 24px !important;
+  z-index: 4 !important;
+}
+
+.wa-profile-status-preview-content strong {
+  display: block !important;
+  color: #ffffff !important;
+  font-size: 1.02rem !important;
+  line-height: 1.15 !important;
+  font-weight: 850 !important;
+  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.58) !important;
+}
+
+.wa-profile-status-preview-content span {
+  display: block !important;
+  margin-top: 3px !important;
+  color: rgba(255,255,255,0.86) !important;
+  font-size: 0.78rem !important;
+  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.55) !important;
+}
+
+.wa-profile-status-preview-content p {
+  position: absolute !important;
+  top: 78px !important;
+  left: 104px !important;
+  right: 16px !important;
+  width: auto !important;
+  max-width: none !important;
+  margin: 0 !important;
+  padding: 10px 12px !important;
+  border-radius: 14px !important;
+  background: var(--profile-status-bg, rgba(17, 24, 39, 0.72)) !important;
+  border: 1px solid var(--profile-divider, rgba(255,255,255,0.12)) !important;
+  color: var(--profile-status-text, #ffffff) !important;
+  font-size: 0.82rem !important;
+  line-height: 1.25 !important;
+  font-weight: 700 !important;
+  text-shadow: none !important;
+  display: -webkit-box !important;
+  -webkit-line-clamp: 2 !important;
+  -webkit-box-orient: vertical !important;
+  overflow: hidden !important;
+  z-index: 5 !important;
+  box-shadow: 0 10px 24px rgba(2, 6, 23, 0.28) !important;
+  backdrop-filter: blur(14px) !important;
+}
+
+.wa-profile-status-input {
+  align-items: flex-start !important;
+}
+
+@media (max-width: 640px) {
+  .wa-profile-main,
+  .wa-profile-preview-body {
+    padding-top: 70px !important;
+  }
+
+  .wa-profile-avatar-wrap,
+  .wa-profile-preview-avatar {
+    top: -44px !important;
+  }
+
+  .wa-profile-status-bubble,
+  .wa-profile-preview-status {
+    top: -20px !important;
+    left: 112px !important;
+  }
+}
+
+/* =========================================================
+   Fix definitivo: preview estilo Discord sin overrides duplicados
+   ========================================================= */
+.wa-profile-main {
+  padding-top: 74px !important;
+}
+
+.wa-profile-preview-body {
+  padding-top: 74px !important;
+}
+
+.wa-profile-avatar-wrap,
+.wa-profile-preview-avatar {
+  top: -47px !important;
+}
+
+.wa-profile-status-bubble,
+.wa-profile-preview-status {
+  top: -18px !important;
+  left: 124px !important;
+  right: auto !important;
+  width: fit-content !important;
+  min-width: 0 !important;
+  max-width: min(206px, calc(100% - 138px)) !important;
+  z-index: 21 !important;
+}
+
+.wa-profile-status-bubble:hover,
+.wa-profile-preview-status:hover {
+  max-width: min(284px, calc(100vw - 120px)) !important;
+}
+
+.wa-profile-preview-avatar,
+.wa-profile-avatar {
+  isolation: isolate !important;
+}
+
+.wa-profile-preview-avatar {
+  overflow: visible !important;
+  border-radius: 999px !important;
+}
+
+.wa-profile-preview-avatar > img,
+.wa-profile-preview-avatar > picture,
+.wa-profile-preview-avatar > span:not(.wa-profile-preview-presence-dot),
+.wa-profile-avatar > img,
+.wa-profile-avatar > picture,
+.wa-profile-avatar > span:not(.wa-profile-avatar-hover) {
+  position: relative !important;
+  z-index: 1 !important;
+}
+
+.wa-profile-preview-avatar::after {
+  content: "" !important;
+  position: absolute !important;
+  inset: 0 !important;
+  border-radius: 999px !important;
+  clip-path: circle(50% at 50% 50%) !important;
+  background: rgba(0, 0, 0, 0.18) !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+  z-index: 2 !important;
+  transition: opacity 0.16s ease !important;
+}
+
+.wa-profile-preview-avatar:hover::after {
+  opacity: 1 !important;
+}
+
+.wa-profile-preview-avatar > button {
+  position: absolute !important;
+  inset: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 999px !important;
+  clip-path: circle(50% at 50% 50%) !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  color: #ffffff !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+  z-index: 4 !important;
+  transform: none !important;
+}
+
+.wa-profile-preview-avatar:hover > button {
+  opacity: 1 !important;
+  pointer-events: auto !important;
+}
+
+.wa-profile-preview-avatar > button i,
+.wa-profile-preview-avatar > button i::before,
+.wa-profile-avatar .wa-profile-avatar-hover i,
+.wa-profile-avatar .wa-profile-avatar-hover i::before {
+  color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff !important;
+  opacity: 1 !important;
+  font-size: 1.08rem !important;
+  font-weight: 900 !important;
+  line-height: 1 !important;
+  text-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.95),
+    0 0 5px rgba(255, 255, 255, 0.7) !important;
+  filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.85)) !important;
+  -webkit-text-stroke: 0 !important;
+}
+
+.wa-profile-preview-avatar > .wa-profile-preview-presence-dot {
+  position: absolute !important;
+  right: -3px !important;
+  bottom: 8px !important;
+  left: auto !important;
+  top: auto !important;
+  width: 24px !important;
+  height: 24px !important;
+  min-width: 24px !important;
+  max-width: 24px !important;
+  min-height: 24px !important;
+  max-height: 24px !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  border: 4px solid var(--profile-avatar-ring) !important;
+  border-radius: 999px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  z-index: 10 !important;
+  transform: none !important;
+  box-shadow: none !important;
+}
+
+.wa-profile-preview-avatar > .wa-profile-preview-presence-dot i {
+  width: auto !important;
+  height: auto !important;
+  font-size: 8px !important;
+  line-height: 1 !important;
+}
+
+.wa-profile-avatar .wa-profile-avatar-hover {
+  position: absolute !important;
+  inset: 0 !important;
+  border-radius: 999px !important;
+  background: rgba(0, 0, 0, 0.18) !important;
+  color: #ffffff !important;
+  opacity: 0 !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  z-index: 3 !important;
+}
+
+.wa-profile-avatar:hover .wa-profile-avatar-hover {
+  opacity: 1 !important;
+}
+
+.wa-profile-status-dot {
+  z-index: 10 !important;
+}
+
+@media (max-width: 640px) {
+  .wa-profile-main,
+  .wa-profile-preview-body {
+    padding-top: 70px !important;
+  }
+
+  .wa-profile-avatar-wrap,
+  .wa-profile-preview-avatar {
+    top: -44px !important;
+  }
+
+  .wa-profile-status-bubble,
+  .wa-profile-preview-status {
+    top: -20px !important;
+    left: 112px !important;
+    max-width: min(196px, calc(100% - 124px)) !important;
+  }
+
+  .wa-profile-preview-avatar > .wa-profile-preview-presence-dot {
+    right: -2px !important;
+    bottom: 7px !important;
+    width: 22px !important;
+    height: 22px !important;
+    min-width: 22px !important;
+    max-width: 22px !important;
+    min-height: 22px !important;
+    max-height: 22px !important;
+    border-width: 3px !important;
+  }
+}
