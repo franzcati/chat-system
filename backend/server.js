@@ -6,7 +6,7 @@ const app = require('./app');
 const sequelize = require('./config/database');
 const cors = require('cors');
 const http = require('http');
-const { initSocket, enviarEventoAlUsuario } = require("./utils/socketUtils");
+const { initSocket, enviarEventoAlUsuario, getUsuariosConectados, setEstadoManualUsuario } = require("./utils/socketUtils");
 
 
 // Rutas
@@ -38,7 +38,7 @@ app.set("io", io);
 
 
 app.set("io", io);
-app.set("socketUtils", { usuariosConectados, enviarEventoAlUsuario });
+app.set("socketUtils", { usuariosConectados, enviarEventoAlUsuario, getUsuariosConectados, setEstadoManualUsuario });
 
 app.use((req, res, next) => {
   req.io = io;

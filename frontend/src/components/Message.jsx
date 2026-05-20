@@ -230,10 +230,17 @@ const Message = ({
     setTimeout(() => elemento.classList.remove("highlight-pinned"), 1400);
   };
 
+  const truncatePreviewText = (value = "", maxLength = 150) => {
+    const text = String(value || "").replace(/\s+/g, " ").trim();
+    if (!maxLength || text.length <= maxLength) return text;
+    return `${text.slice(0, Math.max(0, maxLength - 3)).trimEnd()}...`;
+  };
+
   const renderReplyPreview = (replyMessage = replyToMessage) => {
     if (!replyMessage) return null;
 
     const preview = getMessagePreview(replyMessage);
+    const previewText = truncatePreviewText(preview.text, 150);
     const author = getReplyAuthorName(replyMessage, miUsuario?.id);
 
     return (
@@ -256,7 +263,7 @@ const Message = ({
           <span className="wa-quote-author">{author}</span>
           <span className="wa-quote-text">
             {preview.iconClass && <i className={`wa-preview-icon ${preview.iconClass}`} aria-hidden="true" />}
-            <span className="wa-preview-label">{preview.text}</span>
+            <span className="wa-preview-label">{previewText}</span>
           </span>
         </span>
       </button>

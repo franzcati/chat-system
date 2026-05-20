@@ -8,7 +8,7 @@ import CreateChat from '../components/CreateChat';
 import ProfileModal from "../components/ProfileModal";
 import AddUsers from "../components/AddUsers";
 import EditUsers from "../components/EditUsers";
-import socket, { conectarUsuarioSocket } from "../socket";
+import socket, { conectarUsuarioSocket, emitirActividadUsuario } from "../socket";
 
 const Messenger = () => {
   const [selectedChat, setSelectedChat] = useState(null);
@@ -87,6 +87,33 @@ const Messenger = () => {
   useEffect(() => {
     if (!usuario?.id) return;
 
+    let lastActivitySent = 0;
+    const sendActivity = () => {
+      const now = Date.now();
+      if (now - lastActivitySent < 15000) return;
+      lastActivitySent = now;
+      emitirActividadUsuario(usuario.id);
+    };
+
+    const activityEvents = ["mousemove", "mousedown", "keydown", "scroll", "touchstart", "click"];
+    activityEvents.forEach((eventName) => window.addEventListener(eventName, sendActivity, { passive: true }));
+
+    const handleVisibilityChange = () => {
+      if (!document.hidden) sendActivity();
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    sendActivity();
+
+    return () => {
+      activityEvents.forEach((eventName) => window.removeEventListener(eventName, sendActivity));
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [usuario?.id]);
+
+  useEffect(() => {
+    if (!usuario?.id) return;
+
     logDev("🔌 Messenger va a conectar socket", usuario.id);
     conectarUsuarioSocket(usuario.id);
 
@@ -120,7 +147,12 @@ const Messenger = () => {
   return (
     <div className="flex h-screen bg-[#f8f9fd]">
       {/* Sidebar con iconos */}
-      <Sidebar usuario={usuario} active={activeTab} setActive={setActiveTab} />
+      <Sidebar
+        usuario={usuario}
+        active={activeTab}
+        setActive={setActiveTab}
+        onUsuarioUpdate={(nextUsuario) => setUsuario((prev) => ({ ...(prev || {}), ...(nextUsuario || {}) }))}
+      />
 
       {activeTab === "chat" && (
         <ChatList

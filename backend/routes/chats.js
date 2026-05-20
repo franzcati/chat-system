@@ -2,6 +2,109 @@ const express = require('express');
 const router = express.Router();
 const db = require('../db');
 
+
+let chatEstadosSchemaReady = false;
+
+const ensureChatEstadosSchema = async () => {
+  if (chatEstadosSchemaReady) return;
+
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS chats_estados (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      usuario_id INT NOT NULL,
+      tipo VARCHAR(20) NOT NULL,
+      chat_id INT NOT NULL,
+      archivado TINYINT(1) DEFAULT 0,
+      marcado_no_leido TINYINT(1) DEFAULT 0,
+      fijado TINYINT(1) DEFAULT 0,
+      creado_en TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      actualizado_en TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      UNIQUE KEY unique_chat_estado (usuario_id, tipo, chat_id)
+    )
+  `);
+
+
+  const [fijadoColumns] = await db.query("SHOW COLUMNS FROM chats_estados LIKE 'fijado'");
+  if (!fijadoColumns.length) {
+    await db.query("ALTER TABLE chats_estados ADD COLUMN fijado TINYINT(1) DEFAULT 0 AFTER marcado_no_leido");
+  }
+
+  chatEstadosSchemaReady = true;
+};
+
+// Obtener estados personalizados de chats: archivado / marcado como no leído
+router.get('/estados/:usuarioId', async (req, res) => {
+  try {
+    await ensureChatEstadosSchema();
+
+    const { usuarioId } = req.params;
+    const [rows] = await db.query(
+      `SELECT tipo, chat_id, archivado, marcado_no_leido, fijado
+       FROM chats_estados
+       WHERE usuario_id = ?`,
+      [usuarioId]
+    );
+
+    res.json(rows);
+  } catch (err) {
+    console.error('❌ Error obteniendo estados de chats:', err);
+    res.status(500).json({ error: 'Error obteniendo estados de chats' });
+  }
+});
+
+// Actualizar estado personalizado de un chat
+router.post('/estado', async (req, res) => {
+  try {
+    await ensureChatEstadosSchema();
+
+    const { usuarioId, tipo, chatId, archivado, marcadoNoLeido, fijado } = req.body;
+
+    if (!usuarioId || !tipo || !chatId) {
+      return res.status(400).json({ error: 'Faltan parámetros' });
+    }
+
+    const [existingRows] = await db.query(
+      `SELECT archivado, marcado_no_leido, fijado
+       FROM chats_estados
+       WHERE usuario_id = ? AND tipo = ? AND chat_id = ?
+       LIMIT 1`,
+      [usuarioId, tipo, chatId]
+    );
+
+    const current = existingRows[0] || { archivado: 0, marcado_no_leido: 0, fijado: 0 };
+    const nextArchivado = typeof archivado === 'undefined' ? current.archivado : (archivado ? 1 : 0);
+    const nextMarcadoNoLeido = typeof marcadoNoLeido === 'undefined'
+      ? current.marcado_no_leido
+      : (marcadoNoLeido ? 1 : 0);
+    const nextFijado = typeof fijado === 'undefined'
+      ? current.fijado
+      : (fijado ? 1 : 0);
+
+    await db.query(
+      `INSERT INTO chats_estados (usuario_id, tipo, chat_id, archivado, marcado_no_leido, fijado)
+       VALUES (?, ?, ?, ?, ?, ?)
+       ON DUPLICATE KEY UPDATE
+         archivado = VALUES(archivado),
+         marcado_no_leido = VALUES(marcado_no_leido),
+         fijado = VALUES(fijado),
+         actualizado_en = CURRENT_TIMESTAMP`,
+      [usuarioId, tipo, chatId, nextArchivado, nextMarcadoNoLeido, nextFijado]
+    );
+
+    res.json({
+      success: true,
+      tipo,
+      chat_id: Number(chatId),
+      archivado: nextArchivado,
+      marcado_no_leido: nextMarcadoNoLeido,
+      fijado: nextFijado,
+    });
+  } catch (err) {
+    console.error('❌ Error actualizando estado de chat:', err);
+    res.status(500).json({ error: 'Error actualizando estado de chat' });
+  }
+});
+
 // Obtener la lista de chats de un usuario
 router.get('/:userId', async (req, res) => {
   const { userId } = req.params;

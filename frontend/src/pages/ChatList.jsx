@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import axios from "axios";
 import socket from "../socket";
 import { logDev } from "../utils/logger";
@@ -22,7 +23,10 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat }) => {
   const [favoritos, setFavoritos] = useState([]);
   const [usuariosComunes, setUsuariosComunes] = useState([]);
   const [silenciados, setSilenciados] = useState([]);
+  const [chatEstados, setChatEstados] = useState([]);
+  const [estadosUsuarios, setEstadosUsuarios] = useState({});
   const [menuChatAbierto, setMenuChatAbierto] = useState(null);
+  const [menuChatPosition, setMenuChatPosition] = useState(null);
   const [activeFilter, setActiveFilter] = useState("todos");
   const [filterMenuOpen, setFilterMenuOpen] = useState(false);
 
@@ -39,13 +43,27 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat }) => {
   );
 
   const estaSilenciado = (tipo, chatId) => {
-    return silenciados.some(
-      (s) =>
-        s.tipo === tipo &&
-        Number(s.chat_id) === Number(chatId) &&
-        Number(s.silenciado) === 1
+    return silenciados.some((s) => {
+      if (s.tipo !== tipo || Number(s.chat_id) !== Number(chatId)) return false;
+      if (Number(s.silenciado) !== 1) return false;
+      if (!s.silenciado_hasta) return true;
+      return new Date(s.silenciado_hasta).getTime() > Date.now();
+    });
+  };
+
+  const getEstadoChat = (chat) => {
+    if (!chat) return null;
+    const chatId = chat.tipo === "grupo" ? chat.grupo_id : chat.usuario_id;
+    return chatEstados.find(
+      (estado) =>
+        estado.tipo === chat.tipo &&
+        Number(estado.chat_id) === Number(chatId)
     );
   };
+
+  const estaArchivado = (chat) => Number(getEstadoChat(chat)?.archivado || 0) === 1;
+  const estaMarcadoNoLeido = (chat) => Number(getEstadoChat(chat)?.marcado_no_leido || 0) === 1;
+  const estaFijado = (chat) => Number(getEstadoChat(chat)?.fijado || 0) === 1;
 
   const mostrarNotificacion = ({ titulo, cuerpo, chat, uniqueId }) => {
     if (!("Notification" in window)) return;
@@ -67,17 +85,18 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat }) => {
     };
   };
 
-  const toggleSilencio = async (chat) => {
+  const actualizarSilencioChat = async (chat, duracion = "always") => {
     try {
       const tipo = chat.tipo;
       const chatId = tipo === "grupo" ? chat.grupo_id : chat.usuario_id;
-      const silenciadoActual = estaSilenciado(tipo, chatId);
+      const activarSilencio = !!duracion;
 
-      await axios.post("/api/notificaciones/silenciar", {
+      const res = await axios.post("/api/notificaciones/silenciar", {
         usuarioId: userId,
         tipo,
         chatId,
-        silenciado: !silenciadoActual,
+        silenciado: activarSilencio,
+        duracion,
       });
 
       setSilenciados((prev) => {
@@ -85,21 +104,41 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat }) => {
           (s) => s.tipo === tipo && Number(s.chat_id) === Number(chatId)
         );
 
+        if (!activarSilencio) {
+          return prev.filter(
+            (s) => !(s.tipo === tipo && Number(s.chat_id) === Number(chatId))
+          );
+        }
+
+        const nuevoSilencio = {
+          tipo,
+          chat_id: chatId,
+          silenciado: 1,
+          silenciado_hasta: res.data?.silenciado_hasta || null,
+        };
+
         if (existe) {
           return prev.map((s) =>
             s.tipo === tipo && Number(s.chat_id) === Number(chatId)
-              ? { ...s, silenciado: silenciadoActual ? 0 : 1 }
+              ? nuevoSilencio
               : s
           );
         }
 
-        return [...prev, { tipo, chat_id: chatId, silenciado: 1 }];
+        return [...prev, nuevoSilencio];
       });
 
+      const textoDuracion =
+        duracion === "8h"
+          ? "por 8 horas"
+          : duracion === "1w"
+          ? "por 1 semana"
+          : "siempre";
+
       toast.success(
-        silenciadoActual
-          ? "Notificaciones activadas"
-          : "Chat silenciado correctamente"
+        activarSilencio
+          ? `Notificaciones silenciadas ${textoDuracion}`
+          : "Notificaciones activadas"
       );
     } catch (err) {
       console.error("❌ Error cambiando silencio:", err);
@@ -118,6 +157,55 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat }) => {
     return d ? d.getTime() : 0;
   };
   const getInitial = (text) => (text ? text.charAt(0).toUpperCase() : "U");
+
+  const getPresenceInfo = (targetUserId) => {
+    const estado = estadosUsuarios?.[String(targetUserId)] || estadosUsuarios?.[Number(targetUserId)] || null;
+    const rawStatus = estado?.estado || "desconectado";
+    const dispositivo = estado?.dispositivo || "desktop";
+
+    const meta = {
+      online: {
+        label: dispositivo === "mobile" ? "En línea desde teléfono" : "En línea desde PC",
+        shortLabel: "En línea",
+        className: "online",
+        iconClass: dispositivo === "mobile" ? "fa-solid fa-mobile-screen-button" : "fa-solid fa-desktop",
+      },
+      inactivo: {
+        label: "Inactivo",
+        shortLabel: "Inactivo",
+        className: "idle",
+        iconClass: "fa-solid fa-moon",
+      },
+      no_molestar: {
+        label: "No molestar",
+        shortLabel: "No molestar",
+        className: "dnd",
+        iconClass: "fa-solid fa-minus",
+      },
+      desconectado: {
+        label: "Sin conexión",
+        shortLabel: "Sin conexión",
+        className: "offline",
+        iconClass: "fa-regular fa-circle",
+      },
+    };
+
+    return meta[rawStatus] || meta.desconectado;
+  };
+
+  const estaEnNoMolestarUsuario = (targetUserId) => {
+    const estado = estadosUsuarios?.[String(targetUserId)] || estadosUsuarios?.[Number(targetUserId)] || null;
+    return estado?.estado === "no_molestar";
+  };
+
+  const renderPresenceBadge = (targetUserId) => {
+    const presence = getPresenceInfo(targetUserId);
+    return (
+      <span className={`wa-presence-badge ${presence.className}`} title={presence.label}>
+        <i className={presence.iconClass} aria-hidden="true" />
+      </span>
+    );
+  };
 
   const getChatPreviewSource = (chat = {}) => ({
     ...chat,
@@ -144,13 +232,42 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat }) => {
   };
 
   useEffect(() => {
-    const handleClickOutside = () => {
+    const cerrarMenusFlotantes = () => {
       setMenuChatAbierto(null);
+      setMenuChatPosition(null);
       setFilterMenuOpen(false);
     };
 
-    document.addEventListener("click", handleClickOutside);
-    return () => document.removeEventListener("click", handleClickOutside);
+    document.addEventListener("click", cerrarMenusFlotantes);
+    window.addEventListener("resize", cerrarMenusFlotantes);
+    document.addEventListener("scroll", cerrarMenusFlotantes, true);
+
+    return () => {
+      document.removeEventListener("click", cerrarMenusFlotantes);
+      window.removeEventListener("resize", cerrarMenusFlotantes);
+      document.removeEventListener("scroll", cerrarMenusFlotantes, true);
+    };
+  }, []);
+
+
+  useEffect(() => {
+    const cargarEstados = async () => {
+      try {
+        const res = await axios.get("/api/usuarios/estados/presencia");
+        setEstadosUsuarios(res.data || {});
+      } catch (err) {
+        console.error("❌ Error cargando estados de presencia:", err);
+      }
+    };
+
+    cargarEstados();
+
+    const handleActualizarUsuarios = (payload) => {
+      setEstadosUsuarios(payload || {});
+    };
+
+    socket.on("actualizarUsuarios", handleActualizarUsuarios);
+    return () => socket.off("actualizarUsuarios", handleActualizarUsuarios);
   }, []);
 
   // -------------------------------
@@ -262,7 +379,7 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat }) => {
 
       const silenciado = estaSilenciado("privado", otherUserId);
 
-      if (!esMio && !chatAbiertoEsEste && !silenciado) {
+      if (!esMio && !chatAbiertoEsEste && !silenciado && !estaEnNoMolestarUsuario(userId)) {
         mostrarNotificacion({
           titulo: `${msg.emisor_nombre || "Usuario"} ${msg.emisor_apellido || ""}`.trim(),
           cuerpo:
@@ -287,7 +404,7 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat }) => {
     return () => {
       socket.off("nuevoMensaje", handleNuevoMensaje);
     };
-  }, [userId, selectedChat, silenciados]);
+  }, [userId, selectedChat, silenciados, estadosUsuarios]);
 
   // -------------------------------
   // 🔹 Cargar privados, grupos y favoritos
@@ -296,23 +413,26 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat }) => {
 
     const fetchData = async () => {
       try {
-        const [resMensajes, resGrupos, resFavoritos, resSilenciados] = await Promise.all([
+        const [resMensajes, resGrupos, resFavoritos, resSilenciados, resEstados] = await Promise.all([
           axios.get(`/api/chats/${userId}`),
           axios.get(`/api/grupos/usuario/${userId}`),
           axios.get(`/api/chats/favoritos/${userId}`),
           axios.get(`/api/notificaciones/silenciados/${userId}`),
+          axios.get(`/api/chats/estados/${userId}`),
         ]);
 
         setMensajes(resMensajes.data);
         setGrupos(resGrupos.data);
         setFavoritos(resFavoritos.data);
         setSilenciados(resSilenciados.data || []);
+        setChatEstados(resEstados.data || []);
 
         console.group("📋 Chats cargados al inicio");
         logDev("🗨️ Mensajes privados:", resMensajes.data);
         logDev("👥 Grupos:", resGrupos.data);
         logDev("⭐ Favoritos:", resFavoritos.data);
         logDev("🔕 Silenciados:", resSilenciados.data);
+        logDev("📦 Estados de chats:", resEstados.data);
         console.groupEnd();
 
       } catch (error) {
@@ -546,7 +666,7 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat }) => {
 
       const silenciado = estaSilenciado("grupo", msg.grupo_id);
 
-      if (!soyYo && !chatAbiertoEsEsteGrupo && !silenciado) {
+      if (!soyYo && !chatAbiertoEsEsteGrupo && !silenciado && !estaEnNoMolestarUsuario(userId)) {
         const grupoActual = grupos.find(
           (g) => Number(g.grupo_id) === Number(msg.grupo_id)
         );
@@ -803,7 +923,7 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat }) => {
       socket.off("miembrosActualizados", handleMiembrosActualizados);
       socket.off("grupoEliminado", handleGrupoEliminado);
     };
-  }, [userId, selectedChat, silenciados, grupos]);
+  }, [userId, selectedChat, silenciados, grupos, estadosUsuarios]);
 
   // -------------------------------
   // 🔹 Socket.IO PARA ELIMINAR MENSAJES, DESHACER ELIMINADO, EDITAR MENSAJE
@@ -980,6 +1100,100 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat }) => {
     }
   };
 
+  const actualizarEstadoChat = async (chat, cambios) => {
+    const chatId = chat.tipo === "grupo" ? chat.grupo_id : chat.usuario_id;
+
+    const res = await axios.post("/api/chats/estado", {
+      usuarioId: userId,
+      tipo: chat.tipo,
+      chatId,
+      ...cambios,
+    });
+
+    const nextEstado = {
+      tipo: chat.tipo,
+      chat_id: chatId,
+      archivado: Number(res.data?.archivado ?? cambios.archivado ?? getEstadoChat(chat)?.archivado ?? 0),
+      marcado_no_leido: Number(
+        res.data?.marcado_no_leido ??
+          cambios.marcadoNoLeido ??
+          getEstadoChat(chat)?.marcado_no_leido ??
+          0
+      ),
+      fijado: Number(res.data?.fijado ?? cambios.fijado ?? getEstadoChat(chat)?.fijado ?? 0),
+    };
+
+    setChatEstados((prev) => {
+      const existe = prev.some(
+        (estado) => estado.tipo === chat.tipo && Number(estado.chat_id) === Number(chatId)
+      );
+
+      if (existe) {
+        return prev.map((estado) =>
+          estado.tipo === chat.tipo && Number(estado.chat_id) === Number(chatId)
+            ? { ...estado, ...nextEstado }
+            : estado
+        );
+      }
+
+      return [...prev, nextEstado];
+    });
+
+    return nextEstado;
+  };
+
+  const archivarChat = async (chat) => {
+    try {
+      const nextArchived = !estaArchivado(chat);
+      await actualizarEstadoChat(chat, {
+        archivado: nextArchived,
+        marcadoNoLeido: nextArchived ? false : estaMarcadoNoLeido(chat),
+      });
+
+      setMenuChatAbierto(null);
+      setMenuChatPosition(null);
+
+      if (
+        nextArchived &&
+        selectedChat?.tipo === chat.tipo &&
+        Number(selectedChat?.[chat.tipo === "grupo" ? "grupo_id" : "usuario_id"]) ===
+          Number(chat.tipo === "grupo" ? chat.grupo_id : chat.usuario_id)
+      ) {
+        setSelectedChat(null);
+      }
+
+      toast.success(nextArchived ? "Chat archivado" : "Chat desarchivado");
+    } catch (err) {
+      console.error("❌ Error actualizando archivo de chat:", err);
+      toast.error("No se pudo actualizar el archivo del chat");
+    }
+  };
+
+  const fijarChat = async (chat) => {
+    try {
+      const nextPinned = !estaFijado(chat);
+      await actualizarEstadoChat(chat, { fijado: nextPinned });
+      setMenuChatAbierto(null);
+      setMenuChatPosition(null);
+      toast.success(nextPinned ? "Chat fijado" : "Chat desfijado");
+    } catch (err) {
+      console.error("❌ Error fijando chat:", err);
+      toast.error("No se pudo actualizar el fijado");
+    }
+  };
+
+  const marcarChatNoLeido = async (chat) => {
+    try {
+      await actualizarEstadoChat(chat, { marcadoNoLeido: !estaMarcadoNoLeido(chat) });
+      setMenuChatAbierto(null);
+      setMenuChatPosition(null);
+      toast.success(estaMarcadoNoLeido(chat) ? "Chat marcado como leído" : "Chat marcado como no leído");
+    } catch (err) {
+      console.error("❌ Error marcando chat:", err);
+      toast.error("No se pudo actualizar el chat");
+    }
+  };
+
   const handleSelectUsuarioComun = (usuario) => {
     const nuevoChat = {
       tipo: "privado",
@@ -1012,7 +1226,7 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat }) => {
         f.tipo === chat.tipo
     );
 
-  const isUnreadChat = (chat) => Number(chat.mensajes_no_leidos || 0) > 0;
+  const isUnreadChat = (chat) => Number(chat.mensajes_no_leidos || 0) > 0 || estaMarcadoNoLeido(chat);
 
   const normalizeText = (value = "") =>
     String(value)
@@ -1041,17 +1255,30 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat }) => {
     );
   };
 
-  const searchFilteredChats = chats.filter((chat) => chatMatchesSearch(chat, searchTerm));
+  const sortChatsVisual = (lista) =>
+    [...lista].sort((a, b) => {
+      const pinnedDiff = Number(estaFijado(b)) - Number(estaFijado(a));
+      if (pinnedDiff !== 0) return pinnedDiff;
+      return (b.lastTime || 0) - (a.lastTime || 0);
+    });
+
+  const searchedChats = sortChatsVisual(
+    chats.filter((chat) => chatMatchesSearch(chat, searchTerm))
+  );
+
+  const activeChats = searchedChats.filter((chat) => !estaArchivado(chat));
+  const archivedChats = searchedChats.filter((chat) => estaArchivado(chat));
 
   const filterCounts = {
-    todos: searchFilteredChats.length,
-    unread: searchFilteredChats.filter(isUnreadChat).length,
-    favoritos: searchFilteredChats.filter(isFavoriteChat).length,
-    grupos: searchFilteredChats.filter((chat) => chat.tipo === "grupo").length,
-    privados: searchFilteredChats.filter((chat) => chat.tipo === "privado").length,
+    todos: activeChats.length,
+    unread: activeChats.filter(isUnreadChat).length,
+    favoritos: activeChats.filter(isFavoriteChat).length,
+    grupos: activeChats.filter((chat) => chat.tipo === "grupo").length,
+    privados: activeChats.filter((chat) => chat.tipo === "privado").length,
+    archivados: archivedChats.length,
   };
 
-  const filteredChats = searchFilteredChats.filter((chat) => {
+  const filteredChats = (activeFilter === "archivados" ? archivedChats : activeChats).filter((chat) => {
     if (activeFilter === "unread") return isUnreadChat(chat);
     if (activeFilter === "favoritos") return isFavoriteChat(chat);
     if (activeFilter === "grupos") return chat.tipo === "grupo";
@@ -1061,6 +1288,11 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat }) => {
 
   const handleSelectChat = async (chat) => {
     onSelectChat(chat);
+    if (estaMarcadoNoLeido(chat)) {
+      actualizarEstadoChat(chat, { marcadoNoLeido: false }).catch((err) =>
+        console.error("❌ Error limpiando marcado como no leído:", err)
+      );
+    }
     try {
       if (chat.tipo === "grupo") {
          logDev("📡 Chat grupo seleccionado:", chat);
@@ -1120,26 +1352,32 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat }) => {
 
     if (chat.url_imagen) {
       return (
-        <img
-          src={getAvatarUrl(chat.url_imagen)}
-          alt={title}
-          className="avatar-img rounded-circle"
-          style={{ width: "44px", height: "44px", objectFit: "cover" }}
-        />
+        <div className="wa-presence-wrapper">
+          <img
+            src={getAvatarUrl(chat.url_imagen)}
+            alt={title}
+            className="avatar-img rounded-circle"
+            style={{ width: "44px", height: "44px", objectFit: "cover" }}
+          />
+          {renderPresenceBadge(chat.usuario_id)}
+        </div>
       );
     }
 
     return (
-      <div
-        className="rounded-circle d-flex align-items-center justify-content-center text-white fw-bold"
-        style={{
-          width: "44px",
-          height: "44px",
-          backgroundColor: chat.background || "#6c757d",
-          fontSize: "18px",
-        }}
-      >
-        {getInitial(title)}
+      <div className="wa-presence-wrapper">
+        <div
+          className="rounded-circle d-flex align-items-center justify-content-center text-white fw-bold"
+          style={{
+            width: "44px",
+            height: "44px",
+            backgroundColor: chat.background || "#6c757d",
+            fontSize: "18px",
+          }}
+        >
+          {getInitial(title)}
+        </div>
+        {renderPresenceBadge(chat.usuario_id)}
       </div>
     );
   };
@@ -1158,72 +1396,192 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat }) => {
     );
   };
 
-  const renderChatMenu = (chat) => (
-    <>
-      <button
-        onClick={(e) => {
-          e.stopPropagation();
-          toggleFavorito(chat);
-        }}
-        className="btn btn-sm border-0 bg-transparent p-0 ms-2 wa-chat-action-btn"
-        title={isFavoriteChat(chat) ? "Quitar de favoritos" : "Agregar a favoritos"}
-      >
-        <Star
-          size={16}
-          fill={isFavoriteChat(chat) ? "currentColor" : "none"}
-          stroke="currentColor"
-          className={isFavoriteChat(chat) ? "text-warning" : "text-muted"}
-        />
-      </button>
+  const renderChatMenu = (chat) => {
+    const chatKey = getChatKey(chat);
+    const chatId = chat.tipo === "grupo" ? chat.grupo_id : chat.usuario_id;
+    const silenciado = estaSilenciado(chat.tipo, chatId);
+    const favorito = isFavoriteChat(chat);
+    const marcadoNoLeido = estaMarcadoNoLeido(chat);
+    const fijado = estaFijado(chat);
+    const archivado = estaArchivado(chat);
 
-      <button
-        onClick={(e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          setMenuChatAbierto((prev) =>
-            prev === getChatKey(chat) ? null : getChatKey(chat)
-          );
-        }}
-        className="btn btn-sm border-0 bg-transparent p-0 ms-2 text-muted chat-options-btn wa-chat-action-btn"
-        title="Opciones"
-      >
-        <i className="fa-solid fa-chevron-down" aria-hidden="true" />
-      </button>
+    return (
+      <>
+        <button
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
 
-      {menuChatAbierto === getChatKey(chat) && (
-        <div
-          className="shadow-sm border rounded-3 bg-white position-absolute wa-chat-options-menu"
-          onClick={(e) => e.stopPropagation()}
-        >
-          <button
-            className="dropdown-item d-flex align-items-center justify-content-between px-3 py-2"
-            onClick={(e) => {
-              e.stopPropagation();
-              toggleSilencio(chat);
+            if (menuChatAbierto === chatKey) {
               setMenuChatAbierto(null);
-            }}
+              setMenuChatPosition(null);
+              return;
+            }
+
+            const rect = e.currentTarget.getBoundingClientRect();
+            const menuWidth = 280;
+            const estimatedHeight = silenciado ? 330 : 280;
+            const margin = 8;
+
+            const left = Math.max(
+              margin,
+              Math.min(window.innerWidth - menuWidth - margin, rect.right - menuWidth)
+            );
+
+            let top = rect.bottom + margin;
+            if (top + estimatedHeight > window.innerHeight - margin) {
+              top = Math.max(margin, rect.top - estimatedHeight - margin);
+            }
+
+            setMenuChatPosition({ top, left });
+            setMenuChatAbierto(chatKey);
+          }}
+          className="btn btn-sm border-0 bg-transparent p-0 ms-2 text-muted chat-options-btn wa-chat-action-btn"
+          title="Opciones"
+          aria-expanded={menuChatAbierto === chatKey}
+        >
+          <i className="fa-solid fa-chevron-down" aria-hidden="true" />
+        </button>
+
+        {menuChatAbierto === chatKey && createPortal(
+          <div
+            className="shadow-sm border rounded-3 bg-white wa-chat-options-menu wa-chat-options-menu-lg"
+            style={
+              menuChatPosition
+                ? { top: `${menuChatPosition.top}px`, left: `${menuChatPosition.left}px` }
+                : undefined
+            }
+            onClick={(e) => e.stopPropagation()}
           >
-            <span>
-              {estaSilenciado(
-                chat.tipo,
-                chat.tipo === "grupo" ? chat.grupo_id : chat.usuario_id
-              )
-                ? "Reactivar notificación"
-                : "Silenciar"}
-            </span>
-            <i
-              className={`fa-solid ${
-                estaSilenciado(chat.tipo, chat.tipo === "grupo" ? chat.grupo_id : chat.usuario_id)
-                  ? "fa-bell"
-                  : "fa-bell-slash"
-              }`}
-              aria-hidden="true"
-            />
-          </button>
-        </div>
-      )}
-    </>
-  );
+            <button
+              className="dropdown-item wa-chat-option-item"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                archivarChat(chat);
+              }}
+            >
+              <i className={archivado ? "fa-solid fa-box-open" : "fa-solid fa-box-archive"} aria-hidden="true" />
+              <span>{archivado ? "Desarchivar chat" : "Archivar chat"}</span>
+            </button>
+
+            <button
+              className="dropdown-item wa-chat-option-item"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                fijarChat(chat);
+              }}
+            >
+              <i className="fa-solid fa-thumbtack" aria-hidden="true" />
+              <span>{fijado ? "Desfijar chat" : "Fijar chat"}</span>
+            </button>
+
+            <div className="wa-submenu-wrapper">
+              <button
+                className="dropdown-item wa-chat-option-item wa-chat-option-has-submenu"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                }}
+              >
+                <i className="fa-solid fa-bell-slash" aria-hidden="true" />
+                <span>{silenciado ? "Silenciado" : "Silenciar notificaciones"}</span>
+                <i className="fa-solid fa-chevron-right wa-submenu-chevron" aria-hidden="true" />
+              </button>
+
+              <div className="shadow-sm border rounded-3 bg-white wa-chat-options-submenu">
+                {silenciado && (
+                  <button
+                    className="dropdown-item wa-chat-option-item"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      actualizarSilencioChat(chat, null);
+                      setMenuChatAbierto(null);
+                      setMenuChatPosition(null);
+                    }}
+                  >
+                    <i className="fa-solid fa-bell" aria-hidden="true" />
+                    <span>Reactivar notificaciones</span>
+                  </button>
+                )}
+                <button
+                  className="dropdown-item wa-chat-option-item"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    actualizarSilencioChat(chat, "8h");
+                    setMenuChatAbierto(null);
+                    setMenuChatPosition(null);
+                  }}
+                >
+                  <span>8 horas</span>
+                </button>
+                <button
+                  className="dropdown-item wa-chat-option-item"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    actualizarSilencioChat(chat, "1w");
+                    setMenuChatAbierto(null);
+                    setMenuChatPosition(null);
+                  }}
+                >
+                  <span>1 semana</span>
+                </button>
+                <button
+                  className="dropdown-item wa-chat-option-item"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    actualizarSilencioChat(chat, "always");
+                    setMenuChatAbierto(null);
+                    setMenuChatPosition(null);
+                  }}
+                >
+                  <span>Siempre</span>
+                </button>
+              </div>
+            </div>
+
+            <button
+              className="dropdown-item wa-chat-option-item"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                marcarChatNoLeido(chat);
+              }}
+            >
+              <i className="fa-solid fa-envelope-circle-check" aria-hidden="true" />
+              <span>{marcadoNoLeido ? "Marcar como leído" : "Marcar como no leído"}</span>
+            </button>
+
+            <button
+              className="dropdown-item wa-chat-option-item"
+              onClick={async (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                try {
+                  await toggleFavorito(chat);
+                  setMenuChatAbierto(null);
+                  setMenuChatPosition(null);
+                  toast.success(favorito ? "Quitado de favoritos" : "Añadido a Favoritos");
+                } catch (err) {
+                  console.error("❌ Error actualizando favorito:", err);
+                  toast.error("No se pudo actualizar favoritos");
+                }
+              }}
+            >
+              <i className={favorito ? "fa-solid fa-heart-crack" : "fa-regular fa-heart"} aria-hidden="true" />
+              <span>{favorito ? "Quitar de Favoritos" : "Añadir a Favoritos"}</span>
+            </button>
+          </div>,
+          document.body
+        )}
+      </>
+    );
+  };
 
   const renderChatItem = (chat) => {
     const isSelected =
@@ -1236,7 +1594,7 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat }) => {
       <a
         key={`${chat.tipo}-${getChatId(chat)}`}
         href="#"
-        className={`card border-0 text-reset chat-card-hover wa-chat-list-card ${isSelected ? "active" : ""}`}
+        className={`card border-0 text-reset chat-card-hover wa-chat-list-card ${isSelected ? "active" : ""} ${estaArchivado(chat) ? "is-archived" : ""}`}
         onClick={(e) => {
           e.preventDefault();
           handleSelectChat(chat);
@@ -1252,6 +1610,12 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat }) => {
               <div className="wa-chat-list-top">
                 <h5 className="wa-chat-list-title">
                   <span className="text-truncate">{getChatTitle(chat)}</span>
+                  {estaFijado(chat) && (
+                    <i className="fa-solid fa-thumbtack wa-pinned-icon" title="Chat fijado" aria-hidden="true" />
+                  )}
+                  {estaArchivado(chat) && (
+                    <i className="fa-solid fa-box-archive wa-archived-icon" title="Chat archivado" aria-hidden="true" />
+                  )}
                   {isMuted && (
                     <i className="fa-solid fa-bell-slash wa-muted-icon" title="Chat silenciado" aria-hidden="true" />
                   )}
@@ -1277,11 +1641,13 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat }) => {
                     </>
                   )}
                 </div>
-                {chat.mensajes_no_leidos > 0 && (
+                {chat.mensajes_no_leidos > 0 ? (
                   <div className="wa-unread-badge">
                     <span>{chat.mensajes_no_leidos}</span>
                   </div>
-                )}
+                ) : estaMarcadoNoLeido(chat) ? (
+                  <div className="wa-unread-dot" title="Marcado como no leído" />
+                ) : null}
               </div>
             </div>
           </div>
@@ -1296,6 +1662,7 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat }) => {
     favoritos: "Favoritos",
     grupos: "Grupos",
     privados: "Individuales",
+    archivados: "Archivados",
   }[activeFilter];
 
   return (
@@ -1404,6 +1771,24 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat }) => {
                 </div>
               </div>
 
+              {filterCounts.archivados > 0 && (
+                <button
+                  type="button"
+                  className={`wa-archived-shortcut ${activeFilter === "archivados" ? "active" : ""}`}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    setActiveFilter(activeFilter === "archivados" ? "todos" : "archivados");
+                  }}
+                  title="Ver chats archivados"
+                >
+                  <span className="wa-archived-shortcut-icon">
+                    <i className="fa-solid fa-box-archive" aria-hidden="true" />
+                  </span>
+                  <span className="wa-archived-shortcut-text">Archivados</span>
+                  <span className="wa-archived-shortcut-count">{filterCounts.archivados}</span>
+                </button>
+              )}
+
               {usuariosComunes.length > 0 && searchTerm.trim() !== "" && (
                 <div className="mt-3 mb-3 wa-common-users">
                   <h6 className="fw-bold text-muted mb-2">Personas en proyectos comunes</h6>
@@ -1455,6 +1840,8 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat }) => {
                     <span>
                       {activeFilter === "todos"
                         ? "Prueba buscando otro nombre o mensaje."
+                        : activeFilter === "archivados"
+                        ? "Cuando archives un chat, aparecerá aquí."
                         : "Cambia a Todos para ver todas tus conversaciones."}
                     </span>
                   </div>

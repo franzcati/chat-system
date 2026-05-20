@@ -178,6 +178,170 @@ const storage = multer.diskStorage({
 
 const upload = multer({ storage });
 
+
+router.get("/contexto/:mensajeId", async (req, res) => {
+  try {
+    await ensureReplyColumn();
+    const mensajeId = Number(req.params.mensajeId);
+    const usuario1 = Number(req.query.usuario1);
+    const usuario2 = Number(req.query.usuario2);
+    const parsedLimit = Number.parseInt(req.query.limit, 10);
+    const limit = Number.isFinite(parsedLimit)
+      ? Math.min(Math.max(parsedLimit, 20), 120)
+      : 80;
+
+    if (!mensajeId || !usuario1 || !usuario2) {
+      return res.status(400).json({ error: "Faltan parámetros mensajeId, usuario1 o usuario2" });
+    }
+
+    const beforeLimit = Math.max(Math.floor((limit - 1) / 2), 1);
+    const afterLimit = Math.max(limit - beforeLimit, 1);
+    const chatWhere = `(
+      (m.usuario_envia_id = ? AND m.usuario_recibe_id = ?)
+      OR
+      (m.usuario_envia_id = ? AND m.usuario_recibe_id = ?)
+    )`;
+
+    const [targetRows] = await db.query(
+      `SELECT m.id FROM mensajes m WHERE m.id = ? AND ${chatWhere} LIMIT 1`,
+      [mensajeId, usuario1, usuario2, usuario2, usuario1]
+    );
+
+    if (!targetRows.length) {
+      return res.status(404).json({ error: "Mensaje no encontrado en este chat" });
+    }
+
+    const selectFields = `
+      SELECT
+        m.id,
+        m.usuario_envia_id,
+        m.usuario_recibe_id,
+        m.mensaje,
+        m.lote_id,
+        m.reply_to_id,
+        m.reply_to_tipo,
+        m.reply_to_grupo_id,
+        m.fecha_envio,
+        m.eliminado,
+        m.editado,
+        m.visto,
+        m.fijado,
+        ma.archivo_url,
+        ma.tipo_archivo,
+        ma.nombre_archivo,
+        ma.tamano,
+        ue.nombre AS emisor_nombre,
+        ue.apellido AS emisor_apellido,
+        ue.url_imagen AS emisor_avatar,
+        ue.background AS emisor_background,
+        ue.correo AS emisor_correo,
+        ur.nombre AS receptor_nombre,
+        ur.apellido AS receptor_apellido,
+        ur.url_imagen AS receptor_avatar,
+        ur.background AS receptor_background,
+        ur.correo AS receptor_correo
+      FROM mensajes m
+      JOIN usuario ue ON ue.id = m.usuario_envia_id
+      JOIN usuario ur ON ur.id = m.usuario_recibe_id
+      LEFT JOIN mensajes_archivos ma
+        ON ma.sender_id = m.usuario_envia_id
+       AND ma.receiver_id = m.usuario_recibe_id
+       AND ma.archivo_url = m.mensaje
+    `;
+
+    const chatParams = [usuario1, usuario2, usuario2, usuario1];
+
+    const [beforeRowsRaw] = await db.query(
+      `${selectFields}
+       WHERE ${chatWhere}
+         AND m.id < ?
+       ORDER BY m.id DESC
+       LIMIT ?`,
+      [...chatParams, mensajeId, beforeLimit]
+    );
+
+    const [afterRows] = await db.query(
+      `${selectFields}
+       WHERE ${chatWhere}
+         AND m.id >= ?
+       ORDER BY m.id ASC
+       LIMIT ?`,
+      [...chatParams, mensajeId, afterLimit]
+    );
+
+    const mensajes = [...beforeRowsRaw.reverse(), ...afterRows];
+    const ids = mensajes.map((m) => m.id);
+    let reacciones = [];
+
+    if (ids.length > 0) {
+      const [rowsReacciones] = await db.query(
+        `SELECT r.mensaje_id, r.usuario_id, r.emoji,
+                u.nombre, u.apellido, u.url_imagen, u.background
+         FROM reacciones r
+         JOIN usuario u ON u.id = r.usuario_id
+         WHERE r.mensaje_id IN (?)`,
+        [ids]
+      );
+      reacciones = rowsReacciones;
+    }
+
+    const privateReplyMap = await getReplyMessagesByIds(
+      mensajes
+        .filter((m) => !m.reply_to_tipo || m.reply_to_tipo === "privado")
+        .map((m) => m.reply_to_id)
+    );
+
+    const groupReplyMap = await getGroupReplyMessagesByIds(
+      mensajes
+        .filter((m) => m.reply_to_tipo === "grupo")
+        .map((m) => m.reply_to_id)
+    );
+
+    const toIso = (value) => {
+      if (!value) return null;
+      if (value instanceof Date) return value.toISOString();
+      return new Date(String(value).replace(" ", "T") + "Z").toISOString();
+    };
+
+    const mensajesConReacciones = mensajes.map((m) => ({
+      ...m,
+      fijado: !!m.fijado,
+      fecha_envio: toIso(m.fecha_envio),
+      reply_to: m.reply_to_id
+        ? (m.reply_to_tipo === "grupo"
+            ? groupReplyMap.get(Number(m.reply_to_id))
+            : privateReplyMap.get(Number(m.reply_to_id))) || null
+        : null,
+      reacciones: reacciones
+        .filter((r) => r.mensaje_id === m.id)
+        .map((r) => ({
+          mensaje_id: r.mensaje_id,
+          usuario_id: r.usuario_id,
+          emoji: r.emoji,
+          usuario: {
+            id: r.usuario_id,
+            nombre: r.nombre,
+            apellido: r.apellido,
+            url_imagen: r.url_imagen,
+            background: r.background || "#6c757d",
+          },
+        })),
+    }));
+
+    return res.json({
+      mensajes: mensajesConReacciones,
+      hasMore: beforeRowsRaw.length >= beforeLimit,
+      nextBeforeId: mensajesConReacciones.length ? mensajesConReacciones[0].id : null,
+      targetMessageId: mensajeId,
+    });
+  } catch (err) {
+    console.error("❌ Error al obtener contexto de mensaje privado:", err);
+    if (!res.headersSent) {
+      return res.status(500).json({ error: "Error en el servidor" });
+    }
+  }
+});
+
 router.get("/", async (req, res) => {
   try {
     await ensureReplyColumn();

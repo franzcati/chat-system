@@ -119,6 +119,7 @@ const ChatBox = ({ chat, user, setChat, onVerPerfil }) => {
   const [mostrarVerArchivos, setMostrarVerArchivos] = useState(false);
   const [mostrarMenuLlamada, setMostrarMenuLlamada] = useState(false);
   const [searchRequestToken, setSearchRequestToken] = useState(null);
+  const [estadosUsuarios, setEstadosUsuarios] = useState({});
   // 👇 referencia al último mensaje
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null); // ref para el ChatInput optimizado
@@ -150,6 +151,26 @@ const ChatBox = ({ chat, user, setChat, onVerPerfil }) => {
 
   const listaStickers =
   stickerTab === "favoritos" ? stickersFavoritos : stickersTodos;
+
+  useEffect(() => {
+    const cargarEstados = async () => {
+      try {
+        const res = await axios.get("/api/usuarios/estados/presencia");
+        setEstadosUsuarios(res.data || {});
+      } catch (err) {
+        console.error("❌ Error cargando estados de presencia:", err);
+      }
+    };
+
+    cargarEstados();
+
+    const handleActualizarUsuarios = (payload) => {
+      setEstadosUsuarios(payload || {});
+    };
+
+    socket.on("actualizarUsuarios", handleActualizarUsuarios);
+    return () => socket.off("actualizarUsuarios", handleActualizarUsuarios);
+  }, []);
 
   const mentionOptions = useMemo(() => {
     if (!chat) return [];
@@ -1453,9 +1474,54 @@ const ChatBox = ({ chat, user, setChat, onVerPerfil }) => {
       return text.charAt(0).toUpperCase();
   };
 
+  const getPresenceInfo = (targetUserId) => {
+    const estado = estadosUsuarios?.[String(targetUserId)] || estadosUsuarios?.[Number(targetUserId)] || null;
+    const rawStatus = estado?.estado || "desconectado";
+    const dispositivo = estado?.dispositivo || "desktop";
+
+    const meta = {
+      online: {
+        label: dispositivo === "mobile" ? "En línea desde teléfono" : "En línea desde PC",
+        className: "online",
+        iconClass: dispositivo === "mobile" ? "fa-solid fa-mobile-screen-button" : "fa-solid fa-desktop",
+      },
+      inactivo: {
+        label: "Inactivo",
+        className: "idle",
+        iconClass: "fa-solid fa-moon",
+      },
+      no_molestar: {
+        label: "No molestar",
+        className: "dnd",
+        iconClass: "fa-solid fa-minus",
+      },
+      desconectado: {
+        label: "Sin conexión",
+        className: "offline",
+        iconClass: "fa-regular fa-circle",
+      },
+    };
+
+    return meta[rawStatus] || meta.desconectado;
+  };
+
+  const renderPresenceBadge = (targetUserId) => {
+    const presence = getPresenceInfo(targetUserId);
+    return (
+      <span className={`wa-presence-badge ${presence.className}`} title={presence.label}>
+        <i className={presence.iconClass} aria-hidden="true" />
+      </span>
+    );
+  };
+
+  const getPrivatePresenceText = () => {
+    if (!chat || chat.tipo === "grupo") return "";
+    return getPresenceInfo(chat.usuario_id).label;
+  };
+
   const getHeaderSubtitle = () => {
     if (!chat) return "";
-    if (chat.tipo !== "grupo") return chat.usuario_correo || "";
+    if (chat.tipo !== "grupo") return getPrivatePresenceText() || chat.usuario_correo || "";
 
     const miembros = Array.isArray(chat.miembros) ? chat.miembros : [];
     if (miembros.length) {
@@ -1816,27 +1882,33 @@ const ChatBox = ({ chat, user, setChat, onVerPerfil }) => {
                           <div className="d-flex align-items-center">
                             <div className="avatar d-none d-xl-inline-block me-3">
                               {chat?.url_imagen ? (
-                                <img
-                                  src={getAvatarUrl(chat.url_imagen)}
-                                  alt={chat.usuario_nombre}
-                                  className="avatar-img"
-                                  style={{
-                                    width: "44px",
-                                    height: "44px",
-                                    objectFit: "cover",
-                                  }}
-                                />
+                                <div className="wa-presence-wrapper">
+                                  <img
+                                    src={getAvatarUrl(chat.url_imagen)}
+                                    alt={chat.usuario_nombre}
+                                    className="avatar-img"
+                                    style={{
+                                      width: "44px",
+                                      height: "44px",
+                                      objectFit: "cover",
+                                    }}
+                                  />
+                                  {renderPresenceBadge(chat.usuario_id)}
+                                </div>
                               ) : (
-                                <div
-                                  className="avatar-img rounded-circle d-flex align-items-center justify-content-center text-white fw-bold"
-                                  style={{
-                                    width: "44px",
-                                    height: "44px",
-                                    backgroundColor: chat?.background || "#6c757d",
-                                    fontSize: "18px",
-                                  }}
-                                >
-                                  {getInitial(chat?.usuario_nombre || "U")}
+                                <div className="wa-presence-wrapper">
+                                  <div
+                                    className="avatar-img rounded-circle d-flex align-items-center justify-content-center text-white fw-bold"
+                                    style={{
+                                      width: "44px",
+                                      height: "44px",
+                                      backgroundColor: chat?.background || "#6c757d",
+                                      fontSize: "18px",
+                                    }}
+                                  >
+                                    {getInitial(chat?.usuario_nombre || "U")}
+                                  </div>
+                                  {renderPresenceBadge(chat.usuario_id)}
                                 </div>
                               )}
                             </div>
@@ -1956,26 +2028,29 @@ const ChatBox = ({ chat, user, setChat, onVerPerfil }) => {
                                     })
                                   }
                                 >
-                                  {m.url_imagen ? (
-                                    <img
-                                      className="avatar-img rounded-circle"
-                                      src={getAvatarUrl(m.url_imagen)}
-                                      alt={m.nombre}
-                                      style={{ objectFit: "cover" }}
-                                    />
-                                  ) : (
-                                    <div
-                                      className="avatar-img rounded-circle d-flex align-items-center justify-content-center text-white fw-bold"
-                                      style={{
-                                        width: "34px",
-                                        height: "34px",
-                                        backgroundColor: m.background || "#6c757d",
-                                        fontSize: "14px",
-                                      }}
-                                    >
-                                      {getInitial(m.nombre, m.apellido)}
-                                    </div>
-                                  )}
+                                  <div className="wa-presence-wrapper wa-presence-wrapper-sm">
+                                    {m.url_imagen ? (
+                                      <img
+                                        className="avatar-img rounded-circle"
+                                        src={getAvatarUrl(m.url_imagen)}
+                                        alt={m.nombre}
+                                        style={{ objectFit: "cover" }}
+                                      />
+                                    ) : (
+                                      <div
+                                        className="avatar-img rounded-circle d-flex align-items-center justify-content-center text-white fw-bold"
+                                        style={{
+                                          width: "34px",
+                                          height: "34px",
+                                          backgroundColor: m.background || "#6c757d",
+                                          fontSize: "14px",
+                                        }}
+                                      >
+                                        {getInitial(m.nombre, m.apellido)}
+                                      </div>
+                                    )}
+                                    {renderPresenceBadge(m.id)}
+                                  </div>
                                 </div>
                               ))}
 

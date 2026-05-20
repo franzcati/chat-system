@@ -4,6 +4,19 @@ import { logDev } from "./utils/logger";
 
 const socketUrl = import.meta.env.VITE_SOCKET_URL || "/";
 
+const getDeviceType = () => {
+  const userAgent = navigator.userAgent || "";
+  const isTouch = navigator.maxTouchPoints && navigator.maxTouchPoints > 1;
+  const isMobileUA = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(userAgent);
+  return isMobileUA || isTouch ? "mobile" : "desktop";
+};
+
+const getPresencePayload = (userId) => ({
+  userId,
+  deviceType: getDeviceType(),
+  userAgent: navigator.userAgent || "",
+});
+
 const getStoredUserId = () => {
   try {
     const storedUser = localStorage.getItem("usuario");
@@ -32,7 +45,7 @@ socket.on("connect", () => {
 
   const userId = socket.auth?.userId || getStoredUserId();
   if (userId) {
-    socket.emit("registrarUsuario", userId);
+    socket.emit("registrarUsuario", getPresencePayload(userId));
     logDev("📡 Usuario registrado/reconectado en socket:", userId);
   }
 });
@@ -59,6 +72,7 @@ export const conectarUsuarioSocket = (userId) => {
   socket.auth = {
     ...(socket.auth || {}),
     userId,
+    deviceType: getDeviceType(),
   };
 
   if (!socket.connected) {
@@ -66,8 +80,21 @@ export const conectarUsuarioSocket = (userId) => {
     return;
   }
 
-  socket.emit("registrarUsuario", userId);
+  socket.emit("registrarUsuario", getPresencePayload(userId));
   logDev("📡 Usuario registrado en socket:", userId);
 };
 
 export default socket;
+
+
+export const emitirActividadUsuario = (userId) => {
+  if (!userId || !socket.connected) return;
+  socket.emit("usuarioActividad", getPresencePayload(userId));
+};
+
+export const cambiarEstadoPresenciaSocket = (userId, estado) => {
+  if (!userId) return;
+  if (socket.connected) {
+    socket.emit("cambiarEstadoUsuario", { userId, estado });
+  }
+};

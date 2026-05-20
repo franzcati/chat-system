@@ -6,6 +6,7 @@ import "../css/emoji.css";
 import GroupAvatar from "./GroupAvatar";
 import { getAvatarUrl } from "../utils/url";
 import { getMessagePreview } from "../utils/messagePreview";
+import socket from "../socket";
 
 const BASE_URL = "";
 
@@ -43,6 +44,7 @@ const VerInfoGrupo = ({
   const [resultadosBusqueda, setResultadosBusqueda] = useState([]);
   const [buscandoMensajes, setBuscandoMensajes] = useState(false);
   const [errorBusqueda, setErrorBusqueda] = useState("");
+  const [estadosUsuarios, setEstadosUsuarios] = useState({});
   const fileInputRef = useRef(null);
   const cameraInputRef = useRef(null);
   const imageMenuRef = useRef(null);
@@ -51,6 +53,55 @@ const VerInfoGrupo = ({
   const miRol = miembros.find((m) => Number(m.id) === Number(user?.id))?.rol;
   const puedeEditar = ["propietario", "admin"].includes(miRol);
   const esPropietario = miRol === "propietario";
+
+  useEffect(() => {
+    const cargarEstados = async () => {
+      try {
+        const res = await fetch(`${BASE_URL}/api/usuarios/estados/presencia`);
+        const data = await res.json();
+        setEstadosUsuarios(data || {});
+      } catch (error) {
+        console.error("❌ Error cargando estados de miembros:", error);
+      }
+    };
+
+    cargarEstados();
+
+    const handleActualizarUsuarios = (payload) => {
+      setEstadosUsuarios(payload || {});
+    };
+
+    socket.on("actualizarUsuarios", handleActualizarUsuarios);
+    return () => socket.off("actualizarUsuarios", handleActualizarUsuarios);
+  }, []);
+
+  const getPresenceInfo = (targetUserId) => {
+    const estado = estadosUsuarios?.[String(targetUserId)] || estadosUsuarios?.[Number(targetUserId)] || null;
+    const rawStatus = estado?.estado || "desconectado";
+    const dispositivo = estado?.dispositivo || "desktop";
+
+    const meta = {
+      online: {
+        label: dispositivo === "mobile" ? "En línea desde teléfono" : "En línea desde PC",
+        className: "online",
+        iconClass: dispositivo === "mobile" ? "fa-solid fa-mobile-screen-button" : "fa-solid fa-desktop",
+      },
+      inactivo: { label: "Inactivo", className: "idle", iconClass: "fa-solid fa-moon" },
+      no_molestar: { label: "No molestar", className: "dnd", iconClass: "fa-solid fa-minus" },
+      desconectado: { label: "Sin conexión", className: "offline", iconClass: "fa-regular fa-circle" },
+    };
+
+    return meta[rawStatus] || meta.desconectado;
+  };
+
+  const renderPresenceBadge = (targetUserId) => {
+    const presence = getPresenceInfo(targetUserId);
+    return (
+      <span className={`wa-presence-badge ${presence.className}`} title={presence.label}>
+        <i className={presence.iconClass} aria-hidden="true" />
+      </span>
+    );
+  };
 
   const miembrosOrdenados = useMemo(() => {
     return [...miembros].sort((a, b) => {
@@ -659,12 +710,13 @@ const VerInfoGrupo = ({
                 return (
                   <li key={member.id} className="wa-member-item-wrap">
                     <div className={`wa-member-item ${canManage ? "can-manage" : ""}`}>
-                      <div className="wa-member-avatar">
+                      <div className="wa-member-avatar wa-presence-wrapper">
                         {member.url_imagen ? (
                           <img src={getAvatarUrl(member.url_imagen)} alt={nombre} />
                         ) : (
                           <div style={{ backgroundColor: member.background || "#6c757d" }}>{getInitial(nombre)}</div>
                         )}
+                        {renderPresenceBadge(member.id)}
                       </div>
 
                       <div className="wa-member-main">
@@ -673,7 +725,7 @@ const VerInfoGrupo = ({
                           {member.rol === "propietario" && <span className="wa-role-badge owner">Propietario</span>}
                           {member.rol === "admin" && <span className="wa-role-badge admin">Admin. del grupo</span>}
                         </div>
-                        <span className="wa-member-subtitle">{member.correo || member.estado || "Disponible"}</span>
+                        <span className="wa-member-subtitle">{getPresenceInfo(member.id).label} · {member.correo || member.estado || "Disponible"}</span>
                       </div>
 
                       {canManage && (

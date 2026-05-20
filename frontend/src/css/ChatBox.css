@@ -4220,3 +4220,79 @@ button:hover .lucide-star {
 .chat-body .message.message-layer-active .dropdown-menu.show {
   pointer-events: auto !important;
 }
+
+/* ==========================================
+   Estados de presencia estilo Discord/WhatsApp
+   ========================================== */
+.wa-presence-wrapper {
+  position: relative;
+  display: inline-flex;
+  flex: 0 0 auto;
+  line-height: 0;
+}
+
+.wa-presence-wrapper > img,
+.wa-presence-wrapper > .avatar-img,
+.wa-presence-wrapper > div:not(.wa-presence-badge) {
+  border-radius: 50%;
+}
+
+.wa-presence-badge {
+  position: absolute;
+  right: -2px;
+  bottom: -2px;
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  border: 2px solid var(--wa-sidebar-bg, #f7f8fa);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 7px;
+  color: #ffffff;
+  z-index: 4;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.22);
+}
+
+.wa-presence-wrapper-sm .wa-presence-badge {
+  width: 13px;
+  height: 13px;
+  font-size: 6px;
+  right: -2px;
+  bottom: -2px;
+}
+
+.wa-presence-badge.online {
+  background: #23a559;
+}
+
+.wa-presence-badge.idle {
+  background: #f0b232;
+  color: #16202a;
+}
+
+.wa-presence-badge.dnd {
+  background: #f23f43;
+}
+
+.wa-presence-badge.offline {
+  background: #7f8792;
+}
+
+.wa-presence-badge.offline i {
+  font-size: 5px;
+}
+
+body.dark .wa-presence-badge,
+[data-bs-theme="dark"] .wa-presence-badge {
+  border-color: #0b1420;
+}
+
+.wa-chat-header .wa-presence-badge {
+  border-color: var(--wa-chat-header-bg, #ffffff);
+}
+
+body.dark .wa-chat-header .wa-presence-badge,
+[data-bs-theme="dark"] .wa-chat-header .wa-presence-badge {
+  border-color: #111c22;
+}
