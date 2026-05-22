@@ -75,6 +75,16 @@ function limpiarExpiracionEstado(value) {
   return parsed.toISOString().slice(0, 19).replace("T", " ");
 }
 
+function limpiarEstadoPersonal(value) {
+  const text = String(value || "").trim().slice(0, 128);
+  return text || null;
+}
+
+function limpiarBiografiaPerfil(value) {
+  const text = String(value || "").slice(0, 12000);
+  return text.trim() ? text : null;
+}
+
 function parseJsonArray(value) {
   if (!value) return [];
   if (Array.isArray(value)) return value;
@@ -228,8 +238,8 @@ router.put("/:id/perfil", async (req, res) => {
               perfil_tema_secundario = ?
         WHERE id = ?`,
       [
-        perfil_biografia || null,
-        perfil_estado_mensaje || null,
+        limpiarBiografiaPerfil(perfil_biografia),
+        limpiarEstadoPersonal(perfil_estado_mensaje),
         limpiarExpiracionEstado(perfil_estado_expira),
         perfil_tema_principal || "#030202",
         perfil_tema_secundario || "#e7b5bf",

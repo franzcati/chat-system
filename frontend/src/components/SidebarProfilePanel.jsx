@@ -3,7 +3,6 @@ import axios from "axios";
 import toast from "react-hot-toast";
 import { cambiarEstadoPresenciaSocket } from "../socket";
 import { getAvatarUrl } from "../utils/url";
-import { useTheme } from "../context/ThemeContext";
 
 const EXPIRATION_OPTIONS = [
   { value: "never", label: "No eliminar" },
@@ -43,6 +42,9 @@ const PRESENCE_OPTIONS = [
     className: "offline",
   },
 ];
+
+const STATUS_MAX_LENGTH = 128;
+const BIO_MAX_LENGTH = 220;
 
 const getInitial = (usuario) => {
   const text = usuario?.nombre || usuario?.correo || "U";
@@ -171,6 +173,222 @@ const ProfileMedia = ({ src, transform, kind = "cover", alt = "" }) => {
 
 const getCoverImageVars = (url) => (url ? { "--profile-cover-image": `url(${url})` } : undefined);
 
+const escapeHtml = (value = "") =>
+  String(value)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+
+const hasHtmlMarkup = (value = "") => /<\/?[a-z][\s\S]*>/i.test(String(value || ""));
+
+const plainTextFromHtml = (value = "") => {
+  const text = String(value || "");
+  if (typeof document === "undefined") {
+    return text.replace(/<[^>]+>/g, "");
+  }
+  const div = document.createElement("div");
+  div.innerHTML = text;
+  return div.textContent || "";
+};
+
+const sanitizeCssColor = (value) => {
+  const text = String(value || "").trim();
+  if (/^#[0-9a-fA-F]{3}([0-9a-fA-F]{3})?$/.test(text)) return text;
+  if (/^rgba?\(\s*\d{1,3}\s*,\s*\d{1,3}\s*,\s*\d{1,3}(\s*,\s*(0|1|0?\.\d+))?\s*\)$/i.test(text)) return text;
+  return "";
+};
+
+const sanitizeFontSize = (value) => {
+  const text = String(value || "").trim();
+  if (/^[1-7]$/.test(text)) return text;
+  if (/^(0\.75|0\.875|1|1\.125|1\.25|1\.5)rem$/.test(text)) return text;
+  if (/^(12|13|14|16|18|20|24)px$/.test(text)) return text;
+  return "";
+};
+
+const sanitizeBioHtml = (value = "") => {
+  const raw = String(value || "");
+  if (!raw.trim()) return "";
+  if (typeof document === "undefined") return escapeHtml(raw).replace(/\n/g, "<br>");
+
+  const template = document.createElement("template");
+  template.innerHTML = hasHtmlMarkup(raw) ? raw : escapeHtml(raw).replace(/\n/g, "<br>");
+  const allowedTags = new Set(["B", "I", "U", "S", "STRONG", "EM", "UL", "OL", "LI", "SPAN", "DIV", "P", "BR", "FONT"]);
+
+  const cleanNode = (node) => {
+    if (node.nodeType === Node.COMMENT_NODE) {
+      node.remove();
+      return;
+    }
+
+    if (node.nodeType !== Node.ELEMENT_NODE) return;
+
+    const element = node;
+    const tag = element.tagName;
+
+    if (!allowedTags.has(tag)) {
+      const parent = element.parentNode;
+      if (!parent) return;
+      while (element.firstChild) parent.insertBefore(element.firstChild, element);
+      element.remove();
+      return;
+    }
+
+    const rawStyle = element.getAttribute("style") || "";
+    const styleProbe = document.createElement("span");
+    styleProbe.setAttribute("style", rawStyle);
+    const fontWeight = String(styleProbe.style.fontWeight || "").toLowerCase();
+    const fontStyle = String(styleProbe.style.fontStyle || "").toLowerCase();
+    const decoration = String(styleProbe.style.textDecoration || styleProbe.style.textDecorationLine || "").toLowerCase();
+
+    [...element.attributes].forEach((attribute) => element.removeAttribute(attribute.name));
+
+    const safeStyles = [];
+    if (fontWeight === "bold" || Number(fontWeight) >= 600) safeStyles.push("font-weight: 800");
+    if (fontStyle === "italic") safeStyles.push("font-style: italic");
+    if (decoration.includes("underline") && decoration.includes("line-through")) {
+      safeStyles.push("text-decoration-line: underline line-through");
+    } else if (decoration.includes("underline")) {
+      safeStyles.push("text-decoration-line: underline");
+    } else if (decoration.includes("line-through")) {
+      safeStyles.push("text-decoration-line: line-through");
+    }
+    if (safeStyles.length) element.setAttribute("style", safeStyles.join("; "));
+  };
+
+  const walker = document.createTreeWalker(template.content, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_COMMENT);
+  const nodes = [];
+  while (walker.nextNode()) nodes.push(walker.currentNode);
+  nodes.forEach(cleanNode);
+  return template.innerHTML.trim();
+};
+
+const getRichTextLength = (value = "") => plainTextFromHtml(value).trim().length;
+const renderBioHtml = (value = "") => sanitizeBioHtml(value);
+
+const RichBioEditor = ({ value, onChange, maxLength = BIO_MAX_LENGTH }) => {
+  const editorRef = useRef(null);
+  const savedSelectionRef = useRef(null);
+  const [plainLength, setPlainLength] = useState(getRichTextLength(value));
+
+  useEffect(() => {
+    const editor = editorRef.current;
+    if (!editor || document.activeElement === editor) return;
+    editor.innerHTML = sanitizeBioHtml(value);
+    setPlainLength(getRichTextLength(value));
+  }, [value]);
+
+  const saveSelection = () => {
+    const selection = window.getSelection?.();
+    if (!selection || selection.rangeCount === 0) return;
+    const editor = editorRef.current;
+    if (editor && editor.contains(selection.anchorNode)) {
+      savedSelectionRef.current = selection.getRangeAt(0).cloneRange();
+    }
+  };
+
+  const restoreSelection = () => {
+    const selection = window.getSelection?.();
+    const range = savedSelectionRef.current;
+    if (!selection || !range) return;
+    selection.removeAllRanges();
+    selection.addRange(range);
+  };
+
+  const emitChange = () => {
+    const editor = editorRef.current;
+    if (!editor) return;
+    const sanitized = sanitizeBioHtml(editor.innerHTML);
+    const length = getRichTextLength(sanitized);
+    setPlainLength(length);
+    onChange(sanitized);
+  };
+
+  const runCommand = (command) => {
+    const editor = editorRef.current;
+    if (!editor) return;
+    restoreSelection();
+    editor.focus();
+    document.execCommand("styleWithCSS", false, false);
+    document.execCommand(command, false, null);
+
+    if ((command === "insertUnorderedList" || command === "insertOrderedList") && !editor.querySelector("ul, ol")) {
+      const lines = (editor.textContent || "").split(/\n+/).map((line) => line.trim()).filter(Boolean);
+      const listTag = command === "insertOrderedList" ? "ol" : "ul";
+      if (lines.length) {
+        editor.innerHTML = `<${listTag}>${lines.map((line) => `<li>${escapeHtml(line)}</li>`).join("")}</${listTag}>`;
+      }
+    }
+
+    window.setTimeout(() => {
+      saveSelection();
+      emitChange();
+    }, 0);
+  };
+
+  const handleCommandMouseDown = (event, command) => {
+    event.preventDefault();
+    event.stopPropagation();
+    runCommand(command);
+  };
+
+  const handleBeforeInput = (event) => {
+    const incoming = event.data || "";
+    if (!incoming) return;
+    const selection = window.getSelection?.();
+    const selectedText = selection?.toString?.() || "";
+    if (plainLength - selectedText.length + incoming.length > maxLength) {
+      event.preventDefault();
+      toast.error(`La biografía permite máximo ${maxLength} caracteres`);
+    }
+  };
+
+  const handlePaste = (event) => {
+    event.preventDefault();
+    const text = event.clipboardData?.getData("text/plain") || "";
+    if (!text) return;
+    const selection = window.getSelection?.();
+    const selectedText = selection?.toString?.() || "";
+    const remaining = maxLength - (plainLength - selectedText.length);
+    if (remaining <= 0) return;
+    document.execCommand("insertText", false, text.slice(0, remaining));
+    emitChange();
+  };
+
+  return (
+    <div className="wa-profile-rich-editor">
+      <div className="wa-profile-rich-toolbar">
+        <button type="button" onMouseDown={(event) => handleCommandMouseDown(event, "bold")} title="Negrita"><i className="fa-solid fa-bold" /></button>
+        <button type="button" onMouseDown={(event) => handleCommandMouseDown(event, "italic")} title="Cursiva"><i className="fa-solid fa-italic" /></button>
+        <button type="button" onMouseDown={(event) => handleCommandMouseDown(event, "underline")} title="Subrayado"><i className="fa-solid fa-underline" /></button>
+        <button type="button" onMouseDown={(event) => handleCommandMouseDown(event, "strikeThrough")} title="Tachado"><i className="fa-solid fa-strikethrough" /></button>
+        <span className="wa-profile-rich-divider" />
+        <button type="button" onMouseDown={(event) => handleCommandMouseDown(event, "insertUnorderedList")} title="Lista de viñetas"><i className="fa-solid fa-list-ul" /></button>
+        <button type="button" onMouseDown={(event) => handleCommandMouseDown(event, "insertOrderedList")} title="Lista numerada"><i className="fa-solid fa-list-ol" /></button>
+      </div>
+      <div
+        ref={editorRef}
+        className="wa-profile-bio-editor wa-profile-bio-rich-input"
+        contentEditable
+        suppressContentEditableWarning
+        role="textbox"
+        aria-multiline="true"
+        data-placeholder="Escribe tu biografía"
+        onInput={emitChange}
+        onKeyUp={saveSelection}
+        onMouseUp={saveSelection}
+        onBlur={saveSelection}
+        onBeforeInput={handleBeforeInput}
+        onPaste={handlePaste}
+      />
+      <div className="wa-profile-char-count">{plainLength}/{maxLength}</div>
+    </div>
+  );
+};
+
+
 const loadImageElement = (src) =>
   new Promise((resolve, reject) => {
     const image = new Image();
@@ -212,10 +430,23 @@ const createCroppedFile = async (editor) => {
 };
 
 
-const getDefaultProfileTheme = (isDark) => ({
-  primary: isDark ? "#2f8ee8" : "#2f96f2",
-  secondary: isDark ? "#0b2a44" : "#bfe7ff",
-});
+const getDefaultProfileTheme = () => {
+  const appTheme = typeof document !== "undefined"
+    ? document.documentElement?.getAttribute("data-theme")
+    : "light";
+
+  if (appTheme === "dark") {
+    return {
+      primary: "#030202",
+      secondary: "#1da1f2",
+    };
+  }
+
+  return {
+    primary: "#ffffff",
+    secondary: "#aee3ff",
+  };
+};
 
 const hasSavedThemeValue = (value) => /^#[0-9a-fA-F]{6}$/.test(String(value || "").trim());
 
@@ -257,8 +488,12 @@ const buildProfileThemeVars = (primaryValue, secondaryValue) => {
   const white = { r: 255, g: 255, b: 255 };
   const ink = { r: 15, g: 23, b: 42 };
   const nearBlack = { r: 7, g: 11, b: 20 };
-  const averageLight = (getLuminance(primary) + getLuminance(secondary)) / 2;
-  const isLightTheme = averageLight > 0.34;
+  const primaryLightness = getLuminance(primary);
+  const secondaryLightness = getLuminance(secondary);
+  // El cuerpo del perfil se basa sobre todo en el color Principal. Si el
+  // secundario es claro pero el principal es oscuro, el panel debe seguir
+  // siendo oscuro y los textos deben quedar claros.
+  const isLightTheme = primaryLightness > 0.50 || (primaryLightness > 0.38 && secondaryLightness > 0.62);
 
   const panelA = isLightTheme ? mixRgb(primary, white, 0.74) : mixRgb(primary, nearBlack, 0.50);
   const panelB = isLightTheme ? mixRgb(secondary, white, 0.68) : mixRgb(secondary, ink, 0.52);
@@ -267,7 +502,9 @@ const buildProfileThemeVars = (primaryValue, secondaryValue) => {
   const statusHover = isLightTheme ? mixRgb(white, panelC, 0.04) : mixRgb(ink, panelC, 0.22);
   const buttonA = isLightTheme ? mixRgb(primary, secondary, 0.38) : mixRgb(primary, secondary, 0.26);
   const buttonB = isLightTheme ? mixRgb(secondary, primary, 0.28) : mixRgb(secondary, primary, 0.34);
+  const buttonAverage = mixRgb(buttonA, buttonB, 0.50);
   const borderMid = mixRgb(primary, secondary, 0.50);
+  const buttonText = getLuminance(buttonAverage) > 0.48 ? "#0f172a" : "#ffffff";
 
   return {
     "--profile-primary": primaryHex,
@@ -280,6 +517,10 @@ const buildProfileThemeVars = (primaryValue, secondaryValue) => {
     "--profile-panel-gradient": `linear-gradient(145deg, ${rgbToCss(panelA)} 0%, ${rgbToCss(panelC)} 48%, ${rgbToCss(panelB)} 100%)`,
     "--profile-border-gradient": `linear-gradient(135deg, ${primaryHex} 0%, ${rgbToCss(borderMid)} 48%, ${secondaryHex} 100%)`,
     "--profile-button-gradient": `linear-gradient(135deg, ${rgbToCss(buttonA)} 0%, ${rgbToCss(buttonB)} 100%)`,
+    "--profile-button-text": buttonText,
+    "--profile-control-bg": isLightTheme ? "rgba(255, 255, 255, 0.56)" : "rgba(15, 23, 42, 0.42)",
+    "--profile-control-bg-hover": isLightTheme ? "rgba(255, 255, 255, 0.76)" : "rgba(15, 23, 42, 0.62)",
+    "--profile-control-border": isLightTheme ? "rgba(15, 23, 42, 0.12)" : "rgba(255, 255, 255, 0.12)",
     "--profile-glass": isLightTheme ? "rgba(255, 255, 255, 0.34)" : "rgba(255, 255, 255, 0.10)",
     "--profile-glass-strong": isLightTheme ? "rgba(255, 255, 255, 0.50)" : "rgba(255, 255, 255, 0.15)",
     "--profile-status-bg": `${rgbToCss(statusBase).replace("rgb", "rgba").replace(")", isLightTheme ? ", 0.88)" : ", 0.82)")}`,
@@ -292,8 +533,7 @@ const buildProfileThemeVars = (primaryValue, secondaryValue) => {
 };
 
 const SidebarProfilePanel = ({ usuario, show, onClose, onLogout, onUsuarioUpdate }) => {
-  const { isDark } = useTheme();
-  const defaultProfileTheme = useMemo(() => getDefaultProfileTheme(isDark), [isDark]);
+  const defaultProfileTheme = useMemo(() => getDefaultProfileTheme(), []);
   const [perfil, setPerfil] = useState(usuario || null);
   const [presenceMenuOpen, setPresenceMenuOpen] = useState(false);
   const [statusModalOpen, setStatusModalOpen] = useState(false);
@@ -308,6 +548,11 @@ const SidebarProfilePanel = ({ usuario, show, onClose, onLogout, onUsuarioUpdate
   const [imagePicker, setImagePicker] = useState(null);
   const [cropEditor, setCropEditor] = useState(null);
   const [recentAvatars, setRecentAvatars] = useState([]);
+  const [statusModalShake, setStatusModalShake] = useState(false);
+  const [editModalShake, setEditModalShake] = useState(false);
+  const [statusFooterExiting, setStatusFooterExiting] = useState(false);
+  const [profileFooterExiting, setProfileFooterExiting] = useState(false);
+  const [bioModalOpen, setBioModalOpen] = useState(false);
   const cropDragRef = useRef(null);
 
   const userId = usuario?.id;
@@ -320,6 +565,7 @@ const SidebarProfilePanel = ({ usuario, show, onClose, onLogout, onUsuarioUpdate
   const coverTransform = normalizeCropTransform(currentUser?.perfil_cartel_transform, "cover");
   const statusMessage = currentUser?.perfil_estado_mensaje || "";
   const biografia = currentUser?.perfil_biografia || "";
+  const shouldShowFullBioButton = getRichTextLength(biografia) > 110;
   const hasSavedProfileTheme = hasSavedThemeValue(currentUser?.perfil_tema_principal) && hasSavedThemeValue(currentUser?.perfil_tema_secundario);
   const profilePrimary = normalizeHex(hasSavedProfileTheme ? currentUser?.perfil_tema_principal : defaultProfileTheme.primary, defaultProfileTheme.primary);
   const profileSecondary = normalizeHex(hasSavedProfileTheme ? currentUser?.perfil_tema_secundario : defaultProfileTheme.secondary, defaultProfileTheme.secondary);
@@ -334,8 +580,108 @@ const SidebarProfilePanel = ({ usuario, show, onClose, onLogout, onUsuarioUpdate
     () => buildProfileThemeVars(normalizeHex(primaryColor, defaultProfileTheme.primary), normalizeHex(secondaryColor, defaultProfileTheme.secondary)),
     [primaryColor, secondaryColor, defaultProfileTheme.primary, defaultProfileTheme.secondary]
   );
+  const coverImageStyle = useMemo(() => getCoverImageVars(coverUrl) || {}, [coverUrl]);
+  const profileThemeWithCoverStyle = useMemo(
+    () => ({ ...profileThemeStyle, ...coverImageStyle }),
+    [profileThemeStyle, coverImageStyle]
+  );
+  const editThemeWithCoverStyle = useMemo(
+    () => ({ ...editThemeStyle, ...coverImageStyle }),
+    [editThemeStyle, coverImageStyle]
+  );
 
   const recentAvatarStorageKey = useMemo(() => `chat_recent_avatars_${userId || "guest"}`, [userId]);
+
+
+  const getSavedThemeDraft = () => ({
+    primary: hasSavedThemeValue(currentUser?.perfil_tema_principal) ? currentUser.perfil_tema_principal : defaultProfileTheme.primary,
+    secondary: hasSavedThemeValue(currentUser?.perfil_tema_secundario) ? currentUser.perfil_tema_secundario : defaultProfileTheme.secondary,
+  });
+
+  const resetStatusDraftToSaved = () => {
+    setStatusText(currentUser?.perfil_estado_mensaje || "");
+    setStatusExpiration("never");
+  };
+
+  const resetProfileDraftToSaved = () => {
+    const savedTheme = getSavedThemeDraft();
+    setStatusText(currentUser?.perfil_estado_mensaje || "");
+    setStatusExpiration("never");
+    setBioDraft(currentUser?.perfil_biografia || "");
+    setPrimaryColor(savedTheme.primary);
+    setSecondaryColor(savedTheme.secondary);
+  };
+
+  const hasStatusDraftChanges =
+    statusText.trim() !== (currentUser?.perfil_estado_mensaje || "") || statusExpiration !== "never";
+
+  const hasProfileDraftChanges =
+    sanitizeBioHtml(bioDraft) !== sanitizeBioHtml(currentUser?.perfil_biografia || "") ||
+    statusText.trim() !== (currentUser?.perfil_estado_mensaje || "") ||
+    normalizeHex(primaryColor, defaultProfileTheme.primary) !== profilePrimary ||
+    normalizeHex(secondaryColor, defaultProfileTheme.secondary) !== profileSecondary;
+
+  const shakeStatusModal = () => {
+    setStatusModalShake(false);
+    window.requestAnimationFrame(() => setStatusModalShake(true));
+    window.setTimeout(() => setStatusModalShake(false), 520);
+  };
+
+  const shakeEditModal = () => {
+    setEditModalShake(false);
+    window.requestAnimationFrame(() => setEditModalShake(true));
+    window.setTimeout(() => setEditModalShake(false), 520);
+  };
+
+  const resetStatusDraftWithAnimation = () => {
+    if (!hasStatusDraftChanges) return resetStatusDraftToSaved();
+    setStatusFooterExiting(true);
+    window.setTimeout(() => {
+      resetStatusDraftToSaved();
+      setStatusFooterExiting(false);
+    }, 210);
+  };
+
+  const resetProfileDraftWithAnimation = () => {
+    if (!hasProfileDraftChanges) return resetProfileDraftToSaved();
+    setProfileFooterExiting(true);
+    window.setTimeout(() => {
+      resetProfileDraftToSaved();
+      setProfileFooterExiting(false);
+    }, 210);
+  };
+
+  const openStatusModal = () => {
+    setPresenceMenuOpen(false);
+    setStatusFooterExiting(false);
+    resetStatusDraftToSaved();
+    setStatusModalOpen(true);
+  };
+
+  const closeStatusModal = () => {
+    if (hasStatusDraftChanges) {
+      shakeStatusModal();
+      return;
+    }
+    resetStatusDraftToSaved();
+    setStatusModalOpen(false);
+  };
+
+  const openEditModal = () => {
+    setPresenceMenuOpen(false);
+    setProfileFooterExiting(false);
+    resetProfileDraftToSaved();
+    setEditOpen(true);
+  };
+
+  const closeEditModal = () => {
+    if (hasProfileDraftChanges) {
+      shakeEditModal();
+      return;
+    }
+    resetProfileDraftToSaved();
+    setEditOpen(false);
+  };
 
   const mergeRecentAvatars = (items = []) => {
     const next = [];
@@ -392,14 +738,15 @@ const SidebarProfilePanel = ({ usuario, show, onClose, onLogout, onUsuarioUpdate
       if (event.key === "Escape") {
         if (cropEditor) closeCropEditor();
         else if (imagePicker) setImagePicker(null);
-        else if (statusModalOpen) setStatusModalOpen(false);
-        else if (editOpen) setEditOpen(false);
+        else if (statusModalOpen) closeStatusModal();
+        else if (editOpen) closeEditModal();
+        else if (bioModalOpen) setBioModalOpen(false);
         else onClose?.();
       }
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [show, cropEditor, imagePicker, statusModalOpen, editOpen, onClose]);
+  }, [show, cropEditor, imagePicker, statusModalOpen, editOpen, bioModalOpen, onClose, closeStatusModal, closeEditModal]);
 
   useEffect(() => {
     return () => {
@@ -432,17 +779,19 @@ const SidebarProfilePanel = ({ usuario, show, onClose, onLogout, onUsuarioUpdate
   };
 
   const saveCustomStatus = async () => {
-    const trimmed = statusText.trim();
+    const trimmed = statusText.trim().slice(0, STATUS_MAX_LENGTH);
     await updateProfile(
       {
-        perfil_biografia: bioDraft,
+        perfil_biografia: biografia,
         perfil_estado_mensaje: trimmed,
         perfil_estado_expira: getExpirationDate(statusExpiration),
-        perfil_tema_principal: primaryColor,
-        perfil_tema_secundario: secondaryColor,
+        perfil_tema_principal: profilePrimary,
+        perfil_tema_secundario: profileSecondary,
       },
       trimmed ? "Estado actualizado" : "Estado eliminado"
     );
+    setStatusText(trimmed);
+    setStatusExpiration("never");
     setStatusModalOpen(false);
   };
 
@@ -450,27 +799,30 @@ const SidebarProfilePanel = ({ usuario, show, onClose, onLogout, onUsuarioUpdate
     setStatusText("");
     await updateProfile(
       {
-        perfil_biografia: bioDraft,
+        perfil_biografia: biografia,
         perfil_estado_mensaje: "",
         perfil_estado_expira: null,
-        perfil_tema_principal: primaryColor,
-        perfil_tema_secundario: secondaryColor,
+        perfil_tema_principal: profilePrimary,
+        perfil_tema_secundario: profileSecondary,
       },
       "Estado eliminado"
     );
+    setStatusText("");
+    setStatusExpiration("never");
   };
 
   const resetThemeToDefault = () => {
-    setPrimaryColor(defaultProfileTheme.primary);
-    setSecondaryColor(defaultProfileTheme.secondary);
+    const freshDefaultTheme = getDefaultProfileTheme();
+    setPrimaryColor(freshDefaultTheme.primary);
+    setSecondaryColor(freshDefaultTheme.secondary);
     toast.success("Tema restablecido. Guarda los cambios para aplicarlo.");
   };
 
   const saveProfileDetails = async () => {
     await updateProfile(
       {
-        perfil_biografia: bioDraft,
-        perfil_estado_mensaje: statusText,
+        perfil_biografia: sanitizeBioHtml(bioDraft),
+        perfil_estado_mensaje: statusText.trim().slice(0, STATUS_MAX_LENGTH),
         perfil_estado_expira: currentUser?.perfil_estado_expira || null,
         perfil_tema_principal: normalizeHex(primaryColor, defaultProfileTheme.primary),
         perfil_tema_secundario: normalizeHex(secondaryColor, defaultProfileTheme.secondary),
@@ -665,7 +1017,7 @@ const SidebarProfilePanel = ({ usuario, show, onClose, onLogout, onUsuarioUpdate
   return (
     <>
       <div className="wa-profile-popover" role="dialog" aria-label="Perfil de usuario">
-        <div className="wa-profile-card" style={profileThemeStyle}>
+        <div className="wa-profile-card" style={profileThemeWithCoverStyle}>
           <div
             className={`wa-profile-cover ${coverUrl ? "has-image" : ""}`}
             style={getCoverImageVars(coverUrl)}
@@ -712,12 +1064,12 @@ const SidebarProfilePanel = ({ usuario, show, onClose, onLogout, onUsuarioUpdate
             </div>
 
             <div className="wa-profile-status-bubble">
-              <button type="button" className="wa-profile-status-text" onClick={() => setStatusModalOpen(true)}>
+              <button type="button" className="wa-profile-status-text" onClick={openStatusModal}>
                 {statusMessage || "Establecer tu estado"}
               </button>
               {statusMessage && (
                 <div className="wa-profile-status-actions">
-                  <button type="button" onClick={() => setStatusModalOpen(true)} title="Editar estado" data-tooltip="Editar">
+                  <button type="button" onClick={openStatusModal} title="Editar estado" data-tooltip="Editar">
                     <i className="fa-solid fa-pen" />
                   </button>
                   <button type="button" onClick={clearCustomStatus} title="Eliminar estado" data-tooltip="Borrar">
@@ -729,10 +1081,24 @@ const SidebarProfilePanel = ({ usuario, show, onClose, onLogout, onUsuarioUpdate
 
             <h3>{profileName}</h3>
             <p className="wa-profile-userline">{currentUser?.correo || currentUser?.usuario || "Usuario"}</p>
-            <p className="wa-profile-bio">{biografia || "Añade una biografía para que otros sepan más de ti."}</p>
+            {biografia ? (
+              <>
+                <div
+                  className={`wa-profile-bio wa-profile-rich-output ${shouldShowFullBioButton ? "is-truncated" : ""}`}
+                  dangerouslySetInnerHTML={{ __html: renderBioHtml(biografia) }}
+                />
+                {shouldShowFullBioButton && (
+                  <button type="button" className="wa-profile-bio-read-more" onClick={() => setBioModalOpen(true)}>
+                    Ver Biografía completa
+                  </button>
+                )}
+              </>
+            ) : (
+              <p className="wa-profile-bio">Añade una biografía para que otros sepan más de ti.</p>
+            )}
 
             <div className="wa-profile-actions-card">
-              <button type="button" onClick={() => setEditOpen(true)}>
+              <button type="button" onClick={openEditModal}>
                 <i className="fa-solid fa-pen" />
                 <span>Editar perfil</span>
                 <i className="fa-solid fa-chevron-right" />
@@ -763,7 +1129,7 @@ const SidebarProfilePanel = ({ usuario, show, onClose, onLogout, onUsuarioUpdate
         </div>
 
         {presenceMenuOpen && (
-          <div className="wa-presence-menu-panel">
+          <div className="wa-presence-menu-panel" style={profileThemeWithCoverStyle}>
             {PRESENCE_OPTIONS.map((option) => (
               <button key={option.value} type="button" onClick={() => changePresence(option.value)}>
                 <span className={`wa-presence-menu-dot ${option.className}`}>
@@ -803,7 +1169,7 @@ const SidebarProfilePanel = ({ usuario, show, onClose, onLogout, onUsuarioUpdate
 
       {imagePicker && (
         <div className="wa-profile-modal-backdrop wa-profile-image-picker-layer">
-          <div className="wa-profile-image-picker-modal" role="dialog" aria-label="Seleccionar una imagen">
+          <div className="wa-profile-image-picker-modal" role="dialog" aria-label="Seleccionar una imagen" style={editOpen ? editThemeWithCoverStyle : profileThemeWithCoverStyle}>
             <button type="button" className="wa-profile-modal-close" onClick={() => setImagePicker(null)}>
               <i className="fa-solid fa-xmark" />
             </button>
@@ -817,23 +1183,6 @@ const SidebarProfilePanel = ({ usuario, show, onClose, onLogout, onUsuarioUpdate
                 <i className="fa-solid fa-image" />
                 <span>Subir imagen</span>
               </button>
-
-              {imagePicker === "cover" && (
-                <button
-                  type="button"
-                  className="wa-profile-image-picker-tile gif"
-                  onClick={() => coverInputRef.current?.click()}
-                >
-                  <div className="wa-profile-gif-collage">
-                    <span />
-                    <span />
-                    <span />
-                    <span />
-                  </div>
-                  <strong>GIF</strong>
-                  <em><i className="fa-solid fa-magnifying-glass" /> Seleccionar GIF</em>
-                </button>
-              )}
             </div>
 
             {imagePicker === "avatar" ? (
@@ -860,26 +1209,35 @@ const SidebarProfilePanel = ({ usuario, show, onClose, onLogout, onUsuarioUpdate
 
       {statusModalOpen && (
         <div className="wa-profile-modal-backdrop wa-profile-status-layer">
-          <div className="wa-profile-status-modal">
-            <button type="button" className="wa-profile-modal-close" onClick={() => setStatusModalOpen(false)}>
+          <div className={`wa-profile-status-modal ${statusModalShake ? "is-shaking" : ""}`} style={profileThemeWithCoverStyle}>
+            <button type="button" className="wa-profile-modal-close" onClick={closeStatusModal}>
               <i className="fa-solid fa-xmark" />
             </button>
             <h3>Establecer tu estado</h3>
             <div
               className={`wa-profile-status-preview ${coverUrl ? "has-image" : ""}`}
-              style={coverUrl ? { ...profileThemeStyle, ...getCoverImageVars(coverUrl) } : profileThemeStyle}
+              style={profileThemeWithCoverStyle}
             >
-              {coverUrl && <ProfileMedia src={coverUrl} transform={coverTransform} kind="cover" alt="Cartel de perfil" />}
-              <div className="wa-profile-status-preview-fade" />
-              <div className="wa-profile-status-preview-content">
+              <div className={`wa-profile-status-preview-cover ${coverUrl ? "has-image" : ""}`}>
+                {coverUrl && <ProfileMedia src={coverUrl} transform={coverTransform} kind="cover" alt="Cartel de perfil" />}
+              </div>
+              <div className="wa-profile-status-preview-body">
                 <div className="wa-profile-status-preview-avatar">
-                  {avatarUrl ? <ProfileMedia src={avatarUrl} transform={avatarTransform} kind="avatar" alt={profileName} /> : <span>{getInitial(currentUser)}</span>}
+                  <div className="wa-profile-status-preview-avatar-clip">
+                    {avatarUrl ? <ProfileMedia src={avatarUrl} transform={avatarTransform} kind="avatar" alt={profileName} /> : <span className="wa-profile-status-preview-avatar-initial">{getInitial(currentUser)}</span>}
+                  </div>
+                  <span className={`wa-profile-status-preview-presence-dot ${currentPresence.className}`}>
+                    <i className={currentPresence.icon} />
+                  </span>
                 </div>
-                <div>
+                <div className="wa-profile-status-preview-bubble">
+                  <i className="fa-solid fa-cat" />
+                  <span>{statusText || "Tu estado aparecerá aquí..."}</span>
+                </div>
+                <div className="wa-profile-status-preview-info">
                   <strong>{profileName}</strong>
                   <span>{currentUser?.correo}</span>
                 </div>
-                <p>{statusText || "Tu estado aparecerá aquí..."}</p>
               </div>
             </div>
             <label className="wa-profile-field-label">Estado</label>
@@ -887,7 +1245,8 @@ const SidebarProfilePanel = ({ usuario, show, onClose, onLogout, onUsuarioUpdate
               <i className="fa-solid fa-cat" />
               <textarea
                 value={statusText}
-                onChange={(e) => setStatusText(e.target.value.slice(0, 180))}
+                maxLength={STATUS_MAX_LENGTH}
+                onChange={(e) => setStatusText(e.target.value.slice(0, STATUS_MAX_LENGTH))}
                 placeholder="Escribe tu estado"
                 rows={2}
               />
@@ -897,12 +1256,16 @@ const SidebarProfilePanel = ({ usuario, show, onClose, onLogout, onUsuarioUpdate
                 </button>
               )}
             </div>
-            <div className="wa-profile-modal-footer">
+            <div className={`wa-profile-modal-footer ${hasStatusDraftChanges ? "has-unsaved" : ""} ${statusFooterExiting ? "is-exiting" : ""}`}>
+              {hasStatusDraftChanges && <strong>¡Cuidado! ¡Tienes cambios sin guardar!</strong>}
               <select value={statusExpiration} onChange={(e) => setStatusExpiration(e.target.value)}>
                 {EXPIRATION_OPTIONS.map((option) => (
                   <option key={option.value} value={option.value}>{option.label}</option>
                 ))}
               </select>
+              {hasStatusDraftChanges && (
+                <button type="button" className="ghost" onClick={resetStatusDraftWithAnimation}>Reiniciar</button>
+              )}
               <button type="button" onClick={saveCustomStatus}>Guardar</button>
             </div>
           </div>
@@ -911,8 +1274,8 @@ const SidebarProfilePanel = ({ usuario, show, onClose, onLogout, onUsuarioUpdate
 
       {editOpen && (
         <div className="wa-profile-modal-backdrop wa-profile-edit-layer">
-          <div className="wa-profile-edit-modal" style={editThemeStyle}>
-            <button type="button" className="wa-profile-modal-close" onClick={() => setEditOpen(false)}>
+          <div className={`wa-profile-edit-modal ${editModalShake ? "is-shaking" : ""}`} style={editThemeWithCoverStyle}>
+            <button type="button" className="wa-profile-modal-close" onClick={closeEditModal}>
               <i className="fa-solid fa-xmark" />
             </button>
             <h3>Editar perfil</h3>
@@ -943,18 +1306,11 @@ const SidebarProfilePanel = ({ usuario, show, onClose, onLogout, onUsuarioUpdate
                 </div>
                 <h4>Información</h4>
                 <p className="wa-profile-help">Puedes usar texto corto para tu biografía.</p>
-                <textarea
-                  className="wa-profile-bio-editor"
-                  value={bioDraft}
-                  maxLength={220}
-                  onChange={(e) => setBioDraft(e.target.value)}
-                  placeholder="Escribe tu biografía"
-                />
-                <div className="wa-profile-char-count">{bioDraft.length}/220</div>
+                <RichBioEditor value={bioDraft} onChange={setBioDraft} maxLength={BIO_MAX_LENGTH} />
               </section>
               <section>
                 <h4>Previsualizar</h4>
-                <div className="wa-profile-preview-card" style={editThemeStyle}>
+                <div className="wa-profile-preview-card" style={editThemeWithCoverStyle}>
                   <div
                     className={`wa-profile-preview-cover-area ${coverUrl ? "has-image" : ""}`}
                     style={getCoverImageVars(coverUrl)}
@@ -970,7 +1326,7 @@ const SidebarProfilePanel = ({ usuario, show, onClose, onLogout, onUsuarioUpdate
                       <span className={`wa-profile-preview-presence-dot ${currentPresence.className}`}>
                         <i className={currentPresence.icon} />
                       </span>
-                      <button type="button" onClick={() => openImagePicker("avatar")} aria-label="Cambiar foto de perfil">
+                      <button type="button" className="wa-profile-preview-avatar-edit" onClick={() => openImagePicker("avatar")} aria-label="Cambiar foto de perfil">
                         <i className="fa-solid fa-pen" />
                       </button>
                     </div>
@@ -978,7 +1334,7 @@ const SidebarProfilePanel = ({ usuario, show, onClose, onLogout, onUsuarioUpdate
                       <i className="fa-solid fa-cat" />
                       <span>{statusText || statusMessage || "Establecer tu estado"}</span>
                       <div className="wa-profile-status-actions wa-profile-preview-status-actions">
-                        <button type="button" onClick={() => setStatusModalOpen(true)} title="Editar" data-tooltip="Editar">
+                        <button type="button" onClick={openStatusModal} title="Editar" data-tooltip="Editar">
                           <i className="fa-solid fa-pen" />
                         </button>
                         <button type="button" onClick={() => setStatusText("")} title="Borrar" data-tooltip="Borrar">
@@ -988,15 +1344,62 @@ const SidebarProfilePanel = ({ usuario, show, onClose, onLogout, onUsuarioUpdate
                     </div>
                     <strong>{profileName}</strong>
                     <span>{currentUser?.correo}</span>
-                    <p>{bioDraft || "Tu biografía aparecerá aquí."}</p>
+                    {bioDraft ? (
+                      <div className="wa-profile-preview-bio wa-profile-rich-output" dangerouslySetInnerHTML={{ __html: renderBioHtml(bioDraft) }} />
+                    ) : (
+                      <p className="wa-profile-preview-empty-bio">Añade tu biografía!</p>
+                    )}
                     <button type="button" className="wa-profile-preview-sample">Botón de ejemplo</button>
                   </div>
                 </div>
               </section>
             </div>
-            <div className="wa-profile-edit-footer">
-              <button type="button" className="secondary" onClick={() => setEditOpen(false)}>Cancelar</button>
-              <button type="button" onClick={saveProfileDetails}>Guardar cambios</button>
+            <div className={`wa-profile-edit-footer ${hasProfileDraftChanges ? "has-unsaved" : ""} ${profileFooterExiting ? "is-exiting" : ""}`}>
+              {hasProfileDraftChanges ? (
+                <>
+                  <strong>¡Cuidado! ¡Tienes cambios sin guardar!</strong>
+                  <button type="button" className="ghost" onClick={resetProfileDraftWithAnimation}>Reiniciar</button>
+                  <button type="button" onClick={saveProfileDetails}>Guardar cambios</button>
+                </>
+              ) : (
+                <>
+                  <button type="button" className="secondary" onClick={closeEditModal}>Cancelar</button>
+                  <button type="button" onClick={saveProfileDetails}>Guardar cambios</button>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {bioModalOpen && (
+        <div className="wa-profile-modal-backdrop wa-profile-bio-full-layer">
+          <div className="wa-profile-bio-full-modal" role="dialog" aria-label="Biografía completa" style={profileThemeWithCoverStyle}>
+            <button type="button" className="wa-profile-modal-close" onClick={() => setBioModalOpen(false)} aria-label="Cerrar biografía">
+              <i className="fa-solid fa-xmark" />
+            </button>
+            <div className="wa-profile-bio-full-card">
+              <div className={`wa-profile-bio-full-cover ${coverUrl ? "has-image" : ""}`} style={getCoverImageVars(coverUrl)}>
+                {coverUrl && <ProfileMedia src={coverUrl} transform={coverTransform} kind="cover" alt="Cartel de perfil" />}
+              </div>
+              <div className="wa-profile-bio-full-body">
+                <div className="wa-profile-bio-full-avatar">
+                  {avatarUrl ? <ProfileMedia src={avatarUrl} transform={avatarTransform} kind="avatar" alt={profileName} /> : <span>{getInitial(currentUser)}</span>}
+                  <span className={`wa-profile-preview-presence-dot ${currentPresence.className}`}>
+                    <i className={currentPresence.icon} />
+                  </span>
+                </div>
+                {statusMessage && (
+                  <div className="wa-profile-bio-full-status">
+                    <i className="fa-solid fa-cat" />
+                    <span>{statusMessage}</span>
+                  </div>
+                )}
+                <h3>{profileName}</h3>
+                <p className="wa-profile-userline">{currentUser?.correo || currentUser?.usuario || "Usuario"}</p>
+                <div className="wa-profile-bio-full-scroll wa-profile-rich-output" dangerouslySetInnerHTML={{ __html: renderBioHtml(biografia) }} />
+                <button type="button" className="wa-profile-bio-full-logout" onClick={onLogout}>Cerrar sesión</button>
+              </div>
             </div>
           </div>
         </div>
@@ -1006,7 +1409,7 @@ const SidebarProfilePanel = ({ usuario, show, onClose, onLogout, onUsuarioUpdate
         const config = CROP_CONFIG[cropEditor.kind] || CROP_CONFIG.avatar;
         return (
           <div className="wa-profile-modal-backdrop wa-profile-crop-layer">
-            <div className="wa-profile-crop-modal" role="dialog" aria-label={config.title}>
+            <div className="wa-profile-crop-modal" role="dialog" aria-label={config.title} style={editOpen ? editThemeWithCoverStyle : profileThemeWithCoverStyle}>
               <button type="button" className="wa-profile-modal-close" onClick={closeCropEditor}>
                 <i className="fa-solid fa-xmark" />
               </button>

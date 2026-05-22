@@ -1,175 +1,295 @@
-// components/ProfileModal.js
-import React from "react";
+import React, { useMemo } from "react";
 import { getAvatarUrl } from "../utils/url";
 
-const ProfileModal = ({ usuario, miUsuario, show, onClose, onLogout, onEnviarMensaje }) => {
-  if (!show) return null;
+const PRESENCE_OPTIONS = [
+  { value: "online", icon: "fa-solid fa-circle", className: "online" },
+  { value: "inactivo", icon: "fa-solid fa-moon", className: "idle" },
+  { value: "no_molestar", icon: "fa-solid fa-minus", className: "dnd" },
+  { value: "invisible", icon: "fa-regular fa-circle", className: "offline" },
+];
 
-  const getInitial = (correo) => correo?.charAt(0).toUpperCase();
+const CROP_CONFIG = {
+  avatar: { initialFit: "cover", initialZoom: 1, minZoom: 1 },
+  cover: { initialFit: "contain", initialZoom: 1, minZoom: 1 },
+};
+
+const getInitial = (usuario) => {
+  const text = usuario?.nombre || usuario?.correo || "U";
+  return text.charAt(0).toUpperCase();
+};
+
+const getFullName = (usuario) => {
+  const name = `${usuario?.nombre || ""} ${usuario?.apellido || ""}`.trim();
+  return name || usuario?.correo || "Usuario";
+};
+
+const getPresenceOption = (value) => {
+  const normalized = value || "online";
+  return PRESENCE_OPTIONS.find((option) => option.value === normalized) || PRESENCE_OPTIONS[0];
+};
+
+const clamp = (value, min, max) => Math.min(Math.max(value, min), max);
+
+const hasSavedThemeValue = (value) => /^#[0-9a-fA-F]{6}$/.test(String(value || "").trim());
+
+const normalizeHex = (value, fallback) => {
+  const text = String(value || "").trim();
+  return /^#[0-9a-fA-F]{6}$/.test(text) ? text : fallback;
+};
+
+const hexToRgb = (value) => {
+  const hex = normalizeHex(value, "#0f172a").replace("#", "");
+  return {
+    r: parseInt(hex.slice(0, 2), 16),
+    g: parseInt(hex.slice(2, 4), 16),
+    b: parseInt(hex.slice(4, 6), 16),
+  };
+};
+
+const rgbToCss = ({ r, g, b }) => `rgb(${Math.round(r)}, ${Math.round(g)}, ${Math.round(b)})`;
+
+const mixRgb = (a, b, weight = 0.5) => ({
+  r: a.r * (1 - weight) + b.r * weight,
+  g: a.g * (1 - weight) + b.g * weight,
+  b: a.b * (1 - weight) + b.b * weight,
+});
+
+const getLuminance = ({ r, g, b }) => {
+  const normalize = (channel) => {
+    const c = channel / 255;
+    return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+  };
+  return 0.2126 * normalize(r) + 0.7152 * normalize(g) + 0.0722 * normalize(b);
+};
+
+const getDefaultProfileTheme = () => {
+  if (typeof document !== "undefined" && document.documentElement?.dataset?.theme === "dark") {
+    return { primary: "#030202", secondary: "#1da1f2" };
+  }
+
+  return { primary: "#ffffff", secondary: "#aee3ff" };
+};
+
+const buildProfileThemeVars = (primaryValue, secondaryValue) => {
+  const primaryHex = normalizeHex(primaryValue, "#ffffff");
+  const secondaryHex = normalizeHex(secondaryValue, "#aee3ff");
+  const primary = hexToRgb(primaryHex);
+  const secondary = hexToRgb(secondaryHex);
+  const white = { r: 255, g: 255, b: 255 };
+  const ink = { r: 15, g: 23, b: 42 };
+  const nearBlack = { r: 7, g: 11, b: 20 };
+  const primaryLightness = getLuminance(primary);
+  const secondaryLightness = getLuminance(secondary);
+  const isLightTheme = primaryLightness > 0.5 || (primaryLightness > 0.38 && secondaryLightness > 0.62);
+
+  const panelA = isLightTheme ? mixRgb(primary, white, 0.74) : mixRgb(primary, nearBlack, 0.5);
+  const panelB = isLightTheme ? mixRgb(secondary, white, 0.68) : mixRgb(secondary, ink, 0.52);
+  const panelC = isLightTheme
+    ? mixRgb(mixRgb(primary, secondary, 0.52), white, 0.64)
+    : mixRgb(mixRgb(primary, secondary, 0.52), nearBlack, 0.42);
+  const statusBase = isLightTheme ? mixRgb(white, panelC, 0.12) : mixRgb(ink, panelC, 0.3);
+  const statusHover = isLightTheme ? mixRgb(white, panelC, 0.04) : mixRgb(ink, panelC, 0.22);
+  const buttonA = isLightTheme ? mixRgb(primary, secondary, 0.38) : mixRgb(primary, secondary, 0.26);
+  const buttonB = isLightTheme ? mixRgb(secondary, primary, 0.28) : mixRgb(secondary, primary, 0.34);
+  const buttonAverage = mixRgb(buttonA, buttonB, 0.5);
+  const borderMid = mixRgb(primary, secondary, 0.5);
+  const buttonText = getLuminance(buttonAverage) > 0.48 ? "#0f172a" : "#ffffff";
+
+  return {
+    "--profile-primary": primaryHex,
+    "--profile-secondary": secondaryHex,
+    "--profile-text": isLightTheme ? "#172033" : "#f8fafc",
+    "--profile-title": isLightTheme ? "#101827" : "#ffffff",
+    "--profile-muted": isLightTheme ? "rgba(23, 32, 51, 0.72)" : "rgba(248, 250, 252, 0.74)",
+    "--profile-bio": isLightTheme ? "rgba(16, 24, 39, 0.86)" : "rgba(248, 250, 252, 0.88)",
+    "--profile-card-bg": `linear-gradient(145deg, ${rgbToCss(panelA)} 0%, ${rgbToCss(panelC)} 52%, ${rgbToCss(panelB)} 100%)`,
+    "--profile-panel-gradient": `linear-gradient(145deg, ${rgbToCss(panelA)} 0%, ${rgbToCss(panelC)} 48%, ${rgbToCss(panelB)} 100%)`,
+    "--profile-border-gradient": `linear-gradient(135deg, ${primaryHex} 0%, ${rgbToCss(borderMid)} 48%, ${secondaryHex} 100%)`,
+    "--profile-button-gradient": `linear-gradient(135deg, ${rgbToCss(buttonA)} 0%, ${rgbToCss(buttonB)} 100%)`,
+    "--profile-button-text": buttonText,
+    "--profile-control-bg": isLightTheme ? "rgba(255, 255, 255, 0.56)" : "rgba(15, 23, 42, 0.42)",
+    "--profile-control-bg-hover": isLightTheme ? "rgba(255, 255, 255, 0.76)" : "rgba(15, 23, 42, 0.62)",
+    "--profile-control-border": isLightTheme ? "rgba(15, 23, 42, 0.12)" : "rgba(255, 255, 255, 0.12)",
+    "--profile-glass": isLightTheme ? "rgba(255, 255, 255, 0.34)" : "rgba(255, 255, 255, 0.10)",
+    "--profile-glass-strong": isLightTheme ? "rgba(255, 255, 255, 0.50)" : "rgba(255, 255, 255, 0.15)",
+    "--profile-status-bg": `${rgbToCss(statusBase).replace("rgb", "rgba").replace(")", isLightTheme ? ", 0.88)" : ", 0.82)")}`,
+    "--profile-status-bg-hover": `${rgbToCss(statusHover).replace("rgb", "rgba").replace(")", isLightTheme ? ", 0.96)" : ", 0.92)")}`,
+    "--profile-status-text": isLightTheme ? "#172033" : "#ffffff",
+    "--profile-shadow": isLightTheme ? "0 22px 60px rgba(15, 23, 42, 0.22)" : "0 24px 70px rgba(2, 6, 23, 0.42)",
+    "--profile-avatar-ring": isLightTheme ? "rgba(255, 255, 255, 0.78)" : "rgba(15, 23, 42, 0.88)",
+    "--profile-divider": isLightTheme ? "rgba(15, 23, 42, 0.10)" : "rgba(255, 255, 255, 0.11)",
+  };
+};
+
+const normalizeCropTransform = (value, kind = "cover") => {
+  const config = CROP_CONFIG[kind] || CROP_CONFIG.cover;
+  let parsed = value;
+
+  if (typeof value === "string") {
+    try {
+      parsed = JSON.parse(value);
+    } catch (error) {
+      parsed = null;
+    }
+  }
+
+  const fit = parsed?.fit === "contain" ? "contain" : parsed?.fit === "cover" ? "cover" : config.initialFit;
+  const zoom = clamp(Number(parsed?.zoom) || config.initialZoom, config.minZoom, 6);
+  const rotation = ((Number(parsed?.rotation) || 0) % 360 + 360) % 360;
+  const offsetXRatio = clamp(Number(parsed?.offsetXRatio) || 0, -1, 1);
+  const offsetYRatio = clamp(Number(parsed?.offsetYRatio) || 0, -1, 1);
+
+  return { fit, zoom, rotation, offsetXRatio, offsetYRatio };
+};
+
+const getMediaTransformVars = (value, kind = "cover") => {
+  const transform = normalizeCropTransform(value, kind);
+  return {
+    "--media-fit": transform.fit,
+    "--media-zoom": transform.zoom,
+    "--media-rotation": `${transform.rotation}deg`,
+    "--media-offset-x": `${transform.offsetXRatio * 100}%`,
+    "--media-offset-y": `${transform.offsetYRatio * 100}%`,
+  };
+};
+
+const ProfileMedia = ({ src, transform, kind = "cover", alt = "" }) => {
+  if (!src) return null;
+  const normalized = normalizeCropTransform(transform, kind);
+  return (
+    <span className={`wa-profile-media ${normalized.fit === "contain" ? "is-contain" : "is-cover"}`} style={getMediaTransformVars(normalized, kind)}>
+      {normalized.fit === "contain" && <img className="wa-profile-media-bg" src={src} alt="" aria-hidden="true" draggable="false" />}
+      <img className="wa-profile-media-img" src={src} alt={alt} draggable="false" />
+    </span>
+  );
+};
+
+const escapeHtml = (value = "") =>
+  String(value)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+
+const hasHtmlMarkup = (value = "") => /<\/?[a-z][\s\S]*>/i.test(String(value || ""));
+
+const sanitizeBioHtml = (value = "") => {
+  const raw = String(value || "");
+  if (!raw.trim()) return "";
+  if (typeof document === "undefined") return escapeHtml(raw).replace(/\n/g, "<br>");
+
+  const template = document.createElement("template");
+  template.innerHTML = hasHtmlMarkup(raw) ? raw : escapeHtml(raw).replace(/\n/g, "<br>");
+  const allowedTags = new Set(["B", "I", "U", "S", "STRONG", "EM", "UL", "OL", "LI", "SPAN", "DIV", "P", "BR"]);
+
+  const cleanNode = (node) => {
+    if (node.nodeType === Node.COMMENT_NODE) {
+      node.remove();
+      return;
+    }
+
+    if (node.nodeType !== Node.ELEMENT_NODE) return;
+    const element = node;
+
+    if (!allowedTags.has(element.tagName)) {
+      const parent = element.parentNode;
+      if (!parent) return;
+      while (element.firstChild) parent.insertBefore(element.firstChild, element);
+      element.remove();
+      return;
+    }
+
+    const rawStyle = element.getAttribute("style") || "";
+    const styleProbe = document.createElement("span");
+    styleProbe.setAttribute("style", rawStyle);
+    const fontWeight = String(styleProbe.style.fontWeight || "").toLowerCase();
+    const fontStyle = String(styleProbe.style.fontStyle || "").toLowerCase();
+    const decoration = String(styleProbe.style.textDecoration || styleProbe.style.textDecorationLine || "").toLowerCase();
+
+    [...element.attributes].forEach((attribute) => element.removeAttribute(attribute.name));
+
+    const safeStyles = [];
+    if (fontWeight === "bold" || Number(fontWeight) >= 600) safeStyles.push("font-weight: 800");
+    if (fontStyle === "italic") safeStyles.push("font-style: italic");
+    if (decoration.includes("underline") && decoration.includes("line-through")) safeStyles.push("text-decoration-line: underline line-through");
+    else if (decoration.includes("underline")) safeStyles.push("text-decoration-line: underline");
+    else if (decoration.includes("line-through")) safeStyles.push("text-decoration-line: line-through");
+    if (safeStyles.length) element.setAttribute("style", safeStyles.join("; "));
+  };
+
+  const walker = document.createTreeWalker(template.content, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_COMMENT);
+  const nodes = [];
+  while (walker.nextNode()) nodes.push(walker.currentNode);
+  nodes.forEach(cleanNode);
+  return template.innerHTML.trim();
+};
+
+const getCoverImageVars = (url) => (url ? { "--profile-cover-image": `url(${url})` } : {});
+
+const ProfileModal = ({ usuario, miUsuario, show, onClose, onLogout, onEnviarMensaje }) => {
+  const defaultTheme = useMemo(() => getDefaultProfileTheme(), []);
+
+  const themeStyle = useMemo(() => {
+    const primary = hasSavedThemeValue(usuario?.perfil_tema_principal) ? usuario.perfil_tema_principal : defaultTheme.primary;
+    const secondary = hasSavedThemeValue(usuario?.perfil_tema_secundario) ? usuario.perfil_tema_secundario : defaultTheme.secondary;
+    return buildProfileThemeVars(primary, secondary);
+  }, [usuario?.perfil_tema_principal, usuario?.perfil_tema_secundario, defaultTheme.primary, defaultTheme.secondary]);
+
+  if (!show || !usuario) return null;
 
   const esMiPerfil = usuario?.id === miUsuario?.id;
+  const profileName = getFullName(usuario);
+  const avatarUrl = getAvatarUrl(usuario?.url_imagen);
+  const coverUrl = getAvatarUrl(usuario?.perfil_cartel);
+  const avatarTransform = normalizeCropTransform(usuario?.perfil_avatar_transform, "avatar");
+  const coverTransform = normalizeCropTransform(usuario?.perfil_cartel_transform, "cover");
+  const statusMessage = usuario?.perfil_estado_mensaje || "";
+  const biografia = usuario?.perfil_biografia || "";
+  const currentPresence = getPresenceOption(usuario?.estado_presencia_actual || usuario?.estado_presencia || usuario?.estado || "online");
+  const mergedStyle = { ...themeStyle, ...getCoverImageVars(coverUrl) };
+
+  const handleMainAction = () => {
+    if (esMiPerfil) {
+      onLogout?.();
+      return;
+    }
+    onEnviarMensaje?.(usuario);
+    onClose?.();
+  };
 
   return (
-    <div
-      className="modal fade show d-block"
-      tabIndex="-1"
-      role="dialog"
-      style={{ backgroundColor: "rgba(0,0,0,0.5)" }}
-    >
-      <div className="modal-dialog modal-dialog-centered modal-fullscreen-xl-down">
-        <div className="modal-content">
-          <div className="modal-body py-0">
-            <div className="profile modal-gx-n">
-
-              {/* Fondo SVG superior */}
-              <div className="profile-img text-primary rounded-top-xl position-relative">
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  fill="currentColor"
-                  viewBox="0 0 400 140.74"
-                >
-                  <defs>
-                    <style>{`.cls-2{fill:#fff;opacity:0.1;}`}</style>
-                  </defs>
-                    <g>
-                      <g>
-                        <path d="M400,125A1278.49,1278.49,0,0,1,0,125V0H400Z" />
-                        {/* Este path puedes completarlo según tu diseño */}
-                        <path className="cls-2" d="M361.13,128c.07.83.15,1.65.27,2.46h0Q380.73,128,400,125V87l-1,0a38,38,0,0,0-38,38c0,.86,0,1.71.09,2.55C361.11,127.72,361.12,127.88,361.13,128Z"></path>
-                        <path className="cls-2" d="M12.14,119.53c.07.79.15,1.57.26,2.34v0c.13.84.28,1.66.46,2.48l.07.3c.18.8.39,1.59.62,2.37h0q33.09,4.88,66.36,8,.58-1,1.09-2l.09-.18a36.35,36.35,0,0,0,1.81-4.24l.08-.24q.33-.94.6-1.9l.12-.41a36.26,36.26,0,0,0,.91-4.42c0-.19,0-.37.07-.56q.11-.86.18-1.73c0-.21,0-.42,0-.63,0-.75.08-1.51.08-2.28a36.5,36.5,0,0,0-73,0c0,.83,0,1.64.09,2.45C12.1,119.15,12.12,119.34,12.14,119.53Z"></path>
-                        <circle className="cls-2" cx="94.5" cy="57.5" r="22.5"></circle>
-                        <path className="cls-2" d="M276,0a43,43,0,0,0,43,43A43,43,0,0,0,362,0Z"></path>
-                      </g>
-                    </g>
-                </svg>
-
-                {/* Botón de cerrar */}
-                <div className="position-absolute top-0 start-0 py-6 px-5">
-                  <button
-                    type="button"
-                    className="btn-close btn-close-white btn-close-arrow opacity-100"
-                    data-bs-dismiss="modal" 
-                    aria-label="Close"
-                    onClick={onClose}
-                  ></button>
-                </div>
-              </div>
-
-              {/* Información del usuario */}
-              <div className="profile-body text-center">
-                <div className="d-flex justify-content-center">
-                  <div className="avatar avatar-xl">
-                    {usuario?.url_imagen ? (
-                      <img
-                        src={getAvatarUrl(usuario.url_imagen)}
-                        alt="User"
-                        className="rounded-circle border border-warning"
-                        style={{ width: "74px", height: "74px", objectFit: "cover" }}
-                      />
-                    ) : (
-                      <div
-                        className="rounded-circle d-flex align-items-center justify-content-center text-white fw-bold"
-                        style={{
-                          width: "74px",
-                          height: "74px",
-                          backgroundColor: usuario?.background,
-                          fontSize: "27px",
-                        }}
-                      >
-                        {getInitial(usuario?.nombre || "U")}
-                      </div>
-                    )}
-                  </div>
-                </div>
-                <h4 className="mb-1">
-                  {usuario?.nombre || usuario?.apellido
-                    ? `${usuario?.nombre || ""} ${usuario?.apellido || ""}`.trim()
-                    : "Nombre no disponible"}
-                </h4>
-                {/*<p>Última conexión hace 5 minutos</p>*/}
-              </div>
+    <div className="wa-profile-modal-backdrop wa-profile-bio-full-layer wa-user-profile-layer" role="presentation">
+      <div className="wa-profile-bio-full-modal wa-user-profile-modal" role="dialog" aria-label={`Perfil de ${profileName}`} style={mergedStyle}>
+        <button type="button" className="wa-profile-modal-close" onClick={onClose} aria-label="Cerrar perfil">
+          <i className="fa-solid fa-xmark" />
+        </button>
+        <div className="wa-profile-bio-full-card wa-user-profile-card">
+          <div className={`wa-profile-bio-full-cover ${coverUrl ? "has-image" : ""}`} style={getCoverImageVars(coverUrl)}>
+            {coverUrl && <ProfileMedia src={coverUrl} transform={coverTransform} kind="cover" alt="Cartel de perfil" />}
+          </div>
+          <div className="wa-profile-bio-full-body">
+            <div className="wa-profile-bio-full-avatar">
+              {avatarUrl ? <ProfileMedia src={avatarUrl} transform={avatarTransform} kind="avatar" alt={profileName} /> : <span>{getInitial(usuario)}</span>}
+              <span className={`wa-profile-preview-presence-dot ${currentPresence.className}`}>
+                <i className={currentPresence.icon} />
+              </span>
             </div>
-
-            <hr className="hr-bold modal-gx-n my-0" />
-
-            {/* Detalles adicionales */}
-            <ul className="list-group list-group-flush">
-              <li className="list-group-item">
-                <div className="row align-items-center gx-6">
-                  <div className="col">
-                    <h5>E-mail</h5>
-                    <p>{usuario?.correo || "correo@ejemplo.com"}</p>
-                  </div>
-                  {/* ICONO */}
-                  <div className="col-auto">
-                      <div className="btn btn-sm btn-icon btn-dark">
-                          <svg 
-                            xmlns="http://www.w3.org/2000/svg" 
-                            width="24" height="24" viewBox="0 0 24 24" 
-                            fill="none" stroke="currentColor" 
-                            strokeWidth="2" 
-                            strokeLinecap="round" 
-                            strokeLinejoin="round" 
-                            className="feather feather-mail"
-                          >
-                          <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path>
-                          <polyline points="22,6 12,13 2,6"></polyline>
-                          </svg>
-                      </div>
-                  </div>
-
-                </div>
-
-              </li>
-              {/* CELULAR */}
-              <li className="list-group-item">
-                <div className="row align-items-center gx-6">
-                  <div className="col">
-                    <h5>Celular</h5>
-                    <p>1-800-275-2273</p>
-                  </div>
-
-                  <div className="col-auto">
-                    <div className="btn btn-sm btn-icon btn-dark">
-                      <svg 
-                        xmlns="http://www.w3.org/2000/svg" 
-                        width="24" 
-                        height="24" 
-                        viewBox="0 0 24 24" 
-                        fill="none" 
-                        stroke="currentColor" 
-                        strokeWidth="2" 
-                        strokeLinecap="round" 
-                        strokeLinejoin="round" 
-                        className="feather feather-phone-call"
-                      >
-                        <path d="M15.05 5A5 5 0 0 1 19 8.95M15.05 1A9 9 0 0 1 23 8.94m-1 7.98v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path>
-                      </svg>
-                    </div>
-                  </div>
-                </div>
-              </li>
-              
-            </ul>
-            <hr className="hr-bold modal-gx-n my-0" />
-
-            <ul className="list-group list-group-flush">
-              <li className="list-group-item">
-                {esMiPerfil ? (
-                  <button onClick={onLogout} className="btn btn-link text-danger">
-                    Cerrar Sesión
-                  </button>
-                ) : (
-                  <button
-                    onClick={() => onEnviarMensaje(usuario)}
-                    className="btn btn-link "
-                  >
-                    Enviar mensaje
-                  </button>
-                )}
-              </li>
-            </ul>
-
+            {statusMessage && (
+              <div className="wa-profile-bio-full-status">
+                <i className="fa-solid fa-cat" />
+                <span>{statusMessage}</span>
+              </div>
+            )}
+            <h3>{profileName}</h3>
+            <p className="wa-profile-userline">{usuario?.correo || usuario?.usuario || "Usuario"}</p>
+            <div
+              className={`wa-profile-bio-full-scroll wa-profile-rich-output ${!biografia ? "is-empty" : ""}`}
+              dangerouslySetInnerHTML={{ __html: biografia ? sanitizeBioHtml(biografia) : "<em>Añade tu biografía!</em>" }}
+            />
+            <button type="button" className="wa-profile-bio-full-logout" onClick={handleMainAction}>
+              {esMiPerfil ? "Cerrar sesión" : "Enviar mensaje"}
+            </button>
           </div>
         </div>
       </div>
