@@ -54,8 +54,8 @@ async function asegurarColumnasPerfil() {
     ["perfil_biografia", "TEXT NULL"],
     ["perfil_estado_mensaje", "VARCHAR(255) NULL"],
     ["perfil_estado_expira", "DATETIME NULL"],
-    ["perfil_tema_principal", "VARCHAR(20) NULL DEFAULT '#030202'"],
-    ["perfil_tema_secundario", "VARCHAR(20) NULL DEFAULT '#e7b5bf'"],
+    ["perfil_tema_principal", "VARCHAR(20) NULL DEFAULT NULL"],
+    ["perfil_tema_secundario", "VARCHAR(20) NULL DEFAULT NULL"],
     ["perfil_avatares_recientes", "TEXT NULL"],
   ];
 
@@ -107,6 +107,28 @@ function parseJsonObject(value) {
   }
 }
 
+function limpiarColorTemaPerfil(value) {
+  const text = String(value || "").trim();
+  return /^#[0-9a-fA-F]{6}$/.test(text) ? text : null;
+}
+
+function esTemaLegacyPorDefecto(primaryValue, secondaryValue) {
+  const primary = limpiarColorTemaPerfil(primaryValue)?.toLowerCase();
+  const secondary = limpiarColorTemaPerfil(secondaryValue)?.toLowerCase();
+  return primary === "#030202" && secondary === "#e7b5bf";
+}
+
+function normalizarTemaPerfil(row) {
+  const primary = limpiarColorTemaPerfil(row?.perfil_tema_principal);
+  const secondary = limpiarColorTemaPerfil(row?.perfil_tema_secundario);
+
+  if (!primary || !secondary || esTemaLegacyPorDefecto(primary, secondary)) {
+    return { primary: null, secondary: null };
+  }
+
+  return { primary, secondary };
+}
+
 function limitarNumero(value, min, max, fallback) {
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) return fallback;
@@ -139,13 +161,14 @@ async function guardarAvatarReciente(id, url) {
 
 function normalizarPerfilUsuario(row) {
   if (!row) return null;
+  const temaPerfil = normalizarTemaPerfil(row);
   return {
     ...row,
     perfil_biografia: row.perfil_biografia || "",
     perfil_estado_mensaje: row.perfil_estado_mensaje || "",
     perfil_estado_expira: row.perfil_estado_expira || null,
-    perfil_tema_principal: row.perfil_tema_principal || "#030202",
-    perfil_tema_secundario: row.perfil_tema_secundario || "#e7b5bf",
+    perfil_tema_principal: temaPerfil.primary,
+    perfil_tema_secundario: temaPerfil.secondary,
     perfil_avatar_transform: parseJsonObject(row.perfil_avatar_transform),
     perfil_cartel_transform: parseJsonObject(row.perfil_cartel_transform),
     perfil_avatares_recientes: parseJsonArray(row.perfil_avatares_recientes),
@@ -241,8 +264,8 @@ router.put("/:id/perfil", async (req, res) => {
         limpiarBiografiaPerfil(perfil_biografia),
         limpiarEstadoPersonal(perfil_estado_mensaje),
         limpiarExpiracionEstado(perfil_estado_expira),
-        perfil_tema_principal || "#030202",
-        perfil_tema_secundario || "#e7b5bf",
+        limpiarColorTemaPerfil(perfil_tema_principal),
+        limpiarColorTemaPerfil(perfil_tema_secundario),
         req.params.id,
       ]
     );
@@ -366,15 +389,24 @@ router.get("/", async (req, res) => {
       WHERE u.estado = 'aprobado';   -- 🔹 AQUÍ ESTÁ LA CLAVE
     `);
 
-    const data = rows.map((u) => ({
-      ...u,
-      perfil_avatar_transform: parseJsonObject(u.perfil_avatar_transform),
-      perfil_cartel_transform: parseJsonObject(u.perfil_cartel_transform),
-      permisos_chat: JSON.parse(u.permisos_chat),
-      proyectos_detallados: u.proyectos_detallados
-        ? JSON.parse(u.proyectos_detallados)
-        : [],
-    }));
+    const data = rows.map((u) => {
+      const perfilNormalizado = normalizarPerfilUsuario(u);
+      return {
+        ...u,
+        perfil_biografia: perfilNormalizado.perfil_biografia,
+        perfil_estado_mensaje: perfilNormalizado.perfil_estado_mensaje,
+        perfil_estado_expira: perfilNormalizado.perfil_estado_expira,
+        perfil_tema_principal: perfilNormalizado.perfil_tema_principal,
+        perfil_tema_secundario: perfilNormalizado.perfil_tema_secundario,
+        perfil_avatar_transform: perfilNormalizado.perfil_avatar_transform,
+        perfil_cartel_transform: perfilNormalizado.perfil_cartel_transform,
+        perfil_avatares_recientes: perfilNormalizado.perfil_avatares_recientes,
+        permisos_chat: JSON.parse(u.permisos_chat),
+        proyectos_detallados: u.proyectos_detallados
+          ? JSON.parse(u.proyectos_detallados)
+          : [],
+      };
+    });
 
     res.json(data);
 

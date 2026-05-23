@@ -1,5 +1,7 @@
-import React, { useMemo } from "react";
+import React, { useEffect, useMemo, useState } from "react";
+import axios from "axios";
 import { getAvatarUrl } from "../utils/url";
+import { useTheme } from "../context/ThemeContext";
 
 const PRESENCE_OPTIONS = [
   { value: "online", icon: "fa-solid fa-circle", className: "online" },
@@ -32,8 +34,23 @@ const clamp = (value, min, max) => Math.min(Math.max(value, min), max);
 
 const hasSavedThemeValue = (value) => /^#[0-9a-fA-F]{6}$/.test(String(value || "").trim());
 
-const normalizeHex = (value, fallback) => {
+const sanitizeCssColor = (value) => {
   const text = String(value || "").trim();
+  if (/^#[0-9a-fA-F]{3}([0-9a-fA-F]{3})?$/.test(text)) return text;
+  if (/^rgba?\(\s*\d{1,3}\s*,\s*\d{1,3}\s*,\s*\d{1,3}(\s*,\s*(0|1|0?\.\d+))?\s*\)$/i.test(text)) return text;
+  return "";
+};
+
+const expandShortHex = (value) => {
+  const text = String(value || "").trim();
+  if (/^#[0-9a-fA-F]{3}$/.test(text)) {
+    return `#${text[1]}${text[1]}${text[2]}${text[2]}${text[3]}${text[3]}`;
+  }
+  return text;
+};
+
+const normalizeHex = (value, fallback) => {
+  const text = expandShortHex(value);
   return /^#[0-9a-fA-F]{6}$/.test(text) ? text : fallback;
 };
 
@@ -47,6 +64,12 @@ const hexToRgb = (value) => {
 };
 
 const rgbToCss = ({ r, g, b }) => `rgb(${Math.round(r)}, ${Math.round(g)}, ${Math.round(b)})`;
+
+const getReadableTextForHex = (value, fallback = "#ffffff") => {
+  const text = expandShortHex(value);
+  if (!/^#[0-9a-fA-F]{6}$/.test(text)) return fallback;
+  return getLuminance(hexToRgb(text)) > 0.48 ? "#0f172a" : "#ffffff";
+};
 
 const mixRgb = (a, b, weight = 0.5) => ({
   r: a.r * (1 - weight) + b.r * weight,
@@ -62,12 +85,24 @@ const getLuminance = ({ r, g, b }) => {
   return 0.2126 * normalize(r) + 0.7152 * normalize(g) + 0.0722 * normalize(b);
 };
 
-const getDefaultProfileTheme = () => {
-  if (typeof document !== "undefined" && document.documentElement?.dataset?.theme === "dark") {
+const getDefaultProfileTheme = (appTheme = "light") => {
+  if (appTheme === "dark") {
     return { primary: "#030202", secondary: "#1da1f2" };
   }
 
   return { primary: "#ffffff", secondary: "#aee3ff" };
+};
+
+const isLegacyDefaultProfileTheme = (primaryValue, secondaryValue) => {
+  const primary = normalizeHex(primaryValue, "").toLowerCase();
+  const secondary = normalizeHex(secondaryValue, "").toLowerCase();
+  return primary === "#030202" && secondary === "#e7b5bf";
+};
+
+const hasCustomProfileTheme = (usuario) => {
+  if (!usuario) return false;
+  if (!hasSavedThemeValue(usuario.perfil_tema_principal) || !hasSavedThemeValue(usuario.perfil_tema_secundario)) return false;
+  return !isLegacyDefaultProfileTheme(usuario.perfil_tema_principal, usuario.perfil_tema_secundario);
 };
 
 const buildProfileThemeVars = (primaryValue, secondaryValue) => {
@@ -89,15 +124,22 @@ const buildProfileThemeVars = (primaryValue, secondaryValue) => {
     : mixRgb(mixRgb(primary, secondary, 0.52), nearBlack, 0.42);
   const statusBase = isLightTheme ? mixRgb(white, panelC, 0.12) : mixRgb(ink, panelC, 0.3);
   const statusHover = isLightTheme ? mixRgb(white, panelC, 0.04) : mixRgb(ink, panelC, 0.22);
+  const statusText = getLuminance(statusBase) > 0.48 ? "#172033" : "#ffffff";
   const buttonA = isLightTheme ? mixRgb(primary, secondary, 0.38) : mixRgb(primary, secondary, 0.26);
   const buttonB = isLightTheme ? mixRgb(secondary, primary, 0.28) : mixRgb(secondary, primary, 0.34);
   const buttonAverage = mixRgb(buttonA, buttonB, 0.5);
   const borderMid = mixRgb(primary, secondary, 0.5);
   const buttonText = getLuminance(buttonAverage) > 0.48 ? "#0f172a" : "#ffffff";
 
+  const avatarFallbackBg = rgbToCss(mixRgb(primary, secondary, 0.38));
+  const avatarFallbackText = getLuminance(mixRgb(primary, secondary, 0.38)) > 0.48 ? "#0f172a" : "#ffffff";
+
   return {
     "--profile-primary": primaryHex,
     "--profile-secondary": secondaryHex,
+    "--profile-cover-gradient": `linear-gradient(135deg, ${primaryHex} 0%, ${rgbToCss(borderMid)} 48%, ${secondaryHex} 100%)`,
+    "--profile-avatar-fallback-bg": avatarFallbackBg,
+    "--profile-avatar-fallback-text": avatarFallbackText,
     "--profile-text": isLightTheme ? "#172033" : "#f8fafc",
     "--profile-title": isLightTheme ? "#101827" : "#ffffff",
     "--profile-muted": isLightTheme ? "rgba(23, 32, 51, 0.72)" : "rgba(248, 250, 252, 0.74)",
@@ -114,7 +156,7 @@ const buildProfileThemeVars = (primaryValue, secondaryValue) => {
     "--profile-glass-strong": isLightTheme ? "rgba(255, 255, 255, 0.50)" : "rgba(255, 255, 255, 0.15)",
     "--profile-status-bg": `${rgbToCss(statusBase).replace("rgb", "rgba").replace(")", isLightTheme ? ", 0.88)" : ", 0.82)")}`,
     "--profile-status-bg-hover": `${rgbToCss(statusHover).replace("rgb", "rgba").replace(")", isLightTheme ? ", 0.96)" : ", 0.92)")}`,
-    "--profile-status-text": isLightTheme ? "#172033" : "#ffffff",
+    "--profile-status-text": statusText,
     "--profile-shadow": isLightTheme ? "0 22px 60px rgba(15, 23, 42, 0.22)" : "0 24px 70px rgba(2, 6, 23, 0.42)",
     "--profile-avatar-ring": isLightTheme ? "rgba(255, 255, 255, 0.78)" : "rgba(15, 23, 42, 0.88)",
     "--profile-divider": isLightTheme ? "rgba(15, 23, 42, 0.10)" : "rgba(255, 255, 255, 0.11)",
@@ -228,25 +270,68 @@ const sanitizeBioHtml = (value = "") => {
 const getCoverImageVars = (url) => (url ? { "--profile-cover-image": `url(${url})` } : {});
 
 const ProfileModal = ({ usuario, miUsuario, show, onClose, onLogout, onEnviarMensaje }) => {
-  const defaultTheme = useMemo(() => getDefaultProfileTheme(), []);
+  const { theme: appTheme } = useTheme();
+  const defaultTheme = useMemo(() => getDefaultProfileTheme(appTheme), [appTheme]);
+  const [perfilCompleto, setPerfilCompleto] = useState(null);
+
+  useEffect(() => {
+    if (!show || !usuario?.id) {
+      setPerfilCompleto(null);
+      return undefined;
+    }
+
+    let activo = true;
+    setPerfilCompleto(null);
+
+    axios
+      .get(`/api/usuarios/${usuario.id}/perfil`)
+      .then((res) => {
+        if (activo) setPerfilCompleto(res.data || null);
+      })
+      .catch(() => {
+        if (activo) setPerfilCompleto(null);
+      });
+
+    return () => {
+      activo = false;
+    };
+  }, [show, usuario?.id]);
+
+  const perfilVisible = useMemo(
+    () => ({ ...(usuario || {}), ...(perfilCompleto || {}) }),
+    [usuario, perfilCompleto]
+  );
 
   const themeStyle = useMemo(() => {
-    const primary = hasSavedThemeValue(usuario?.perfil_tema_principal) ? usuario.perfil_tema_principal : defaultTheme.primary;
-    const secondary = hasSavedThemeValue(usuario?.perfil_tema_secundario) ? usuario.perfil_tema_secundario : defaultTheme.secondary;
-    return buildProfileThemeVars(primary, secondary);
-  }, [usuario?.perfil_tema_principal, usuario?.perfil_tema_secundario, defaultTheme.primary, defaultTheme.secondary]);
+    const hasCustomTheme = hasCustomProfileTheme(perfilVisible);
+    const primary = hasCustomTheme ? perfilVisible.perfil_tema_principal : defaultTheme.primary;
+    const secondary = hasCustomTheme ? perfilVisible.perfil_tema_secundario : defaultTheme.secondary;
+    const avatarBg = sanitizeCssColor(perfilVisible?.background);
+    const avatarText = /^#[0-9a-fA-F]{3}([0-9a-fA-F]{3})?$/.test(avatarBg) ? getReadableTextForHex(avatarBg) : "#ffffff";
+
+    return {
+      ...buildProfileThemeVars(primary, secondary),
+      ...(avatarBg ? { "--profile-avatar-fallback-bg": avatarBg, "--profile-avatar-fallback-text": avatarText } : {}),
+    };
+  }, [
+    perfilVisible?.perfil_tema_principal,
+    perfilVisible?.perfil_tema_secundario,
+    perfilVisible?.background,
+    defaultTheme.primary,
+    defaultTheme.secondary,
+  ]);
 
   if (!show || !usuario) return null;
 
-  const esMiPerfil = usuario?.id === miUsuario?.id;
-  const profileName = getFullName(usuario);
-  const avatarUrl = getAvatarUrl(usuario?.url_imagen);
-  const coverUrl = getAvatarUrl(usuario?.perfil_cartel);
-  const avatarTransform = normalizeCropTransform(usuario?.perfil_avatar_transform, "avatar");
-  const coverTransform = normalizeCropTransform(usuario?.perfil_cartel_transform, "cover");
-  const statusMessage = usuario?.perfil_estado_mensaje || "";
-  const biografia = usuario?.perfil_biografia || "";
-  const currentPresence = getPresenceOption(usuario?.estado_presencia_actual || usuario?.estado_presencia || usuario?.estado || "online");
+  const esMiPerfil = perfilVisible?.id === miUsuario?.id;
+  const profileName = getFullName(perfilVisible);
+  const avatarUrl = getAvatarUrl(perfilVisible?.url_imagen);
+  const coverUrl = getAvatarUrl(perfilVisible?.perfil_cartel);
+  const avatarTransform = normalizeCropTransform(perfilVisible?.perfil_avatar_transform, "avatar");
+  const coverTransform = normalizeCropTransform(perfilVisible?.perfil_cartel_transform, "cover");
+  const statusMessage = perfilVisible?.perfil_estado_mensaje || "";
+  const biografia = perfilVisible?.perfil_biografia || "";
+  const currentPresence = getPresenceOption(perfilVisible?.estado_presencia_actual || perfilVisible?.estado_presencia || perfilVisible?.estado || "online");
   const mergedStyle = { ...themeStyle, ...getCoverImageVars(coverUrl) };
 
   const handleMainAction = () => {
@@ -254,7 +339,7 @@ const ProfileModal = ({ usuario, miUsuario, show, onClose, onLogout, onEnviarMen
       onLogout?.();
       return;
     }
-    onEnviarMensaje?.(usuario);
+    onEnviarMensaje?.(perfilVisible);
     onClose?.();
   };
 
@@ -270,7 +355,7 @@ const ProfileModal = ({ usuario, miUsuario, show, onClose, onLogout, onEnviarMen
           </div>
           <div className="wa-profile-bio-full-body">
             <div className="wa-profile-bio-full-avatar">
-              {avatarUrl ? <ProfileMedia src={avatarUrl} transform={avatarTransform} kind="avatar" alt={profileName} /> : <span>{getInitial(usuario)}</span>}
+              {avatarUrl ? <ProfileMedia src={avatarUrl} transform={avatarTransform} kind="avatar" alt={profileName} /> : <span>{getInitial(perfilVisible)}</span>}
               <span className={`wa-profile-preview-presence-dot ${currentPresence.className}`}>
                 <i className={currentPresence.icon} />
               </span>
@@ -282,7 +367,7 @@ const ProfileModal = ({ usuario, miUsuario, show, onClose, onLogout, onEnviarMen
               </div>
             )}
             <h3>{profileName}</h3>
-            <p className="wa-profile-userline">{usuario?.correo || usuario?.usuario || "Usuario"}</p>
+            <p className="wa-profile-userline">{perfilVisible?.correo || perfilVisible?.usuario || "Usuario"}</p>
             <div
               className={`wa-profile-bio-full-scroll wa-profile-rich-output ${!biografia ? "is-empty" : ""}`}
               dangerouslySetInnerHTML={{ __html: biografia ? sanitizeBioHtml(biografia) : "<em>Añade tu biografía!</em>" }}

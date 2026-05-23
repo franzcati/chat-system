@@ -2850,7 +2850,7 @@ body > #root > .flex.h-screen > .wa-app-rail {
   position: relative;
   min-height: 360px;
   padding: 120px 18px 18px;
-  border: 3px solid #e7b5bf;
+  border: 3px solid #aee3ff;
   border-radius: 10px;
   overflow: hidden;
   background-size: cover;
@@ -2977,7 +2977,7 @@ body > #root > .flex.h-screen > .wa-app-rail {
 /* Ajustes perfil lateral: estado alineado, tema combinado y preview real */
 .wa-profile-card {
   --profile-primary: #030202;
-  --profile-secondary: #e7b5bf;
+  --profile-secondary: #aee3ff;
   border: 1px solid transparent;
   background:
     linear-gradient(180deg, rgba(15, 23, 42, 0.92), rgba(15, 23, 42, 0.98)) padding-box,
@@ -3229,7 +3229,7 @@ body > #root > .flex.h-screen > .wa-app-rail {
 /* Fix final perfil sidebar: cartel, estado hover y tema combinado */
 .wa-profile-card {
   --profile-primary: #030202;
-  --profile-secondary: #e7b5bf;
+  --profile-secondary: #aee3ff;
   border: 1px solid transparent !important;
   background:
     linear-gradient(180deg, color-mix(in srgb, var(--profile-primary) 18%, #ffffff 82%), color-mix(in srgb, var(--profile-secondary) 18%, #ffffff 82%)) padding-box,
@@ -11452,3 +11452,1005 @@ body > #root > .flex.h-screen > .wa-app-rail {
     width: min(360px, calc(100% - 10px)) !important;
   }
 }
+
+/* =========================================================
+   HOTFIX 2026-05-22: tema claro en perfil/biografia/estado
+   - En modo claro se evita que la portada oscurezca el cuerpo o los modales.
+   - Los botones recuperan un borde visible para distinguirlos.
+   - El textarea de estado queda sin fondo propio.
+   ========================================================= */
+:root[data-theme="light"] .wa-profile-card,
+:root[data-theme="light"] .wa-profile-preview-card,
+:root[data-theme="light"] .wa-profile-bio-full-card,
+:root[data-theme="light"] .wa-user-profile-card,
+:root[data-theme="light"] .wa-profile-status-layer .wa-profile-status-preview,
+:root[data-theme="light"] .wa-profile-status-layer .wa-profile-status-modal,
+:root[data-theme="light"] .wa-profile-image-picker-modal,
+:root[data-theme="light"] .wa-profile-crop-modal,
+:root[data-theme="light"] .wa-presence-menu-panel {
+  --profile-text: #0f172a;
+  --profile-title: #101827;
+  --profile-muted: rgba(51, 65, 85, 0.78);
+  --profile-bio: rgba(15, 23, 42, 0.88);
+  --profile-card-bg: linear-gradient(145deg, #ffffff 0%, #f7fbff 52%, #eaf7ff 100%);
+  --profile-panel-gradient: linear-gradient(145deg, #ffffff 0%, #f7fbff 52%, #eaf7ff 100%);
+  --profile-control-bg: rgba(255, 255, 255, 0.82);
+  --profile-control-bg-hover: rgba(255, 255, 255, 0.96);
+  --profile-control-border: rgba(15, 23, 42, 0.16);
+  --profile-glass: rgba(255, 255, 255, 0.70);
+  --profile-glass-strong: rgba(255, 255, 255, 0.92);
+  --profile-status-bg: rgba(255, 255, 255, 0.94);
+  --profile-status-bg-hover: #ffffff;
+  --profile-status-text: #0f172a;
+  --profile-avatar-ring: rgba(255, 255, 255, 0.94);
+  --profile-divider: rgba(15, 23, 42, 0.14);
+  --profile-shadow: 0 24px 70px rgba(15, 23, 42, 0.18);
+}
+
+:root[data-theme="light"] .wa-profile-card,
+:root[data-theme="light"] .wa-profile-preview-card,
+:root[data-theme="light"] .wa-profile-bio-full-card,
+:root[data-theme="light"] .wa-user-profile-card,
+:root[data-theme="light"] .wa-profile-status-layer .wa-profile-status-preview {
+  background:
+    var(--profile-card-bg) padding-box,
+    var(--profile-border-gradient, linear-gradient(135deg, #dbeafe, #aee3ff)) border-box !important;
+  color: var(--profile-text) !important;
+  border-color: transparent !important;
+}
+
+:root[data-theme="light"] .wa-profile-main,
+:root[data-theme="light"] .wa-profile-preview-body,
+:root[data-theme="light"] .wa-profile-bio-full-body,
+:root[data-theme="light"] .wa-user-profile-card .wa-profile-bio-full-body,
+:root[data-theme="light"] .wa-profile-status-layer .wa-profile-status-preview-body {
+  background: var(--profile-panel-gradient) !important;
+  color: var(--profile-text) !important;
+}
+
+:root[data-theme="light"] .wa-profile-card::before,
+:root[data-theme="light"] .wa-profile-card::after,
+:root[data-theme="light"] .wa-profile-preview-card::before,
+:root[data-theme="light"] .wa-profile-preview-card::after,
+:root[data-theme="light"] .wa-profile-bio-full-card::before,
+:root[data-theme="light"] .wa-profile-bio-full-card::after,
+:root[data-theme="light"] .wa-user-profile-card::before,
+:root[data-theme="light"] .wa-user-profile-card::after,
+:root[data-theme="light"] .wa-profile-main::before,
+:root[data-theme="light"] .wa-profile-main::after,
+:root[data-theme="light"] .wa-profile-preview-body::before,
+:root[data-theme="light"] .wa-profile-preview-body::after,
+:root[data-theme="light"] .wa-profile-bio-full-body::before,
+:root[data-theme="light"] .wa-profile-bio-full-body::after,
+:root[data-theme="light"] .wa-profile-status-layer .wa-profile-status-preview::before,
+:root[data-theme="light"] .wa-profile-status-layer .wa-profile-status-preview::after,
+:root[data-theme="light"] .wa-profile-status-layer .wa-profile-status-preview-body::before,
+:root[data-theme="light"] .wa-profile-status-layer .wa-profile-status-preview-body::after,
+:root[data-theme="light"] .wa-profile-status-layer .wa-profile-status-modal::before,
+:root[data-theme="light"] .wa-profile-status-layer .wa-profile-status-modal::after,
+:root[data-theme="light"] .wa-profile-image-picker-modal::before,
+:root[data-theme="light"] .wa-profile-image-picker-modal::after,
+:root[data-theme="light"] .wa-profile-crop-modal::before,
+:root[data-theme="light"] .wa-profile-crop-modal::after,
+:root[data-theme="light"] .wa-presence-menu-panel::before,
+:root[data-theme="light"] .wa-presence-menu-panel::after {
+  content: none !important;
+  display: none !important;
+  opacity: 0 !important;
+  background: none !important;
+}
+
+:root[data-theme="light"] .wa-profile-status-layer .wa-profile-status-modal,
+:root[data-theme="light"] .wa-profile-image-picker-modal,
+:root[data-theme="light"] .wa-profile-crop-modal,
+:root[data-theme="light"] .wa-presence-menu-panel {
+  background:
+    radial-gradient(circle at 70% 0%, rgba(174, 227, 255, 0.36) 0 120px, transparent 260px),
+    var(--profile-card-bg) !important;
+  color: var(--profile-text) !important;
+  border: 1px solid var(--profile-control-border) !important;
+  box-shadow: var(--profile-shadow) !important;
+}
+
+:root[data-theme="light"] .wa-profile-main h3,
+:root[data-theme="light"] .wa-profile-preview-body > strong,
+:root[data-theme="light"] .wa-profile-bio-full-body h3,
+:root[data-theme="light"] .wa-user-profile-modal h3,
+:root[data-theme="light"] .wa-profile-status-layer .wa-profile-status-modal h3,
+:root[data-theme="light"] .wa-profile-status-layer .wa-profile-field-label,
+:root[data-theme="light"] .wa-profile-status-layer .wa-profile-status-preview-info strong {
+  color: var(--profile-title) !important;
+  -webkit-text-fill-color: var(--profile-title) !important;
+}
+
+:root[data-theme="light"] .wa-profile-userline,
+:root[data-theme="light"] .wa-profile-preview-body > span,
+:root[data-theme="light"] .wa-profile-bio-full-body .wa-profile-userline,
+:root[data-theme="light"] .wa-user-profile-modal .wa-profile-userline,
+:root[data-theme="light"] .wa-profile-status-layer .wa-profile-status-preview-info span,
+:root[data-theme="light"] .wa-profile-help,
+:root[data-theme="light"] .wa-profile-char-count,
+:root[data-theme="light"] .wa-presence-menu-panel small {
+  color: var(--profile-muted) !important;
+  -webkit-text-fill-color: var(--profile-muted) !important;
+}
+
+:root[data-theme="light"] .wa-profile-bio,
+:root[data-theme="light"] .wa-profile-preview-bio,
+:root[data-theme="light"] .wa-profile-preview-body > p,
+:root[data-theme="light"] .wa-profile-bio-full-scroll,
+:root[data-theme="light"] .wa-profile-bio-full-scroll *,
+:root[data-theme="light"] .wa-profile-rich-output,
+:root[data-theme="light"] .wa-profile-rich-output * {
+  color: var(--profile-bio) !important;
+  -webkit-text-fill-color: var(--profile-bio) !important;
+}
+
+.wa-profile-actions-card,
+.wa-profile-logout,
+.wa-profile-bio-full-logout,
+.wa-profile-status-layer .wa-profile-status-input,
+.wa-profile-modal-footer select,
+.wa-profile-modal-footer button,
+.wa-profile-edit-footer button,
+.wa-profile-image-picker-tile,
+.wa-profile-crop-toolbar button,
+.wa-profile-crop-footer button,
+.wa-presence-menu-panel button {
+  border: 1px solid var(--profile-control-border, rgba(255, 255, 255, 0.14)) !important;
+}
+
+.wa-profile-actions-card button + button {
+  border-top: 1px solid var(--profile-control-border, rgba(255, 255, 255, 0.14)) !important;
+}
+
+.wa-profile-logout,
+.wa-profile-bio-full-logout,
+.wa-profile-modal-footer button:not(.ghost),
+.wa-profile-edit-footer button:not(.ghost) {
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.18),
+    0 8px 20px rgba(2, 6, 23, 0.10) !important;
+}
+
+:root[data-theme="light"] .wa-profile-actions-card,
+:root[data-theme="light"] .wa-profile-status-layer .wa-profile-status-input,
+:root[data-theme="light"] .wa-profile-modal-footer select,
+:root[data-theme="light"] .wa-presence-menu-panel button,
+:root[data-theme="light"] .wa-profile-image-picker-tile,
+:root[data-theme="light"] .wa-profile-crop-toolbar button,
+:root[data-theme="light"] .wa-profile-crop-footer button.secondary {
+  background: var(--profile-control-bg) !important;
+  color: var(--profile-text) !important;
+  -webkit-text-fill-color: var(--profile-text) !important;
+  border-color: var(--profile-control-border) !important;
+}
+
+:root[data-theme="light"] .wa-profile-status-bubble,
+:root[data-theme="light"] .wa-profile-preview-status,
+:root[data-theme="light"] .wa-profile-bio-full-status,
+:root[data-theme="light"] .wa-profile-status-layer .wa-profile-status-preview-bubble {
+  background: var(--profile-status-bg) !important;
+  color: var(--profile-status-text) !important;
+  -webkit-text-fill-color: var(--profile-status-text) !important;
+  border-color: var(--profile-control-border) !important;
+}
+
+:root[data-theme="light"] .wa-profile-status-text,
+:root[data-theme="light"] .wa-profile-preview-status span,
+:root[data-theme="light"] .wa-profile-bio-full-status span,
+:root[data-theme="light"] .wa-profile-status-layer .wa-profile-status-preview-bubble span,
+:root[data-theme="light"] .wa-profile-status-layer .wa-profile-status-preview-bubble i {
+  color: var(--profile-status-text) !important;
+  -webkit-text-fill-color: var(--profile-status-text) !important;
+}
+
+.wa-profile-status-layer .wa-profile-status-input textarea,
+:root[data-theme="light"] .wa-profile-status-layer .wa-profile-status-input textarea,
+:root[data-theme="dark"] .wa-profile-status-layer .wa-profile-status-input textarea {
+  background: transparent !important;
+  background-color: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  outline: 0 !important;
+}
+
+/* =========================================================
+   HOTFIX 2026-05-22: Ver biografia completa mas amplia
+   - Se agranda el modal en ancho y alto para que el cartel de estado encaje.
+   - No se reduce el cartel; se le permite usar el espacio nuevo del modal.
+   ========================================================= */
+.wa-profile-bio-full-modal,
+.wa-user-profile-modal {
+  width: min(520px, calc(100vw - 32px)) !important;
+  max-width: min(520px, calc(100vw - 32px)) !important;
+  max-height: min(88vh, 860px) !important;
+  padding: 0 !important;
+  overflow: visible !important;
+}
+
+.wa-profile-bio-full-card,
+.wa-user-profile-card {
+  width: 100% !important;
+  max-width: 100% !important;
+  max-height: min(88vh, 860px) !important;
+  display: flex !important;
+  flex-direction: column !important;
+}
+
+.wa-profile-bio-full-cover,
+.wa-user-profile-card .wa-profile-bio-full-cover {
+  height: 168px !important;
+  flex: 0 0 168px !important;
+}
+
+.wa-profile-bio-full-body,
+.wa-user-profile-card .wa-profile-bio-full-body {
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+  padding: 66px 22px 22px !important;
+}
+
+.wa-profile-bio-full-status,
+.wa-user-profile-card .wa-profile-bio-full-status {
+  left: 138px !important;
+  right: 22px !important;
+  width: auto !important;
+  max-width: none !important;
+  min-height: 42px !important;
+  max-height: 58px !important;
+}
+
+.wa-profile-bio-full-status:hover,
+.wa-user-profile-card .wa-profile-bio-full-status:hover {
+  right: 22px !important;
+  max-width: none !important;
+  max-height: 160px !important;
+}
+
+.wa-profile-bio-full-scroll,
+.wa-user-profile-modal .wa-profile-bio-full-scroll {
+  flex: 1 1 auto !important;
+  min-height: 170px !important;
+  max-height: min(460px, calc(100vh - 360px)) !important;
+}
+
+.wa-profile-bio-full-logout,
+.wa-user-profile-card .wa-profile-bio-full-logout {
+  flex: 0 0 auto !important;
+}
+
+@media (max-width: 560px) {
+  .wa-profile-bio-full-modal,
+  .wa-user-profile-modal {
+    width: min(430px, calc(100vw - 22px)) !important;
+    max-width: min(430px, calc(100vw - 22px)) !important;
+  }
+
+  .wa-profile-bio-full-status,
+  .wa-user-profile-card .wa-profile-bio-full-status {
+    left: 132px !important;
+    right: 16px !important;
+  }
+
+  .wa-profile-bio-full-scroll,
+  .wa-user-profile-modal .wa-profile-bio-full-scroll {
+    max-height: min(420px, calc(100vh - 350px)) !important;
+  }
+}
+
+/* =========================================================
+   HOTFIX 2026-05-22: biografia compacta y tema real
+   - Ver biografia completa vuelve al ancho del menu izquierdo.
+   - La altura se adapta al contenido de la biografia.
+   - El cartel/estado encaja dentro de la tarjeta sin agrandar el modal.
+   - En modo claro se usan los colores configurados del perfil.
+   ========================================================= */
+.wa-profile-bio-full-modal,
+.wa-user-profile-modal {
+  width: min(360px, calc(100vw - 24px)) !important;
+  max-width: min(360px, calc(100vw - 24px)) !important;
+  height: auto !important;
+  max-height: calc(100vh - 28px) !important;
+  padding: 0 !important;
+  overflow: visible !important;
+}
+
+.wa-profile-bio-full-card,
+.wa-user-profile-card {
+  width: 100% !important;
+  max-width: 100% !important;
+  height: auto !important;
+  min-height: 0 !important;
+  max-height: calc(100vh - 28px) !important;
+  display: flex !important;
+  flex-direction: column !important;
+  border-radius: 18px !important;
+  overflow: hidden !important;
+  background:
+    var(--profile-card-bg, #181525) padding-box,
+    var(--profile-border-gradient, linear-gradient(135deg, #5865f2, #a78bfa)) border-box !important;
+  border: 2px solid transparent !important;
+  color: var(--profile-text, #f8fafc) !important;
+  box-shadow: var(--profile-shadow, 0 24px 70px rgba(2, 6, 23, 0.38)) !important;
+}
+
+.wa-profile-bio-full-cover,
+.wa-user-profile-card .wa-profile-bio-full-cover {
+  height: 126px !important;
+  min-height: 126px !important;
+  max-height: 126px !important;
+  flex: 0 0 126px !important;
+  border-radius: 16px 16px 0 0 !important;
+  overflow: hidden !important;
+  background: var(--wa-default-profile-cover, linear-gradient(135deg, #2787f5, #34b7ff)) !important;
+  background-size: cover !important;
+  background-position: center !important;
+  background-repeat: no-repeat !important;
+}
+
+.wa-profile-bio-full-cover.has-image,
+.wa-user-profile-card .wa-profile-bio-full-cover.has-image {
+  background: var(--profile-cover-image, var(--wa-default-profile-cover, linear-gradient(135deg, #2787f5, #34b7ff))) !important;
+  background-size: cover !important;
+  background-position: center !important;
+  background-repeat: no-repeat !important;
+}
+
+.wa-profile-bio-full-body,
+.wa-user-profile-card .wa-profile-bio-full-body {
+  flex: 0 1 auto !important;
+  min-height: 0 !important;
+  height: auto !important;
+  max-height: calc(100vh - 154px) !important;
+  padding: 52px 16px 16px !important;
+  overflow: visible !important;
+  background: var(--profile-panel-gradient, var(--profile-card-bg, #181525)) !important;
+  color: var(--profile-text, #f8fafc) !important;
+}
+
+.wa-profile-bio-full-avatar,
+.wa-user-profile-card .wa-profile-bio-full-avatar {
+  left: 18px !important;
+  top: -47px !important;
+  width: 94px !important;
+  height: 94px !important;
+  min-width: 94px !important;
+  min-height: 94px !important;
+  border-width: 4px !important;
+  border-color: var(--profile-avatar-ring, rgba(15, 23, 42, 0.88)) !important;
+}
+
+.wa-profile-bio-full-status,
+.wa-user-profile-card .wa-profile-bio-full-status {
+  position: absolute !important;
+  top: -30px !important;
+  left: 124px !important;
+  right: 14px !important;
+  width: auto !important;
+  min-width: 0 !important;
+  max-width: none !important;
+  min-height: 40px !important;
+  max-height: 54px !important;
+  padding: 8px 10px !important;
+  border-radius: 14px !important;
+  overflow: hidden !important;
+  background: var(--profile-status-bg, rgba(15, 23, 42, 0.74)) !important;
+  color: var(--profile-status-text, #ffffff) !important;
+  -webkit-text-fill-color: var(--profile-status-text, #ffffff) !important;
+  border: 1px solid var(--profile-divider, rgba(255, 255, 255, 0.12)) !important;
+  box-shadow: 0 10px 24px rgba(2, 6, 23, 0.22) !important;
+  backdrop-filter: blur(16px) !important;
+  -webkit-backdrop-filter: blur(16px) !important;
+}
+
+.wa-profile-bio-full-status:hover,
+.wa-user-profile-card .wa-profile-bio-full-status:hover {
+  right: 14px !important;
+  max-width: none !important;
+  max-height: 132px !important;
+  background: var(--profile-status-bg-hover, rgba(15, 23, 42, 0.92)) !important;
+}
+
+.wa-profile-bio-full-status span,
+.wa-user-profile-card .wa-profile-bio-full-status span {
+  min-width: 0 !important;
+  display: -webkit-box !important;
+  -webkit-line-clamp: 2 !important;
+  -webkit-box-orient: vertical !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  white-space: normal !important;
+  word-break: break-word !important;
+}
+
+.wa-profile-bio-full-status:hover span,
+.wa-user-profile-card .wa-profile-bio-full-status:hover span {
+  -webkit-line-clamp: unset !important;
+  overflow: visible !important;
+}
+
+.wa-profile-bio-full-body h3,
+.wa-user-profile-card .wa-profile-bio-full-body h3 {
+  margin: 2px 0 2px !important;
+  font-size: 1.02rem !important;
+  line-height: 1.15 !important;
+  color: var(--profile-title, #ffffff) !important;
+  -webkit-text-fill-color: var(--profile-title, #ffffff) !important;
+}
+
+.wa-profile-bio-full-body .wa-profile-userline,
+.wa-user-profile-card .wa-profile-userline {
+  margin: 0 0 12px !important;
+  font-size: 0.78rem !important;
+  color: var(--profile-muted, rgba(248, 250, 252, 0.74)) !important;
+  -webkit-text-fill-color: var(--profile-muted, rgba(248, 250, 252, 0.74)) !important;
+}
+
+.wa-profile-bio-full-scroll,
+.wa-user-profile-modal .wa-profile-bio-full-scroll {
+  flex: 0 1 auto !important;
+  min-height: 0 !important;
+  height: auto !important;
+  max-height: min(330px, calc(100vh - 360px)) !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  padding: 0 8px 0 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  color: var(--profile-bio, rgba(248, 250, 252, 0.88)) !important;
+  -webkit-text-fill-color: var(--profile-bio, rgba(248, 250, 252, 0.88)) !important;
+  font-size: 0.82rem !important;
+  line-height: 1.34 !important;
+  scrollbar-width: thin !important;
+  scrollbar-color: color-mix(in srgb, var(--profile-secondary, #a78bfa) 50%, rgba(255, 255, 255, 0.32)) transparent !important;
+}
+
+.wa-profile-bio-full-scroll.is-empty,
+.wa-user-profile-modal .wa-profile-bio-full-scroll.is-empty {
+  min-height: 0 !important;
+  max-height: none !important;
+  margin: 0 0 2px !important;
+}
+
+.wa-profile-bio-full-logout,
+.wa-user-profile-card .wa-profile-bio-full-logout {
+  flex: 0 0 auto !important;
+  width: 100% !important;
+  min-height: 44px !important;
+  margin-top: 14px !important;
+  border-radius: 12px !important;
+  background: var(--profile-button-gradient, linear-gradient(135deg, #5865f2, #4752c4)) !important;
+  color: var(--profile-button-text, #ffffff) !important;
+  -webkit-text-fill-color: var(--profile-button-text, #ffffff) !important;
+  border: 1px solid var(--profile-control-border, rgba(255, 255, 255, 0.14)) !important;
+}
+
+/* Establecer estado: preview compacto con la misma proporcion del perfil lateral. */
+.wa-profile-status-layer .wa-profile-status-preview {
+  width: min(340px, calc(100% - 24px)) !important;
+  height: 246px !important;
+  margin: 0 auto 24px !important;
+  border-radius: 18px !important;
+  background:
+    var(--profile-card-bg, #181525) padding-box,
+    var(--profile-border-gradient, linear-gradient(135deg, #5865f2, #a78bfa)) border-box !important;
+  border: 2px solid transparent !important;
+  color: var(--profile-text, #f8fafc) !important;
+}
+
+.wa-profile-status-layer .wa-profile-status-preview-cover {
+  height: 126px !important;
+  border-radius: 16px 16px 0 0 !important;
+}
+
+.wa-profile-status-layer .wa-profile-status-preview-body {
+  top: 126px !important;
+  background: var(--profile-panel-gradient, var(--profile-card-bg, #181525)) !important;
+  color: var(--profile-text, #f8fafc) !important;
+}
+
+.wa-profile-status-layer .wa-profile-status-preview-avatar {
+  left: 18px !important;
+  top: -47px !important;
+  width: 94px !important;
+  height: 94px !important;
+}
+
+.wa-profile-status-layer .wa-profile-status-preview-bubble {
+  left: 124px !important;
+  right: 14px !important;
+  top: -30px !important;
+  width: auto !important;
+  max-width: none !important;
+  min-height: 40px !important;
+  max-height: 54px !important;
+  background: var(--profile-status-bg, rgba(15, 23, 42, 0.74)) !important;
+  color: var(--profile-status-text, #ffffff) !important;
+  -webkit-text-fill-color: var(--profile-status-text, #ffffff) !important;
+  border-color: var(--profile-divider, rgba(255, 255, 255, 0.12)) !important;
+}
+
+.wa-profile-status-layer .wa-profile-status-preview-info {
+  left: 18px !important;
+  right: 16px !important;
+  top: 70px !important;
+}
+
+/* Modo claro: no usar fondos azules fijos; conservar las variables del tema configurado. */
+:root[data-theme="light"] .wa-profile-status-layer .wa-profile-status-modal,
+:root[data-theme="light"] .wa-profile-image-picker-modal,
+:root[data-theme="light"] .wa-profile-crop-modal,
+:root[data-theme="light"] .wa-presence-menu-panel {
+  background:
+    radial-gradient(circle at 70% 0%, color-mix(in srgb, var(--profile-secondary, #aee3ff) 24%, transparent) 0 120px, transparent 260px),
+    var(--profile-card-bg, #ffffff) !important;
+  color: var(--profile-text, #0f172a) !important;
+  border-color: var(--profile-control-border, rgba(15, 23, 42, 0.14)) !important;
+}
+
+:root[data-theme="light"] .wa-profile-card,
+:root[data-theme="light"] .wa-profile-preview-card,
+:root[data-theme="light"] .wa-profile-bio-full-card,
+:root[data-theme="light"] .wa-user-profile-card,
+:root[data-theme="light"] .wa-profile-status-layer .wa-profile-status-preview {
+  background:
+    var(--profile-card-bg, #ffffff) padding-box,
+    var(--profile-border-gradient, linear-gradient(135deg, #dbeafe, #aee3ff)) border-box !important;
+  color: var(--profile-text, #0f172a) !important;
+}
+
+:root[data-theme="light"] .wa-profile-main,
+:root[data-theme="light"] .wa-profile-preview-body,
+:root[data-theme="light"] .wa-profile-bio-full-body,
+:root[data-theme="light"] .wa-user-profile-card .wa-profile-bio-full-body,
+:root[data-theme="light"] .wa-profile-status-layer .wa-profile-status-preview-body {
+  background: var(--profile-panel-gradient, var(--profile-card-bg, #ffffff)) !important;
+  color: var(--profile-text, #0f172a) !important;
+}
+
+@media (max-width: 560px) {
+  .wa-profile-bio-full-modal,
+  .wa-user-profile-modal {
+    width: min(360px, calc(100vw - 18px)) !important;
+    max-width: min(360px, calc(100vw - 18px)) !important;
+  }
+
+  .wa-profile-bio-full-status,
+  .wa-user-profile-card .wa-profile-bio-full-status,
+  .wa-profile-status-layer .wa-profile-status-preview-bubble {
+    left: 112px !important;
+    right: 12px !important;
+  }
+
+  .wa-profile-bio-full-avatar,
+  .wa-user-profile-card .wa-profile-bio-full-avatar,
+  .wa-profile-status-layer .wa-profile-status-preview-avatar {
+    left: 16px !important;
+    width: 88px !important;
+    height: 88px !important;
+  }
+
+  .wa-profile-bio-full-scroll,
+  .wa-user-profile-modal .wa-profile-bio-full-scroll {
+    max-height: min(300px, calc(100vh - 340px)) !important;
+  }
+}
+
+/* =========================================================
+   HOTFIX 2026-05-22: biografia con tema real del usuario
+   ========================================================= */
+.wa-profile-card,
+.wa-profile-preview-card,
+.wa-profile-bio-full-card,
+.wa-user-profile-card,
+.wa-profile-status-layer .wa-profile-status-preview {
+  background:
+    var(--profile-card-bg, linear-gradient(145deg, #181525, #3d2530)) padding-box,
+    var(--profile-border-gradient, linear-gradient(135deg, #ffffff, #aee3ff)) border-box !important;
+  border-color: transparent !important;
+  color: var(--profile-text, #f8fafc) !important;
+}
+
+.wa-profile-main,
+.wa-profile-preview-body,
+.wa-profile-bio-full-body,
+.wa-user-profile-card .wa-profile-bio-full-body,
+.wa-profile-status-layer .wa-profile-status-preview-body {
+  background: var(--profile-panel-gradient, var(--profile-card-bg, linear-gradient(145deg, #181525, #3d2530))) !important;
+  color: var(--profile-text, #f8fafc) !important;
+}
+
+.wa-profile-cover:not(.has-image),
+.wa-profile-preview-cover:not(.has-image),
+.wa-profile-preview-cover-area:not(.has-image),
+.wa-profile-status-layer .wa-profile-status-preview-cover:not(.has-image),
+.wa-profile-bio-full-cover:not(.has-image),
+.wa-user-profile-card .wa-profile-bio-full-cover:not(.has-image) {
+  background: var(--profile-cover-gradient, linear-gradient(135deg, #ffffff, #d7f1ff, #aee3ff)) !important;
+  background-size: cover !important;
+  background-position: center !important;
+}
+
+.wa-profile-avatar > span:not(.wa-profile-avatar-hover),
+.wa-profile-preview-avatar > span:not(.wa-profile-preview-presence-dot),
+.wa-profile-bio-full-avatar > span:not(.wa-profile-preview-presence-dot),
+.wa-user-profile-card .wa-profile-bio-full-avatar > span:not(.wa-profile-preview-presence-dot),
+.wa-profile-status-layer .wa-profile-status-preview-avatar-initial {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  width: 100% !important;
+  height: 100% !important;
+  border-radius: 999px !important;
+  background: var(--profile-avatar-fallback-bg, var(--profile-primary, #030202)) !important;
+  color: var(--profile-avatar-fallback-text, #ffffff) !important;
+  -webkit-text-fill-color: var(--profile-avatar-fallback-text, #ffffff) !important;
+  font-weight: 800 !important;
+  line-height: 1 !important;
+}
+
+.wa-profile-bio-full-body h3,
+.wa-user-profile-card .wa-profile-bio-full-body h3,
+.wa-profile-main h3,
+.wa-profile-preview-card strong,
+.wa-profile-preview-body > strong,
+.wa-profile-status-layer .wa-profile-status-preview-info strong {
+  color: var(--profile-title, #ffffff) !important;
+  -webkit-text-fill-color: var(--profile-title, #ffffff) !important;
+}
+
+.wa-profile-userline,
+.wa-profile-main .wa-profile-userline,
+.wa-profile-bio-full-body .wa-profile-userline,
+.wa-user-profile-card .wa-profile-userline,
+.wa-profile-preview-body > span,
+.wa-profile-status-layer .wa-profile-status-preview-info span {
+  color: var(--profile-muted, rgba(248, 250, 252, 0.74)) !important;
+  -webkit-text-fill-color: var(--profile-muted, rgba(248, 250, 252, 0.74)) !important;
+}
+
+.wa-profile-bio,
+.wa-profile-bio *,
+.wa-profile-bio-full-scroll,
+.wa-profile-bio-full-scroll *,
+.wa-user-profile-modal .wa-profile-bio-full-scroll,
+.wa-user-profile-modal .wa-profile-bio-full-scroll * {
+  color: var(--profile-bio, rgba(248, 250, 252, 0.88)) !important;
+  -webkit-text-fill-color: var(--profile-bio, rgba(248, 250, 252, 0.88)) !important;
+}
+
+.wa-profile-bio-full-modal,
+.wa-user-profile-modal {
+  width: min(360px, calc(100vw - 24px)) !important;
+  max-width: min(360px, calc(100vw - 24px)) !important;
+  height: auto !important;
+  max-height: calc(100vh - 28px) !important;
+}
+
+.wa-profile-bio-full-card,
+.wa-user-profile-card {
+  height: auto !important;
+  min-height: 0 !important;
+}
+
+.wa-profile-bio-full-body,
+.wa-user-profile-card .wa-profile-bio-full-body {
+  height: auto !important;
+  min-height: 0 !important;
+  overflow: visible !important;
+}
+
+.wa-profile-bio-full-scroll.is-empty,
+.wa-user-profile-modal .wa-profile-bio-full-scroll.is-empty {
+  min-height: 0 !important;
+  max-height: none !important;
+  margin-bottom: 2px !important;
+}
+
+
+/* =========================================================
+   HOTFIX 2026-05-22: respetar tema real en modo claro
+   - El modo claro ya no sobrescribe las variables heredadas del perfil.
+   - El modal de biografia propia y el perfil de otra persona usan los colores
+     guardados del usuario o el tema por defecto del modo actual.
+   ========================================================= */
+:root[data-theme="light"] .wa-profile-bio-full-card,
+:root[data-theme="light"] .wa-user-profile-card {
+  --profile-primary: inherit;
+  --profile-secondary: inherit;
+  --profile-cover-gradient: inherit;
+  --profile-border-gradient: inherit;
+  --profile-button-gradient: inherit;
+  --profile-button-text: inherit;
+  --profile-avatar-fallback-bg: inherit;
+  --profile-avatar-fallback-text: inherit;
+  --profile-text: inherit;
+  --profile-title: inherit;
+  --profile-muted: inherit;
+  --profile-bio: inherit;
+  --profile-card-bg: inherit;
+  --profile-panel-gradient: inherit;
+  --profile-control-bg: inherit;
+  --profile-control-bg-hover: inherit;
+  --profile-control-border: inherit;
+  --profile-glass: inherit;
+  --profile-glass-strong: inherit;
+  --profile-status-bg: inherit;
+  --profile-status-bg-hover: inherit;
+  --profile-status-text: inherit;
+  --profile-avatar-ring: inherit;
+  --profile-divider: inherit;
+  --profile-shadow: inherit;
+}
+
+:root[data-theme="light"] .wa-profile-bio-full-cover:not(.has-image),
+:root[data-theme="light"] .wa-user-profile-card .wa-profile-bio-full-cover:not(.has-image),
+:root[data-theme="light"] .wa-profile-status-layer .wa-profile-status-preview-cover:not(.has-image),
+:root[data-theme="light"] .wa-profile-cover:not(.has-image) {
+  background: var(--profile-cover-gradient, linear-gradient(135deg, #ffffff 0%, #d7f1ff 48%, #aee3ff 100%)) !important;
+}
+
+:root[data-theme="light"] .wa-profile-bio-full-card,
+:root[data-theme="light"] .wa-user-profile-card,
+:root[data-theme="light"] .wa-profile-card,
+:root[data-theme="light"] .wa-profile-status-layer .wa-profile-status-preview {
+  background:
+    var(--profile-card-bg, linear-gradient(145deg, #ffffff 0%, #f7fbff 52%, #eaf7ff 100%)) padding-box,
+    var(--profile-border-gradient, linear-gradient(135deg, #ffffff 0%, #d7f1ff 48%, #aee3ff 100%)) border-box !important;
+}
+
+/* =========================================================
+   HOTFIX 2026-05-22: preview, estado y biografia con portada
+   y tipografia iguales al perfil lateral
+   ========================================================= */
+.wa-profile-card,
+.wa-profile-preview-card,
+.wa-profile-status-preview,
+.wa-profile-bio-full-card,
+.wa-user-profile-card {
+  --wa-default-profile-cover:
+    radial-gradient(circle at 24% 35%, rgba(255,255,255,0.14) 0 28px, transparent 29px),
+    radial-gradient(circle at 86% 8%, rgba(255,255,255,0.13) 0 44px, transparent 45px),
+    radial-gradient(circle at 8% 78%, rgba(255,255,255,0.12) 0 52px, transparent 53px),
+    linear-gradient(135deg, #2787f5 0%, #2da6ff 52%, #34b7ff 100%);
+}
+
+:root[data-theme="light"] .wa-profile-cover:not(.has-image),
+:root[data-theme="dark"] .wa-profile-cover:not(.has-image),
+.wa-profile-cover:not(.has-image),
+:root[data-theme="light"] .wa-profile-edit-modal .wa-profile-preview-cover-area:not(.has-image),
+:root[data-theme="dark"] .wa-profile-edit-modal .wa-profile-preview-cover-area:not(.has-image),
+.wa-profile-edit-modal .wa-profile-preview-cover-area:not(.has-image),
+:root[data-theme="light"] .wa-profile-status-layer .wa-profile-status-preview-cover:not(.has-image),
+:root[data-theme="dark"] .wa-profile-status-layer .wa-profile-status-preview-cover:not(.has-image),
+.wa-profile-status-layer .wa-profile-status-preview-cover:not(.has-image),
+:root[data-theme="light"] .wa-profile-bio-full-cover:not(.has-image),
+:root[data-theme="dark"] .wa-profile-bio-full-cover:not(.has-image),
+.wa-profile-bio-full-cover:not(.has-image),
+:root[data-theme="light"] .wa-user-profile-card .wa-profile-bio-full-cover:not(.has-image),
+:root[data-theme="dark"] .wa-user-profile-card .wa-profile-bio-full-cover:not(.has-image),
+.wa-user-profile-card .wa-profile-bio-full-cover:not(.has-image) {
+  background: var(--wa-default-profile-cover) !important;
+  background-size: cover !important;
+  background-position: center !important;
+  background-repeat: no-repeat !important;
+}
+
+:root[data-theme="light"] .wa-profile-edit-modal .wa-profile-preview-cover-area.has-image,
+:root[data-theme="dark"] .wa-profile-edit-modal .wa-profile-preview-cover-area.has-image,
+.wa-profile-edit-modal .wa-profile-preview-cover-area.has-image,
+:root[data-theme="light"] .wa-profile-status-layer .wa-profile-status-preview-cover.has-image,
+:root[data-theme="dark"] .wa-profile-status-layer .wa-profile-status-preview-cover.has-image,
+.wa-profile-status-layer .wa-profile-status-preview-cover.has-image,
+:root[data-theme="light"] .wa-profile-bio-full-cover.has-image,
+:root[data-theme="dark"] .wa-profile-bio-full-cover.has-image,
+.wa-profile-bio-full-cover.has-image,
+:root[data-theme="light"] .wa-user-profile-card .wa-profile-bio-full-cover.has-image,
+:root[data-theme="dark"] .wa-user-profile-card .wa-profile-bio-full-cover.has-image,
+.wa-user-profile-card .wa-profile-bio-full-cover.has-image {
+  background: var(--profile-cover-image, var(--wa-default-profile-cover)) !important;
+  background-size: cover !important;
+  background-position: center !important;
+  background-repeat: no-repeat !important;
+}
+
+.wa-profile-edit-modal .wa-profile-preview-body > strong,
+.wa-profile-status-layer .wa-profile-status-preview-info strong,
+.wa-profile-bio-full-body h3,
+.wa-user-profile-card .wa-profile-bio-full-body h3 {
+  font-size: 1.04rem !important;
+  line-height: 1.15 !important;
+  font-weight: 900 !important;
+  letter-spacing: -0.01em !important;
+  color: var(--profile-title, #f8fafc) !important;
+  -webkit-text-fill-color: var(--profile-title, #f8fafc) !important;
+}
+
+.wa-profile-edit-modal .wa-profile-preview-body > span,
+.wa-profile-status-layer .wa-profile-status-preview-info span,
+.wa-profile-bio-full-body .wa-profile-userline,
+.wa-user-profile-card .wa-profile-userline {
+  font-size: 0.76rem !important;
+  line-height: 1.18 !important;
+  color: var(--profile-muted, rgba(248, 250, 252, 0.74)) !important;
+  -webkit-text-fill-color: var(--profile-muted, rgba(248, 250, 252, 0.74)) !important;
+}
+
+.wa-profile-edit-modal .wa-profile-preview-bio,
+.wa-profile-edit-modal .wa-profile-preview-bio.wa-profile-rich-output,
+.wa-profile-edit-modal .wa-profile-preview-empty-bio,
+.wa-profile-status-layer .wa-profile-status-preview-bubble span,
+.wa-profile-bio-full-scroll,
+.wa-user-profile-modal .wa-profile-bio-full-scroll {
+  font-size: 0.80rem !important;
+  line-height: 1.32 !important;
+}
+
+.wa-profile-edit-modal .wa-profile-preview-bio,
+.wa-profile-edit-modal .wa-profile-preview-bio *,
+.wa-profile-edit-modal .wa-profile-preview-empty-bio,
+.wa-profile-bio-full-scroll,
+.wa-profile-bio-full-scroll *,
+.wa-user-profile-modal .wa-profile-bio-full-scroll,
+.wa-user-profile-modal .wa-profile-bio-full-scroll * {
+  color: var(--profile-bio, rgba(248, 250, 252, 0.88)) !important;
+  -webkit-text-fill-color: var(--profile-bio, rgba(248, 250, 252, 0.88)) !important;
+}
+
+.wa-profile-edit-modal .wa-profile-preview-status span,
+.wa-profile-status-layer .wa-profile-status-preview-bubble span,
+.wa-profile-status-layer .wa-profile-status-preview-bubble i,
+.wa-profile-bio-full-status span,
+.wa-profile-bio-full-status i,
+.wa-user-profile-card .wa-profile-bio-full-status span,
+.wa-user-profile-card .wa-profile-bio-full-status i {
+  color: var(--profile-status-text, #ffffff) !important;
+  -webkit-text-fill-color: var(--profile-status-text, #ffffff) !important;
+}
+
+/* =========================================================
+   HOTFIX 2026-05-22: estado y tipografia coherentes con el perfil lateral
+   - El texto/icono del estado usan el contraste del tema del perfil.
+   - Preview, establecer estado y biografia usan los mismos tamanos base del
+     menu lateral de perfil.
+   ========================================================= */
+.wa-profile-status-bubble,
+.wa-profile-preview-status,
+.wa-profile-status-layer .wa-profile-status-preview-bubble,
+.wa-profile-bio-full-status,
+.wa-user-profile-card .wa-profile-bio-full-status,
+.wa-profile-status-input {
+  color: var(--profile-status-text, var(--profile-text, #ffffff)) !important;
+  -webkit-text-fill-color: var(--profile-status-text, var(--profile-text, #ffffff)) !important;
+}
+
+.wa-profile-status-bubble i,
+.wa-profile-status-bubble span,
+.wa-profile-status-text,
+.wa-profile-preview-status i,
+.wa-profile-preview-status span,
+.wa-profile-status-layer .wa-profile-status-preview-bubble i,
+.wa-profile-status-layer .wa-profile-status-preview-bubble span,
+.wa-profile-bio-full-status i,
+.wa-profile-bio-full-status span,
+.wa-user-profile-card .wa-profile-bio-full-status i,
+.wa-user-profile-card .wa-profile-bio-full-status span,
+.wa-profile-status-input > i,
+.wa-profile-status-input textarea,
+.wa-profile-status-input button,
+.wa-profile-status-input button i {
+  color: var(--profile-status-text, var(--profile-text, #ffffff)) !important;
+  -webkit-text-fill-color: var(--profile-status-text, var(--profile-text, #ffffff)) !important;
+}
+
+.wa-profile-status-input textarea::placeholder {
+  color: color-mix(in srgb, var(--profile-status-text, var(--profile-text, #ffffff)) 62%, transparent) !important;
+  -webkit-text-fill-color: color-mix(in srgb, var(--profile-status-text, var(--profile-text, #ffffff)) 62%, transparent) !important;
+}
+
+.wa-profile-status-input {
+  background: var(--profile-status-bg, var(--profile-control-bg, rgba(15, 23, 42, 0.74))) !important;
+  border-color: var(--profile-divider, var(--profile-control-border, rgba(255, 255, 255, 0.14))) !important;
+}
+
+.wa-profile-status-input textarea {
+  background: transparent !important;
+  background-color: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+}
+
+.wa-profile-status-input button {
+  background: color-mix(in srgb, var(--profile-status-text, #ffffff) 12%, transparent) !important;
+  border: 0 !important;
+}
+
+.wa-profile-main h3,
+.wa-profile-preview-body > strong,
+.wa-profile-status-layer .wa-profile-status-preview-info strong,
+.wa-profile-bio-full-body h3,
+.wa-user-profile-card .wa-profile-bio-full-body h3 {
+  font-size: 1.25rem !important;
+  line-height: 1.12 !important;
+  font-weight: 800 !important;
+  letter-spacing: -0.01em !important;
+}
+
+.wa-profile-userline,
+.wa-profile-main .wa-profile-userline,
+.wa-profile-preview-body > span,
+.wa-profile-status-layer .wa-profile-status-preview-info span,
+.wa-profile-bio-full-body .wa-profile-userline,
+.wa-user-profile-card .wa-profile-userline {
+  font-size: 0.84rem !important;
+  line-height: 1.18 !important;
+}
+
+.wa-profile-bio,
+.wa-profile-preview-bio,
+.wa-profile-preview-bio *,
+.wa-profile-preview-empty-bio,
+.wa-profile-bio-full-scroll,
+.wa-profile-bio-full-scroll *,
+.wa-user-profile-modal .wa-profile-bio-full-scroll,
+.wa-user-profile-modal .wa-profile-bio-full-scroll * {
+  font-size: 0.88rem !important;
+  line-height: 1.35 !important;
+}
+
+.wa-profile-status-text,
+.wa-profile-status-bubble span,
+.wa-profile-preview-status span,
+.wa-profile-status-layer .wa-profile-status-preview-bubble span,
+.wa-profile-bio-full-status span,
+.wa-user-profile-card .wa-profile-bio-full-status span,
+.wa-profile-status-input textarea {
+  font-size: 0.82rem !important;
+  line-height: 1.25 !important;
+  font-weight: 700 !important;
+}
+
+.wa-profile-status-bubble i,
+.wa-profile-preview-status i,
+.wa-profile-status-layer .wa-profile-status-preview-bubble i,
+.wa-profile-bio-full-status i,
+.wa-user-profile-card .wa-profile-bio-full-status i,
+.wa-profile-status-input > i,
+.wa-profile-status-input button i {
+  font-size: 0.86rem !important;
+  line-height: 1 !important;
+}
+
+/* =========================================================
+   HOTFIX perfil 2026-05-22: limpiar cruce de reglas del estado
+   Este bloque queda al final para unificar tamano, contraste y ancho.
+   ========================================================= */
+
+/* Estado: no debe ocupar todo el ancho; debe crecer segun el texto. */
+
+.wa-profile-edit-modal .wa-profile-preview-status,
+.wa-profile-status-layer .wa-profile-status-preview-bubble,
+.wa-profile-bio-full-status,
+.wa-user-profile-card .wa-profile-bio-full-status {
+  width: fit-content !important;
+  min-width: 0 !important;
+  min-height: 40px !important;
+  max-height: 56px !important;
+  padding: 8px 10px !important;
+  border-radius: 14px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  overflow: hidden !important;
+  background: var(--profile-status-bg, rgba(15, 23, 42, 0.74)) !important;
+  border: 1px solid var(--profile-divider, rgba(255, 255, 255, 0.12)) !important;
+  color: var(--profile-status-text, var(--profile-text, #ffffff)) !important;
+  -webkit-text-fill-color: var(--profile-status-text, var(--profile-text, #ffffff)) !important;
+  box-shadow: 0 10px 28px rgba(2, 6, 23, 0.22) !important;
+  backdrop-filter: blur(16px) !important;
+  -webkit-backdrop-filter: blur(16px) !important;
+}
+

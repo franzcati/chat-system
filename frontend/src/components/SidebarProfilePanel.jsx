@@ -3,6 +3,7 @@ import axios from "axios";
 import toast from "react-hot-toast";
 import { cambiarEstadoPresenciaSocket } from "../socket";
 import { getAvatarUrl } from "../utils/url";
+import { useTheme } from "../context/ThemeContext";
 
 const EXPIRATION_OPTIONS = [
   { value: "never", label: "No eliminar" },
@@ -430,11 +431,7 @@ const createCroppedFile = async (editor) => {
 };
 
 
-const getDefaultProfileTheme = () => {
-  const appTheme = typeof document !== "undefined"
-    ? document.documentElement?.getAttribute("data-theme")
-    : "light";
-
+const getDefaultProfileTheme = (appTheme = "light") => {
   if (appTheme === "dark") {
     return {
       primary: "#030202",
@@ -450,9 +447,38 @@ const getDefaultProfileTheme = () => {
 
 const hasSavedThemeValue = (value) => /^#[0-9a-fA-F]{6}$/.test(String(value || "").trim());
 
-const normalizeHex = (value, fallback) => {
+
+const expandShortHex = (value) => {
   const text = String(value || "").trim();
+  if (/^#[0-9a-fA-F]{3}$/.test(text)) {
+    return `#${text[1]}${text[1]}${text[2]}${text[2]}${text[3]}${text[3]}`;
+  }
+  return text;
+};
+
+const normalizeHex = (value, fallback) => {
+  const text = expandShortHex(value);
   return /^#[0-9a-fA-F]{6}$/.test(text) ? text : fallback;
+};
+
+const isLegacyDefaultProfileTheme = (primaryValue, secondaryValue) => {
+  const primary = normalizeHex(primaryValue, "").toLowerCase();
+  const secondary = normalizeHex(secondaryValue, "").toLowerCase();
+  return primary === "#030202" && secondary === "#e7b5bf";
+};
+
+const hasCustomProfileTheme = (usuario) => {
+  if (!usuario) return false;
+  if (!hasSavedThemeValue(usuario.perfil_tema_principal) || !hasSavedThemeValue(usuario.perfil_tema_secundario)) return false;
+  return !isLegacyDefaultProfileTheme(usuario.perfil_tema_principal, usuario.perfil_tema_secundario);
+};
+
+const getStoredCustomTheme = (usuario) => {
+  if (!hasCustomProfileTheme(usuario)) return { primary: null, secondary: null };
+  return {
+    primary: usuario.perfil_tema_principal,
+    secondary: usuario.perfil_tema_secundario,
+  };
 };
 
 const hexToRgb = (value) => {
@@ -480,9 +506,15 @@ const getLuminance = ({ r, g, b }) => {
   return 0.2126 * normalize(r) + 0.7152 * normalize(g) + 0.0722 * normalize(b);
 };
 
+const getReadableTextForHex = (value, fallback = "#ffffff") => {
+  const text = expandShortHex(value);
+  if (!/^#[0-9a-fA-F]{6}$/.test(text)) return fallback;
+  return getLuminance(hexToRgb(text)) > 0.48 ? "#0f172a" : "#ffffff";
+};
+
 const buildProfileThemeVars = (primaryValue, secondaryValue) => {
   const primaryHex = normalizeHex(primaryValue, "#030202");
-  const secondaryHex = normalizeHex(secondaryValue, "#e7b5bf");
+  const secondaryHex = normalizeHex(secondaryValue, "#aee3ff");
   const primary = hexToRgb(primaryHex);
   const secondary = hexToRgb(secondaryHex);
   const white = { r: 255, g: 255, b: 255 };
@@ -500,15 +532,22 @@ const buildProfileThemeVars = (primaryValue, secondaryValue) => {
   const panelC = isLightTheme ? mixRgb(mixRgb(primary, secondary, 0.52), white, 0.64) : mixRgb(mixRgb(primary, secondary, 0.52), nearBlack, 0.42);
   const statusBase = isLightTheme ? mixRgb(white, panelC, 0.12) : mixRgb(ink, panelC, 0.30);
   const statusHover = isLightTheme ? mixRgb(white, panelC, 0.04) : mixRgb(ink, panelC, 0.22);
+  const statusText = getLuminance(statusBase) > 0.48 ? "#172033" : "#ffffff";
   const buttonA = isLightTheme ? mixRgb(primary, secondary, 0.38) : mixRgb(primary, secondary, 0.26);
   const buttonB = isLightTheme ? mixRgb(secondary, primary, 0.28) : mixRgb(secondary, primary, 0.34);
   const buttonAverage = mixRgb(buttonA, buttonB, 0.50);
   const borderMid = mixRgb(primary, secondary, 0.50);
   const buttonText = getLuminance(buttonAverage) > 0.48 ? "#0f172a" : "#ffffff";
 
+  const avatarFallbackBg = rgbToCss(mixRgb(primary, secondary, 0.38));
+  const avatarFallbackText = getLuminance(mixRgb(primary, secondary, 0.38)) > 0.48 ? "#0f172a" : "#ffffff";
+
   return {
     "--profile-primary": primaryHex,
     "--profile-secondary": secondaryHex,
+    "--profile-cover-gradient": `linear-gradient(135deg, ${primaryHex} 0%, ${rgbToCss(borderMid)} 48%, ${secondaryHex} 100%)`,
+    "--profile-avatar-fallback-bg": avatarFallbackBg,
+    "--profile-avatar-fallback-text": avatarFallbackText,
     "--profile-text": isLightTheme ? "#172033" : "#f8fafc",
     "--profile-title": isLightTheme ? "#101827" : "#ffffff",
     "--profile-muted": isLightTheme ? "rgba(23, 32, 51, 0.72)" : "rgba(248, 250, 252, 0.74)",
@@ -525,7 +564,7 @@ const buildProfileThemeVars = (primaryValue, secondaryValue) => {
     "--profile-glass-strong": isLightTheme ? "rgba(255, 255, 255, 0.50)" : "rgba(255, 255, 255, 0.15)",
     "--profile-status-bg": `${rgbToCss(statusBase).replace("rgb", "rgba").replace(")", isLightTheme ? ", 0.88)" : ", 0.82)")}`,
     "--profile-status-bg-hover": `${rgbToCss(statusHover).replace("rgb", "rgba").replace(")", isLightTheme ? ", 0.96)" : ", 0.92)")}`,
-    "--profile-status-text": isLightTheme ? "#172033" : "#ffffff",
+    "--profile-status-text": statusText,
     "--profile-shadow": isLightTheme ? "0 22px 60px rgba(15, 23, 42, 0.22)" : "0 24px 70px rgba(2, 6, 23, 0.42)",
     "--profile-avatar-ring": isLightTheme ? "rgba(255, 255, 255, 0.78)" : "rgba(15, 23, 42, 0.88)",
     "--profile-divider": isLightTheme ? "rgba(15, 23, 42, 0.10)" : "rgba(255, 255, 255, 0.11)",
@@ -533,7 +572,8 @@ const buildProfileThemeVars = (primaryValue, secondaryValue) => {
 };
 
 const SidebarProfilePanel = ({ usuario, show, onClose, onLogout, onUsuarioUpdate }) => {
-  const defaultProfileTheme = useMemo(() => getDefaultProfileTheme(), []);
+  const { theme: appTheme } = useTheme();
+  const defaultProfileTheme = useMemo(() => getDefaultProfileTheme(appTheme), [appTheme]);
   const [perfil, setPerfil] = useState(usuario || null);
   const [presenceMenuOpen, setPresenceMenuOpen] = useState(false);
   const [statusModalOpen, setStatusModalOpen] = useState(false);
@@ -566,9 +606,10 @@ const SidebarProfilePanel = ({ usuario, show, onClose, onLogout, onUsuarioUpdate
   const statusMessage = currentUser?.perfil_estado_mensaje || "";
   const biografia = currentUser?.perfil_biografia || "";
   const shouldShowFullBioButton = getRichTextLength(biografia) > 110;
-  const hasSavedProfileTheme = hasSavedThemeValue(currentUser?.perfil_tema_principal) && hasSavedThemeValue(currentUser?.perfil_tema_secundario);
-  const profilePrimary = normalizeHex(hasSavedProfileTheme ? currentUser?.perfil_tema_principal : defaultProfileTheme.primary, defaultProfileTheme.primary);
-  const profileSecondary = normalizeHex(hasSavedProfileTheme ? currentUser?.perfil_tema_secundario : defaultProfileTheme.secondary, defaultProfileTheme.secondary);
+  const hasSavedProfileTheme = hasCustomProfileTheme(currentUser);
+  const storedProfileTheme = getStoredCustomTheme(currentUser);
+  const profilePrimary = normalizeHex(hasSavedProfileTheme ? storedProfileTheme.primary : defaultProfileTheme.primary, defaultProfileTheme.primary);
+  const profileSecondary = normalizeHex(hasSavedProfileTheme ? storedProfileTheme.secondary : defaultProfileTheme.secondary, defaultProfileTheme.secondary);
   const currentPresence = getPresenceOption(
     currentUser?.estado_presencia_actual || currentUser?.estado_presencia || currentUser?.estado || "online"
   );
@@ -581,22 +622,30 @@ const SidebarProfilePanel = ({ usuario, show, onClose, onLogout, onUsuarioUpdate
     [primaryColor, secondaryColor, defaultProfileTheme.primary, defaultProfileTheme.secondary]
   );
   const coverImageStyle = useMemo(() => getCoverImageVars(coverUrl) || {}, [coverUrl]);
+  const avatarFallbackStyle = useMemo(() => {
+    const avatarBg = sanitizeCssColor(currentUser?.background);
+    const avatarText = /^#[0-9a-fA-F]{3}([0-9a-fA-F]{3})?$/.test(avatarBg) ? getReadableTextForHex(avatarBg) : "#ffffff";
+    return avatarBg ? { "--profile-avatar-fallback-bg": avatarBg, "--profile-avatar-fallback-text": avatarText } : {};
+  }, [currentUser?.background]);
   const profileThemeWithCoverStyle = useMemo(
-    () => ({ ...profileThemeStyle, ...coverImageStyle }),
-    [profileThemeStyle, coverImageStyle]
+    () => ({ ...profileThemeStyle, ...avatarFallbackStyle, ...coverImageStyle }),
+    [profileThemeStyle, avatarFallbackStyle, coverImageStyle]
   );
   const editThemeWithCoverStyle = useMemo(
-    () => ({ ...editThemeStyle, ...coverImageStyle }),
-    [editThemeStyle, coverImageStyle]
+    () => ({ ...editThemeStyle, ...avatarFallbackStyle, ...coverImageStyle }),
+    [editThemeStyle, avatarFallbackStyle, coverImageStyle]
   );
 
   const recentAvatarStorageKey = useMemo(() => `chat_recent_avatars_${userId || "guest"}`, [userId]);
 
 
-  const getSavedThemeDraft = () => ({
-    primary: hasSavedThemeValue(currentUser?.perfil_tema_principal) ? currentUser.perfil_tema_principal : defaultProfileTheme.primary,
-    secondary: hasSavedThemeValue(currentUser?.perfil_tema_secundario) ? currentUser.perfil_tema_secundario : defaultProfileTheme.secondary,
-  });
+  const getSavedThemeDraft = () => {
+    const storedTheme = getStoredCustomTheme(currentUser);
+    return {
+      primary: storedTheme.primary || defaultProfileTheme.primary,
+      secondary: storedTheme.secondary || defaultProfileTheme.secondary,
+    };
+  };
 
   const resetStatusDraftToSaved = () => {
     setStatusText(currentUser?.perfil_estado_mensaje || "");
@@ -715,8 +764,9 @@ const SidebarProfilePanel = ({ usuario, show, onClose, onLogout, onUsuarioUpdate
         setPerfil(res.data);
         setStatusText(res.data?.perfil_estado_mensaje || "");
         setBioDraft(res.data?.perfil_biografia || "");
-        setPrimaryColor(hasSavedThemeValue(res.data?.perfil_tema_principal) ? res.data.perfil_tema_principal : defaultProfileTheme.primary);
-        setSecondaryColor(hasSavedThemeValue(res.data?.perfil_tema_secundario) ? res.data.perfil_tema_secundario : defaultProfileTheme.secondary);
+        const fetchedTheme = getStoredCustomTheme(res.data);
+        setPrimaryColor(fetchedTheme.primary || defaultProfileTheme.primary);
+        setSecondaryColor(fetchedTheme.secondary || defaultProfileTheme.secondary);
         const storedAvatars = (() => {
           try { return JSON.parse(localStorage.getItem(recentAvatarStorageKey) || "[]"); } catch (error) { return []; }
         })();
@@ -785,8 +835,8 @@ const SidebarProfilePanel = ({ usuario, show, onClose, onLogout, onUsuarioUpdate
         perfil_biografia: biografia,
         perfil_estado_mensaje: trimmed,
         perfil_estado_expira: getExpirationDate(statusExpiration),
-        perfil_tema_principal: profilePrimary,
-        perfil_tema_secundario: profileSecondary,
+        perfil_tema_principal: storedProfileTheme.primary,
+        perfil_tema_secundario: storedProfileTheme.secondary,
       },
       trimmed ? "Estado actualizado" : "Estado eliminado"
     );
@@ -802,8 +852,8 @@ const SidebarProfilePanel = ({ usuario, show, onClose, onLogout, onUsuarioUpdate
         perfil_biografia: biografia,
         perfil_estado_mensaje: "",
         perfil_estado_expira: null,
-        perfil_tema_principal: profilePrimary,
-        perfil_tema_secundario: profileSecondary,
+        perfil_tema_principal: storedProfileTheme.primary,
+        perfil_tema_secundario: storedProfileTheme.secondary,
       },
       "Estado eliminado"
     );
@@ -812,9 +862,8 @@ const SidebarProfilePanel = ({ usuario, show, onClose, onLogout, onUsuarioUpdate
   };
 
   const resetThemeToDefault = () => {
-    const freshDefaultTheme = getDefaultProfileTheme();
-    setPrimaryColor(freshDefaultTheme.primary);
-    setSecondaryColor(freshDefaultTheme.secondary);
+    setPrimaryColor(defaultProfileTheme.primary);
+    setSecondaryColor(defaultProfileTheme.secondary);
     toast.success("Tema restablecido. Guarda los cambios para aplicarlo.");
   };
 
@@ -824,8 +873,16 @@ const SidebarProfilePanel = ({ usuario, show, onClose, onLogout, onUsuarioUpdate
         perfil_biografia: sanitizeBioHtml(bioDraft),
         perfil_estado_mensaje: statusText.trim().slice(0, STATUS_MAX_LENGTH),
         perfil_estado_expira: currentUser?.perfil_estado_expira || null,
-        perfil_tema_principal: normalizeHex(primaryColor, defaultProfileTheme.primary),
-        perfil_tema_secundario: normalizeHex(secondaryColor, defaultProfileTheme.secondary),
+        perfil_tema_principal:
+          normalizeHex(primaryColor, defaultProfileTheme.primary) === defaultProfileTheme.primary &&
+          normalizeHex(secondaryColor, defaultProfileTheme.secondary) === defaultProfileTheme.secondary
+            ? null
+            : normalizeHex(primaryColor, defaultProfileTheme.primary),
+        perfil_tema_secundario:
+          normalizeHex(primaryColor, defaultProfileTheme.primary) === defaultProfileTheme.primary &&
+          normalizeHex(secondaryColor, defaultProfileTheme.secondary) === defaultProfileTheme.secondary
+            ? null
+            : normalizeHex(secondaryColor, defaultProfileTheme.secondary),
       },
       "Cambios de perfil guardados"
     );
@@ -1047,7 +1104,7 @@ const SidebarProfilePanel = ({ usuario, show, onClose, onLogout, onUsuarioUpdate
                 {avatarUrl ? (
                   <ProfileMedia src={avatarUrl} transform={avatarTransform} kind="avatar" alt={profileName} />
                 ) : (
-                  <span style={{ backgroundColor: currentUser?.background || "#2787f5" }}>{getInitial(currentUser)}</span>
+                  <span style={{ background: "var(--profile-avatar-fallback-bg)", color: "var(--profile-avatar-fallback-text)" }}>{getInitial(currentUser)}</span>
                 )}
                 <span className="wa-profile-avatar-hover">
                   <i className="fa-solid fa-pen" />
