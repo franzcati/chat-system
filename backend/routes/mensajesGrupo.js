@@ -65,7 +65,8 @@ async function getReplyMessagesByIds(ids = []) {
        COALESCE(qga_direct.tipo_archivo, qga_lote.tipo_archivo) AS tipo_archivo,
        COALESCE(qga_direct.nombre_archivo, qga_lote.nombre_archivo) AS nombre_archivo,
        u.nombre,
-       u.apellido
+       u.apellido,
+       u.background
      FROM mensajes_grupo qmg
      JOIN usuario u ON u.id = qmg.usuario_id
      LEFT JOIN mensajes_grupo_archivos qga_direct

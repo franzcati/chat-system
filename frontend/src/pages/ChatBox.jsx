@@ -11,6 +11,7 @@ import * as bootstrap from "bootstrap";
 import { logDev } from "../utils/logger";
 import { getAvatarUrl } from "../utils/url";
 import { getMessagePreview, getReplyAuthorName } from "../utils/messagePreview";
+import { getProfileTitleStyle } from "../utils/profileColor";
 import ChatInput from "../components/ChatInput";
 import GroupAvatar from "../components/GroupAvatar";
 import data from "@emoji-mart/data";
@@ -96,6 +97,30 @@ const applyPinnedToMessages = (mensajes, mensajesFijados) => {
   });
 };
 
+const getPreferredAudioMimeType = () => {
+  if (typeof window === "undefined" || typeof window.MediaRecorder === "undefined") {
+    return "";
+  }
+
+  const candidates = [
+    "audio/webm;codecs=opus",
+    "audio/webm",
+    "audio/ogg;codecs=opus",
+    "audio/ogg",
+    "audio/mp4",
+  ];
+
+  return candidates.find((type) => window.MediaRecorder.isTypeSupported(type)) || "";
+};
+
+const getAudioExtensionFromMimeType = (mimeType = "") => {
+  if (mimeType.includes("ogg")) return "ogg";
+  if (mimeType.includes("mp4")) return "m4a";
+  if (mimeType.includes("mpeg")) return "mp3";
+  if (mimeType.includes("wav")) return "wav";
+  return "webm";
+};
+
 
 const ChatBox = ({ chat, user, setChat, onVerPerfil }) => {
 
@@ -112,6 +137,9 @@ const ChatBox = ({ chat, user, setChat, onVerPerfil }) => {
   const [pendingImages, setPendingImages] = useState([]); // {id, file, preview}
   const [activeImageIndex, setActiveImageIndex] = useState(0); // 👈 NUEVO
   const [isDragOver, setIsDragOver] = useState(false);
+  const [inputText, setInputText] = useState("");
+  const [isRecordingAudio, setIsRecordingAudio] = useState(false);
+  const [isSendingAudio, setIsSendingAudio] = useState(false);
 
   const [showEmojiPicker, setShowEmojiPicker] = useState(false); // 👈 control del picker
   const [offcanvasGrupo, setOffcanvasGrupo] = useState(null);
@@ -131,11 +159,20 @@ const ChatBox = ({ chat, user, setChat, onVerPerfil }) => {
   const stickerRef = useRef(null);   // ref para el contenedor del picker
   const stickerBtnRef = useRef(null); // ref para el botón
   const callMenuRef = useRef(null);
+  const audioRecorderRef = useRef(null);
+  const audioStreamRef = useRef(null);
+  const audioChunksRef = useRef([]);
+  const recordingReplyRef = useRef(null);
   const [showGifPicker, setShowGifPicker] = useState(false);
   const [gifSearch, setGifSearch] = useState(""); // texto a buscar
   const [gifResults, setGifResults] = useState([]); // resultados de la API
   const { theme } = useTheme();
   const emojiTheme = theme === "dark" ? "dark" : "light";
+
+  const replyTitleStyle = useMemo(
+    () => (replyingTo ? getProfileTitleStyle(replyingTo, user, theme) : {}),
+    [replyingTo, user, theme]
+  );
 
   // STICKER
   const [showStickerPicker, setShowStickerPicker] = useState(false);
@@ -170,6 +207,15 @@ const ChatBox = ({ chat, user, setChat, onVerPerfil }) => {
 
     socket.on("actualizarUsuarios", handleActualizarUsuarios);
     return () => socket.off("actualizarUsuarios", handleActualizarUsuarios);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (audioRecorderRef.current?.state === "recording") {
+        audioRecorderRef.current.stop();
+      }
+      audioStreamRef.current?.getTracks?.().forEach((track) => track.stop());
+    };
   }, []);
 
   const mentionOptions = useMemo(() => {
@@ -1762,6 +1808,119 @@ const ChatBox = ({ chat, user, setChat, onVerPerfil }) => {
     };
   };
 
+
+  const stopAudioTracks = () => {
+    audioStreamRef.current?.getTracks?.().forEach((track) => track.stop());
+    audioStreamRef.current = null;
+  };
+
+  const uploadRecordedAudio = async (audioFile, replyContext = null) => {
+    const replyAudioId = replyContext?.id || null;
+    const replyAudioType = replyContext?.reply_to_tipo || replyContext?.reply_source || "privado";
+    const replyAudioGrupoId = replyContext?.reply_to_grupo_id || replyContext?.source_group_id || null;
+
+    if (replyAudioId) {
+      setReplyingTo(null);
+    }
+
+    setIsSendingAudio(true);
+    try {
+      await uploadImageMessage(
+        audioFile,
+        null,
+        null,
+        replyAudioId,
+        replyAudioType,
+        replyAudioGrupoId
+      );
+      logDev("🎙️ Audio enviado correctamente:", audioFile.name);
+    } catch (err) {
+      console.error("❌ Error enviando audio:", err);
+      alert("No se pudo enviar el audio. Revisa el permiso del micrófono e inténtalo otra vez.");
+    } finally {
+      setIsSendingAudio(false);
+      recordingReplyRef.current = null;
+    }
+  };
+
+  const handleAudioRecordClick = async () => {
+    if (isSendingAudio) return;
+
+    const recorder = audioRecorderRef.current;
+    if (isRecordingAudio && recorder?.state === "recording") {
+      recorder.stop();
+      return;
+    }
+
+    if (!navigator.mediaDevices?.getUserMedia || typeof window.MediaRecorder === "undefined") {
+      alert("Tu navegador no permite grabar audio desde aquí.");
+      return;
+    }
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mimeType = getPreferredAudioMimeType();
+      const nextRecorder = new window.MediaRecorder(
+        stream,
+        mimeType ? { mimeType } : undefined
+      );
+
+      audioChunksRef.current = [];
+      audioStreamRef.current = stream;
+      audioRecorderRef.current = nextRecorder;
+      recordingReplyRef.current = replyingTo || null;
+
+      nextRecorder.ondataavailable = (event) => {
+        if (event.data?.size > 0) {
+          audioChunksRef.current.push(event.data);
+        }
+      };
+
+      nextRecorder.onstop = () => {
+        const recordedMimeType = nextRecorder.mimeType || mimeType || "audio/webm";
+        const audioBlob = new Blob(audioChunksRef.current, { type: recordedMimeType });
+        const replyContext = recordingReplyRef.current;
+
+        stopAudioTracks();
+        setIsRecordingAudio(false);
+
+        if (!audioBlob.size) {
+          recordingReplyRef.current = null;
+          return;
+        }
+
+        const extension = getAudioExtensionFromMimeType(recordedMimeType);
+        const audioFile = new File([audioBlob], `audio_${Date.now()}.${extension}`, {
+          type: recordedMimeType,
+        });
+
+        uploadRecordedAudio(audioFile, replyContext);
+      };
+
+      nextRecorder.onerror = (event) => {
+        console.error("❌ Error grabando audio:", event.error || event);
+        stopAudioTracks();
+        setIsRecordingAudio(false);
+        recordingReplyRef.current = null;
+        alert("No se pudo grabar el audio.");
+      };
+
+      nextRecorder.start();
+      setIsRecordingAudio(true);
+      setShowEmojiPicker(false);
+      setShowGifPicker(false);
+      setShowStickerPicker(false);
+    } catch (err) {
+      console.error("❌ Permiso de micrófono denegado o no disponible:", err);
+      stopAudioTracks();
+      setIsRecordingAudio(false);
+      recordingReplyRef.current = null;
+      alert("No se pudo acceder al micrófono.");
+    }
+  };
+
+  const canSendMessage = !isRecordingAudio && (inputText.trim().length > 0 || pendingImages.length > 0);
+
   const dragDepth = useRef(0);
 
   const isFileDrag = (e) =>
@@ -2311,7 +2470,7 @@ const ChatBox = ({ chat, user, setChat, onVerPerfil }) => {
               // 👇 MODO NORMAL (mensajes)
               <div className="chat-body-inner h-100" >
                   {isLoadingMessages ? (
-                    <div className="d-flex flex-column align-items-center justify-content-center h-100 text-muted">
+                    <div className="chat-loading-state d-flex flex-column align-items-center justify-content-center h-100">
                       <div className="spinner-border spinner-border-sm mb-3" role="status" aria-hidden="true"></div>
                       <span>Cargando últimos mensajes...</span>
                     </div>
@@ -2387,7 +2546,7 @@ const ChatBox = ({ chat, user, setChat, onVerPerfil }) => {
               }}
             >
               {replyingTo && (
-                <div className="reply-compose-bar">
+                <div className="reply-compose-bar" style={replyTitleStyle}>
                   <span className="reply-compose-accent" />
                   <div className="reply-compose-content">
                     <div className="reply-compose-author">
@@ -2446,6 +2605,7 @@ const ChatBox = ({ chat, user, setChat, onVerPerfil }) => {
                         ref={inputRef}
                         onSend={(msg) => handleSendMessage(msg)}
                         onPasteFiles={(files) => handleFilesSeleccionados(files)}   // 👈 AHORA
+                        onValueChange={setInputText}
                         mentionOptions={mentionOptions}
                         onReply={handleReplyMessage}
                         onReplyPrivado={handleReplyPrivado}
@@ -2757,28 +2917,78 @@ const ChatBox = ({ chat, user, setChat, onVerPerfil }) => {
                   )}
                 </div>
 
-                {/* Botón enviar */}
-                <div className="col-auto">
-                  <button
-                    type="submit"
-                    className="btn btn-icon btn-primary rounded-circle ms-5"
-                  >
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      width="24"
-                      height="24"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      className="feather feather-send"
+                {/* Botón enviar / grabar audio */}
+                <div className="col-auto d-flex align-items-center">
+                  {isRecordingAudio && (
+                    <span className="wa-audio-recording-pill" aria-live="polite">
+                      <span className="wa-audio-recording-dot" />
+                      Grabando...
+                    </span>
+                  )}
+
+                  {canSendMessage ? (
+                    <button
+                      type="submit"
+                      className="btn btn-icon btn-primary rounded-circle ms-5"
+                      aria-label="Enviar mensaje"
                     >
-                      <line x1="22" y1="2" x2="11" y2="13"></line>
-                      <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
-                    </svg>
-                  </button>
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        width="24"
+                        height="24"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        className="feather feather-send"
+                      >
+                        <line x1="22" y1="2" x2="11" y2="13"></line>
+                        <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+                      </svg>
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      className={`btn btn-icon rounded-circle ms-5 wa-audio-record-button ${isRecordingAudio ? "recording" : ""}`}
+                      onClick={handleAudioRecordClick}
+                      disabled={isSendingAudio}
+                      aria-label={isRecordingAudio ? "Enviar audio" : "Grabar audio"}
+                      title={isRecordingAudio ? "Toca para enviar el audio" : "Grabar audio"}
+                    >
+                      {isRecordingAudio ? (
+                        <svg
+                          xmlns="http://www.w3.org/2000/svg"
+                          width="24"
+                          height="24"
+                          viewBox="0 0 24 24"
+                          fill="currentColor"
+                          aria-hidden="true"
+                        >
+                          <rect x="7" y="7" width="10" height="10" rx="2"></rect>
+                        </svg>
+                      ) : (
+                        <svg
+                          xmlns="http://www.w3.org/2000/svg"
+                          width="24"
+                          height="24"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          className="feather feather-mic"
+                        >
+                          <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path>
+                          <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
+                          <line x1="12" y1="19" x2="12" y2="23"></line>
+                          <line x1="8" y1="23" x2="16" y2="23"></line>
+                        </svg>
+                      )}
+                    </button>
+                  )}
                 </div>
               </div>
             </form>

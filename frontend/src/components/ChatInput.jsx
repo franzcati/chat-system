@@ -39,7 +39,7 @@ const getMentionMatch = (text, caretPosition) => {
   };
 };
 
-const ChatInput = forwardRef(({ onSend, onPasteFiles, mentionOptions = [] }, ref) => {
+const ChatInput = forwardRef(({ onSend, onPasteFiles, onValueChange, mentionOptions = [] }, ref) => {
   const [value, setValue] = useState("");
   const [mentionMatch, setMentionMatch] = useState(null);
   const [activeMentionIndex, setActiveMentionIndex] = useState(0);
@@ -105,6 +105,7 @@ const ChatInput = forwardRef(({ onSend, onPasteFiles, mentionOptions = [] }, ref
 
   const clearInput = () => {
     setValue("");
+    if (typeof onValueChange === "function") onValueChange("");
     closeMentionMenu();
     if (textareaRef.current) textareaRef.current.style.height = "auto";
   };
@@ -126,6 +127,7 @@ const ChatInput = forwardRef(({ onSend, onPasteFiles, mentionOptions = [] }, ref
     const caret = before.length + mentionText.length;
 
     setValue(nextValue);
+    if (typeof onValueChange === "function") onValueChange(nextValue);
     closeMentionMenu();
 
     requestAnimationFrame(() => {
@@ -157,6 +159,7 @@ const ChatInput = forwardRef(({ onSend, onPasteFiles, mentionOptions = [] }, ref
       const newValue = value.slice(0, start) + emoji + value.slice(end);
       const caret = start + emoji.length;
       setValue(newValue);
+      if (typeof onValueChange === "function") onValueChange(newValue);
 
       requestAnimationFrame(() => {
         el.focus();
@@ -172,6 +175,7 @@ const ChatInput = forwardRef(({ onSend, onPasteFiles, mentionOptions = [] }, ref
     const caretPosition = e.target.selectionStart ?? nextValue.length;
 
     setValue(nextValue);
+    if (typeof onValueChange === "function") onValueChange(nextValue);
     requestAnimationFrame(resizeTextarea);
     updateMentionMenu(nextValue, caretPosition);
   };

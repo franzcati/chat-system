@@ -1,5 +1,6 @@
 // src/components/Message.jsx
 import React, { useState, useRef, useEffect, useMemo } from "react";
+import { createPortal } from "react-dom";
 import { getAvatarUrl } from "../utils/url";
 import data from "@emoji-mart/data";
 import Picker from "@emoji-mart/react";
@@ -8,8 +9,71 @@ import { formatChatTimeOnly, formatChatDate } from "../utils/date";
 import { useTheme } from "../context/ThemeContext";
 import { logDev } from "../utils/logger";
 import { getMessagePreview, getReplyAuthorName } from "../utils/messagePreview";
+import { getProfileTitleStyle } from "../utils/profileColor";
 
 const reactions = ["👍", "❤️", "😂", "😮", "😢", "🙏"];
+
+const parseColorToRgb = (color) => {
+  if (!color || typeof color !== "string") return null;
+  const value = color.trim();
+
+  const hex = value.match(/^#([0-9a-f]{3}|[0-9a-f]{6})$/i);
+  if (hex) {
+    const raw = hex[1].length === 3
+      ? hex[1].split("").map((char) => char + char).join("")
+      : hex[1];
+
+    return {
+      r: parseInt(raw.slice(0, 2), 16),
+      g: parseInt(raw.slice(2, 4), 16),
+      b: parseInt(raw.slice(4, 6), 16),
+    };
+  }
+
+  const rgb = value.match(/^rgba?\((\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})/i);
+  if (!rgb) return null;
+
+  return {
+    r: Math.max(0, Math.min(255, Number(rgb[1]))),
+    g: Math.max(0, Math.min(255, Number(rgb[2]))),
+    b: Math.max(0, Math.min(255, Number(rgb[3]))),
+  };
+};
+
+const mixRgb = (rgb, target, ratio) => ({
+  r: Math.round(rgb.r + (target.r - rgb.r) * ratio),
+  g: Math.round(rgb.g + (target.g - rgb.g) * ratio),
+  b: Math.round(rgb.b + (target.b - rgb.b) * ratio),
+});
+
+const rgbToHex = (rgb) =>
+  `#${[rgb.r, rgb.g, rgb.b]
+    .map((value) => Math.max(0, Math.min(255, value)).toString(16).padStart(2, "0"))
+    .join("")}`;
+
+const getLuminance = (rgb) => {
+  const toLinear = (value) => {
+    const channel = value / 255;
+    return channel <= 0.03928
+      ? channel / 12.92
+      : Math.pow((channel + 0.055) / 1.055, 2.4);
+  };
+
+  return 0.2126 * toLinear(rgb.r) + 0.7152 * toLinear(rgb.g) + 0.0722 * toLinear(rgb.b);
+};
+
+const getReadableProfileColor = (color, theme) => {
+  const rgb = parseColorToRgb(color);
+  if (!rgb) return theme === "dark" ? "#7dd3fc" : "#128c7e";
+
+  const luminance = getLuminance(rgb);
+
+  if (theme === "dark") {
+    return rgbToHex(luminance < 0.46 ? mixRgb(rgb, { r: 255, g: 255, b: 255 }, 0.52) : rgb);
+  }
+
+  return rgbToHex(luminance > 0.62 ? mixRgb(rgb, { r: 0, g: 0, b: 0 }, 0.42) : rgb);
+};
 
 const Message = ({
   id,
@@ -53,6 +117,7 @@ const Message = ({
   const [galeriaAbierta, setGaleriaAbierta] = useState(false);
   const [galeriaImagenes, setGaleriaImagenes] = useState([]); // urls normalizadas
   const [galeriaIndice, setGaleriaIndice] = useState(0);
+  const [galeriaZoomed, setGaleriaZoomed] = useState(false);
 
   // 👇 AQUÍ pegamos lo del modal del sticker
   const [showStickerModal, setShowStickerModal] = useState(false);
@@ -69,6 +134,11 @@ const Message = ({
   // version oscura de emoji
   const { theme } = useTheme();
   const emojiTheme = theme === "dark" ? "dark" : "light";
+
+  const senderTitleStyle = useMemo(
+    () => getProfileTitleStyle(usuario, miUsuario, theme),
+    [usuario, miUsuario, theme]
+  );
 
   useEffect(() => {
     setEsFavLocal(esStickerFavorito);
@@ -140,6 +210,11 @@ const Message = ({
       apellido: mensajeData.reply_usuario_apellido || "",
       emisor_nombre: mensajeData.reply_usuario_nombre || "",
       emisor_apellido: mensajeData.reply_usuario_apellido || "",
+      background:
+        mensajeData.reply_usuario_background ||
+        mensajeData.reply_background ||
+        mensajeData.reply_emisor_background ||
+        null,
     };
   }, [mensajeData]);
 
@@ -242,11 +317,13 @@ const Message = ({
     const preview = getMessagePreview(replyMessage);
     const previewText = truncatePreviewText(preview.text, 150);
     const author = getReplyAuthorName(replyMessage, miUsuario?.id);
+    const replyTitleStyle = getProfileTitleStyle(replyMessage, miUsuario, theme);
 
     return (
       <button
         type="button"
         className={`wa-quoted-message ${enviadoPorMi ? "out" : "in"}`}
+        style={replyTitleStyle}
         onClick={(e) => {
           e.stopPropagation();
           const handled = typeof onReplyPreviewClick === "function"
@@ -308,6 +385,7 @@ const Message = ({
     const normalizadas = imagenes.map(normalizarUrlImagen);
     setGaleriaImagenes(normalizadas);
     setGaleriaIndice(indiceInicial);
+    setGaleriaZoomed(false);
     setGaleriaAbierta(true);
   };
 
@@ -339,9 +417,11 @@ const Message = ({
         setGaleriaAbierta(false);
       }
       if (e.key === "ArrowRight") {
+        setGaleriaZoomed(false);
         setGaleriaIndice((prev) => (prev + 1) % galeriaImagenes.length);
       }
       if (e.key === "ArrowLeft") {
+        setGaleriaZoomed(false);
         setGaleriaIndice((prev) =>
           prev - 1 < 0 ? galeriaImagenes.length - 1 : prev - 1
         );
@@ -973,7 +1053,10 @@ const Message = ({
             >
               {/* Nombre del remitente dentro de la burbuja */}
               {esGrupo && !enviadoPorMi && mostrarNombre && (
-                <div className="fw-bold small message-sender-name">
+                <div
+                  className="fw-bold small message-sender-name"
+                  style={senderTitleStyle}
+                >
                   {`${usuario?.nombre || ""} ${usuario?.apellido || ""}`}
                 </div>
               )}
@@ -2506,14 +2589,9 @@ const Message = ({
         )}
 
         {/* Galería tipo WhatsApp */}
-        {galeriaAbierta && galeriaImagenes.length > 0 && (
+        {galeriaAbierta && galeriaImagenes.length > 0 && typeof document !== "undefined" && createPortal(
           <div
-            className="position-fixed top-0 start-0 w-100 h-100 d-flex align-items-center justify-content-center"
-            style={{
-              backgroundColor: "rgba(0,0,0,0.9)",
-              zIndex: 9999,
-              cursor: "zoom-out",
-            }}
+            className="wa-gallery-modal"
             onClick={() => setGaleriaAbierta(false)}
           >
             <button
@@ -2522,10 +2600,26 @@ const Message = ({
                 e.stopPropagation();
                 setGaleriaAbierta(false);
               }}
-              className="btn btn-link text-white position-absolute top-0 start-0 m-3"
-              style={{ fontSize: 24 }}
+              className="wa-gallery-close"
+              aria-label="Cerrar imagen"
             >
               ✕
+            </button>
+
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setGaleriaZoomed((prev) => !prev);
+              }}
+              className="wa-gallery-zoom"
+              aria-label={galeriaZoomed ? "Reducir imagen" : "Ampliar imagen"}
+              title={galeriaZoomed ? "Reducir imagen" : "Ampliar imagen"}
+            >
+              <i
+                className={`fa-solid ${galeriaZoomed ? "fa-magnifying-glass-minus" : "fa-magnifying-glass-plus"}`}
+                aria-hidden="true"
+              />
             </button>
 
             {galeriaImagenes.length > 1 && (
@@ -2533,12 +2627,13 @@ const Message = ({
                 type="button"
                 onClick={(e) => {
                   e.stopPropagation();
+                  setGaleriaZoomed(false);
                   setGaleriaIndice((prev) =>
                     prev - 1 < 0 ? galeriaImagenes.length - 1 : prev - 1
                   );
                 }}
-                className="btn btn-link text-white position-absolute start-0 ms-3"
-                style={{ fontSize: 40 }}
+                className="wa-gallery-arrow wa-gallery-arrow-left"
+                aria-label="Imagen anterior"
               >
                 ‹
               </button>
@@ -2547,12 +2642,10 @@ const Message = ({
             <img
               src={galeriaImagenes[galeriaIndice]}
               alt="vista ampliada"
-              onClick={(e) => e.stopPropagation()}
-              style={{
-                maxWidth: "90%",
-                maxHeight: "90%",
-                borderRadius: "12px",
-                boxShadow: "0 0 20px rgba(0,0,0,0.6)",
+              className={`wa-gallery-image ${galeriaZoomed ? "zoomed" : ""}`}
+              onClick={(e) => {
+                e.stopPropagation();
+                setGaleriaZoomed((prev) => !prev);
               }}
             />
 
@@ -2561,29 +2654,25 @@ const Message = ({
                 type="button"
                 onClick={(e) => {
                   e.stopPropagation();
+                  setGaleriaZoomed(false);
                   setGaleriaIndice((prev) =>
                     (prev + 1) % galeriaImagenes.length
                   );
                 }}
-                className="btn btn-link text-white position-absolute end-0 me-3"
-                style={{ fontSize: 40 }}
+                className="wa-gallery-arrow wa-gallery-arrow-right"
+                aria-label="Imagen siguiente"
               >
                 ›
               </button>
             )}
 
             {galeriaImagenes.length > 1 && (
-              <div
-                className="position-absolute bottom-0 mb-3 px-3 py-1 rounded-pill text-white"
-                style={{
-                  backgroundColor: "rgba(0,0,0,0.5)",
-                  fontSize: 12,
-                }}
-              >
+              <div className="wa-gallery-counter">
                 {galeriaIndice + 1} / {galeriaImagenes.length}
               </div>
             )}
-          </div>
+          </div>,
+          document.body
         )}
       </div>
     </div>

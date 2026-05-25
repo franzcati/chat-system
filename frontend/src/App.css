@@ -12454,3 +12454,36 @@ body > #root > .flex.h-screen > .wa-app-rail {
   -webkit-backdrop-filter: blur(16px) !important;
 }
 
+
+/* FIX 2026-05-23: inicial del avatar en Preview, Biografia y Establecer estado. */
+.wa-profile-edit-modal .wa-profile-preview-card .wa-profile-preview-avatar > span:not(.wa-profile-preview-presence-dot),
+.wa-profile-bio-full-card .wa-profile-bio-full-avatar > span:not(.wa-profile-preview-presence-dot),
+.wa-user-profile-card .wa-profile-bio-full-avatar > span:not(.wa-profile-preview-presence-dot),
+.wa-profile-status-layer .wa-profile-status-preview-avatar > .wa-profile-status-preview-avatar-clip > .wa-profile-status-preview-avatar-initial {
+  position: absolute !important;
+  inset: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border-radius: 999px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  background: var(--profile-avatar-fallback-bg, var(--profile-primary, #475569)) !important;
+  color: var(--profile-avatar-fallback-text, #ffffff) !important;
+  -webkit-text-fill-color: var(--profile-avatar-fallback-text, #ffffff) !important;
+  font-family: system-ui, -apple-system, "Segoe UI", Arial, sans-serif !important;
+  font-size: 2.2rem !important;
+  font-style: normal !important;
+  font-weight: 800 !important;
+  line-height: 1 !important;
+  letter-spacing: 0 !important;
+  text-align: center !important;
+  text-transform: uppercase !important;
+  text-shadow: none !important;
+  z-index: 1 !important;
+  pointer-events: none !important;
+  -webkit-font-smoothing: antialiased !important;
+  -moz-osx-font-smoothing: grayscale !important;
+}

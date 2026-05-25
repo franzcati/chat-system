@@ -206,6 +206,29 @@ const ProfileMedia = ({ src, transform, kind = "cover", alt = "" }) => {
   );
 };
 
+const preloadImage = (src) =>
+  new Promise((resolve) => {
+    if (!src || typeof Image === "undefined") {
+      resolve();
+      return;
+    }
+
+    const image = new Image();
+    image.onload = resolve;
+    image.onerror = resolve;
+    image.src = src;
+
+    if (image.complete) resolve();
+  });
+
+const preloadProfileMedia = (profile) => {
+  const urls = [getAvatarUrl(profile?.url_imagen), getAvatarUrl(profile?.perfil_cartel)].filter(Boolean);
+
+  if (!urls.length) return Promise.resolve();
+
+  return Promise.all(urls.map(preloadImage)).then(() => undefined);
+};
+
 const escapeHtml = (value = "") =>
   String(value)
     .replace(/&/g, "&amp;")
@@ -273,23 +296,39 @@ const ProfileModal = ({ usuario, miUsuario, show, onClose, onLogout, onEnviarMen
   const { theme: appTheme } = useTheme();
   const defaultTheme = useMemo(() => getDefaultProfileTheme(appTheme), [appTheme]);
   const [perfilCompleto, setPerfilCompleto] = useState(null);
+  const [perfilPreparado, setPerfilPreparado] = useState({ id: null, listo: false });
 
   useEffect(() => {
     if (!show || !usuario?.id) {
       setPerfilCompleto(null);
+      setPerfilPreparado({ id: null, listo: false });
       return undefined;
     }
 
     let activo = true;
+    const usuarioId = usuario.id;
+
     setPerfilCompleto(null);
+    setPerfilPreparado({ id: usuarioId, listo: false });
 
     axios
-      .get(`/api/usuarios/${usuario.id}/perfil`)
-      .then((res) => {
-        if (activo) setPerfilCompleto(res.data || null);
+      .get(`/api/usuarios/${usuarioId}/perfil`)
+      .then(async (res) => {
+        const datosPerfil = res.data || null;
+        await preloadProfileMedia({ ...(usuario || {}), ...(datosPerfil || {}) });
+
+        if (activo) {
+          setPerfilCompleto(datosPerfil);
+          setPerfilPreparado({ id: usuarioId, listo: true });
+        }
       })
-      .catch(() => {
-        if (activo) setPerfilCompleto(null);
+      .catch(async () => {
+        await preloadProfileMedia(usuario || {});
+
+        if (activo) {
+          setPerfilCompleto(null);
+          setPerfilPreparado({ id: usuarioId, listo: true });
+        }
       });
 
     return () => {
@@ -322,6 +361,7 @@ const ProfileModal = ({ usuario, miUsuario, show, onClose, onLogout, onEnviarMen
   ]);
 
   if (!show || !usuario) return null;
+  if (!perfilPreparado.listo || perfilPreparado.id !== usuario.id) return null;
 
   const esMiPerfil = perfilVisible?.id === miUsuario?.id;
   const profileName = getFullName(perfilVisible);
