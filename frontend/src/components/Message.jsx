@@ -10,8 +10,69 @@ import { useTheme } from "../context/ThemeContext";
 import { logDev } from "../utils/logger";
 import { getMessagePreview, getReplyAuthorName } from "../utils/messagePreview";
 import { getProfileTitleStyle } from "../utils/profileColor";
+import { renderRichTextInline } from "../utils/richText.jsx";
 
 const reactions = ["👍", "❤️", "😂", "😮", "😢", "🙏"];
+
+const AUDIO_MESSAGE_WAVE_BAR_COUNT = 44;
+const AUDIO_MESSAGE_WAVE_BAR_WIDTH = 3;
+
+const clampAudioWaveLevel = (value) => Math.max(0, Math.min(1, Number(value) || 0));
+
+const buildAudioMessageFallbackWave = (seed = "") => {
+  let hash = 0;
+  const text = String(seed || "audio");
+
+  for (let index = 0; index < text.length; index += 1) {
+    hash = (hash * 31 + text.charCodeAt(index)) >>> 0;
+  }
+
+  return Array.from({ length: AUDIO_MESSAGE_WAVE_BAR_COUNT }, (_, index) => {
+    hash = (hash * 1664525 + 1013904223) >>> 0;
+    const random = hash / 0xffffffff;
+    const pulse = Math.abs(Math.sin((index + 1) * 0.74 + random * 1.7));
+    const breathing = Math.abs(Math.sin((index + 1) * 0.21));
+    const isRest = index % 9 === 0 || index % 13 === 0;
+
+    return isRest
+      ? 0.05 + random * 0.08
+      : clampAudioWaveLevel(0.18 + pulse * 0.5 + breathing * 0.2);
+  });
+};
+
+const extractAudioWaveformFromBuffer = (audioBuffer, barCount = AUDIO_MESSAGE_WAVE_BAR_COUNT) => {
+  if (!audioBuffer || !audioBuffer.length) return buildAudioMessageFallbackWave();
+
+  const channel = audioBuffer.getChannelData(0);
+  const samplesPerBar = Math.max(1, Math.floor(channel.length / barCount));
+  const levels = [];
+
+  for (let bar = 0; bar < barCount; bar += 1) {
+    const start = bar * samplesPerBar;
+    const end = Math.min(channel.length, start + samplesPerBar);
+    let sum = 0;
+    let count = 0;
+
+    for (let sample = start; sample < end; sample += 1) {
+      const value = channel[sample];
+      sum += value * value;
+      count += 1;
+    }
+
+    levels.push(count > 0 ? Math.sqrt(sum / count) : 0);
+  }
+
+  const maxLevel = Math.max(...levels, 0.001);
+
+  return levels.map((level) => {
+    const normalized = level / maxLevel;
+    if (normalized < 0.06) return 0.04;
+    return clampAudioWaveLevel(0.12 + Math.pow(normalized, 0.72) * 0.88);
+  });
+};
+
+const isRecordedVoiceNoteFile = (name = "") =>
+  /^(audio|voice_note)_\d+\.(webm|ogg|m4a|mp3|wav|aac)$/i.test(String(name || ""));
 
 const parseColorToRgb = (color) => {
   if (!color || typeof color !== "string") return null;
@@ -97,6 +158,8 @@ const Message = ({
   onReplyPrivado,
   onEnviarMensajePrivado,
   onReplyPreviewClick,
+  onCancelUpload,
+  onRetryUpload,
 }) => {
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [showReactions, setShowReactions] = useState(false);
@@ -129,6 +192,9 @@ const Message = ({
   const [audioPlaying, setAudioPlaying] = useState(false);
   const [audioDuration, setAudioDuration] = useState(0);
   const [audioCurrentTime, setAudioCurrentTime] = useState(0);
+  const [audioWaveform, setAudioWaveform] = useState(() => buildAudioMessageFallbackWave(""));
+  const [audioPlaybackRate, setAudioPlaybackRate] = useState(1);
+  const [showAudioRateControl, setShowAudioRateControl] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
 
   // version oscura de emoji
@@ -163,7 +229,7 @@ const Message = ({
     : null;
 
   const tieneGaleriaImagenes =
-    Array.isArray(mensajeData.imagenes) && mensajeData.imagenes.length > 0;
+    !esSticker && Array.isArray(mensajeData.imagenes) && mensajeData.imagenes.length > 0;
 
   const archivoUrlCrudo = mensajeData.archivo_url || mensajeData.mensaje || "";
   const tipoArchivoMensaje = mensajeData.tipo_archivo || "";
@@ -315,7 +381,8 @@ const Message = ({
     if (!replyMessage) return null;
 
     const preview = getMessagePreview(replyMessage);
-    const previewText = truncatePreviewText(preview.text, 150);
+    const rawPreviewText = preview.kind === "text" ? (preview.rawText || preview.text) : preview.text;
+    const previewText = truncatePreviewText(rawPreviewText, 150);
     const author = getReplyAuthorName(replyMessage, miUsuario?.id);
     const replyTitleStyle = getProfileTitleStyle(replyMessage, miUsuario, theme);
 
@@ -340,7 +407,11 @@ const Message = ({
           <span className="wa-quote-author">{author}</span>
           <span className="wa-quote-text">
             {preview.iconClass && <i className={`wa-preview-icon ${preview.iconClass}`} aria-hidden="true" />}
-            <span className="wa-preview-label">{previewText}</span>
+            <span className="wa-preview-label">
+              {preview.kind === "text"
+                ? renderRichTextInline(previewText, `reply-preview-${replyMessage.id || replyMessage.reply_to_id || "msg"}`)
+                : previewText}
+            </span>
           </span>
         </span>
       </button>
@@ -364,9 +435,20 @@ const Message = ({
     setShowReactions(false);
   };
 
-  // Normaliza URLs de imágenes para evitar http / mixed content
+  // Normaliza URLs de imágenes / stickers para evitar mixed content y rutas rotas.
   const normalizarUrlImagen = (rawUrl) => {
-    let finalUrl = rawUrl || "";
+    let finalUrl = String(rawUrl || "").trim().replace(/^(\[sticker\])+/i, "");
+
+    if (!finalUrl) return "";
+    if (/^(blob:|data:)/i.test(finalUrl)) return finalUrl;
+
+    if (finalUrl.startsWith("/api/uploads/")) {
+      finalUrl = finalUrl.replace(/^\/api/, "");
+    }
+
+    if (finalUrl.startsWith("uploads/")) {
+      finalUrl = `/${finalUrl}`;
+    }
 
     if (finalUrl.startsWith("http://chatvista.click")) {
       finalUrl = finalUrl.replace("http://chatvista.click", "https://chatvista.click");
@@ -374,6 +456,33 @@ const Message = ({
       try {
         const u = new URL(finalUrl);
         finalUrl = `https://${u.host}${u.pathname}${u.search}`;
+      } catch (e) {}
+    }
+
+    if (finalUrl.startsWith("/uploads/")) {
+      return getAvatarUrl(finalUrl) || finalUrl;
+    }
+
+    return finalUrl;
+  };
+
+  const normalizarUrlStickerParaAccion = (rawUrl) => {
+    let finalUrl = String(rawUrl || "").trim().replace(/^(\[sticker\])+/i, "");
+
+    if (finalUrl.startsWith("/api/uploads/")) {
+      finalUrl = finalUrl.replace(/^\/api/, "");
+    }
+
+    if (finalUrl.startsWith("uploads/")) {
+      finalUrl = `/${finalUrl}`;
+    }
+
+    if (/^https?:\/\//i.test(finalUrl)) {
+      try {
+        const url = new URL(finalUrl);
+        if (url.pathname.startsWith("/uploads/")) {
+          return `${url.pathname}${url.search}`;
+        }
       } catch (e) {}
     }
 
@@ -388,6 +497,55 @@ const Message = ({
     setGaleriaZoomed(false);
     setGaleriaAbierta(true);
   };
+
+  useEffect(() => {
+    let cancelado = false;
+
+    if (!tieneAudioSuelto || !archivoUrlCrudo) {
+      setAudioWaveform(buildAudioMessageFallbackWave(""));
+      return undefined;
+    }
+
+    const fallbackWave = buildAudioMessageFallbackWave(
+      `${archivoUrlCrudo}-${mensajeData.nombre_archivo || ""}`
+    );
+    setAudioWaveform(fallbackWave);
+
+    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContextClass || typeof fetch !== "function") return undefined;
+
+    const audioUrl = normalizarUrlImagen(archivoUrlCrudo);
+
+    const loadWaveform = async () => {
+      let audioContext = null;
+
+      try {
+        const response = await fetch(audioUrl, { cache: "force-cache" });
+        if (!response.ok) return;
+
+        const arrayBuffer = await response.arrayBuffer();
+        audioContext = new AudioContextClass();
+        const audioBuffer = await audioContext.decodeAudioData(arrayBuffer.slice(0));
+        const nextWaveform = extractAudioWaveformFromBuffer(audioBuffer);
+
+        if (!cancelado) {
+          setAudioWaveform(nextWaveform);
+        }
+      } catch (error) {
+        if (!cancelado) {
+          setAudioWaveform(fallbackWave);
+        }
+      } finally {
+        audioContext?.close?.().catch(() => {});
+      }
+    };
+
+    loadWaveform();
+
+    return () => {
+      cancelado = true;
+    };
+  }, [tieneAudioSuelto, archivoUrlCrudo, mensajeData.nombre_archivo]);
 
   // Cerrar dropdown al hacer click fuera
   useEffect(() => {
@@ -887,16 +1045,95 @@ const Message = ({
     return nodes;
   };
 
-  // 🧩 Texto normal con detección de enlaces y menciones @usuario / @todos
-  const renderTextoConLinks = (texto = "") => {
-    const urlRegex = /(https?:\/\/[^\s]+)/g;
-    const partes = String(texto || "").split(urlRegex);
+  const inlineFormatRules = [
+    { key: "bold", open: "**", close: "**", className: "wa-rich-bold" },
+    { key: "underline", open: "__", close: "__", className: "wa-rich-underline" },
+    { key: "strike2", open: "~~", close: "~~", className: "wa-rich-strike" },
+    { key: "code", open: "`", close: "`", className: "wa-rich-code", raw: true },
+    { key: "italic", open: "_", close: "_", className: "wa-rich-italic" },
+    { key: "strike", open: "~", close: "~", className: "wa-rich-strike" },
+  ];
 
-    return partes.flatMap((parte, i) =>
-      urlRegex.test(parte) ? [
+  const renderFormattedNode = (rule, content, key, depth) => {
+    const children = rule.raw
+      ? content
+      : renderRichTextSegment(content, `${key}-inner`, depth + 1);
+
+    if (rule.key === "bold") {
+      return <strong key={key} className={rule.className}>{children}</strong>;
+    }
+
+    if (rule.key === "italic") {
+      return <em key={key} className={rule.className}>{children}</em>;
+    }
+
+    if (rule.key === "underline") {
+      return <span key={key} className={rule.className}>{children}</span>;
+    }
+
+    if (rule.key === "strike" || rule.key === "strike2") {
+      return <del key={key} className={rule.className}>{children}</del>;
+    }
+
+    return <code key={key} className={rule.className}>{children}</code>;
+  };
+
+  const renderRichTextSegment = (segment = "", keyPrefix = "rich", depth = 0) => {
+    const text = String(segment || "");
+    if (!text) return [];
+    if (depth > 8) return renderMentionSegment(text, keyPrefix);
+
+    let bestMatch = null;
+
+    inlineFormatRules.forEach((rule) => {
+      const openIndex = text.indexOf(rule.open);
+      if (openIndex === -1) return;
+
+      const closeIndex = text.indexOf(rule.close, openIndex + rule.open.length);
+      if (closeIndex === -1) return;
+
+      if (closeIndex === openIndex + rule.open.length) return;
+
+      if (!bestMatch || openIndex < bestMatch.openIndex || (openIndex === bestMatch.openIndex && rule.open.length > bestMatch.rule.open.length)) {
+        bestMatch = { rule, openIndex, closeIndex };
+      }
+    });
+
+    if (!bestMatch) return renderMentionSegment(text, keyPrefix);
+
+    const { rule, openIndex, closeIndex } = bestMatch;
+    const before = text.slice(0, openIndex);
+    const content = text.slice(openIndex + rule.open.length, closeIndex);
+    const after = text.slice(closeIndex + rule.close.length);
+
+    return [
+      ...renderRichTextSegment(before, `${keyPrefix}-before`, depth + 1),
+      renderFormattedNode(rule, content, `${keyPrefix}-${rule.key}-${openIndex}`, depth),
+      ...renderRichTextSegment(after, `${keyPrefix}-after`, depth + 1),
+    ];
+  };
+
+  // 🧩 Texto normal con detección de enlaces, menciones y formato tipo WhatsApp.
+  const renderTextoConLinks = (texto = "") => {
+    const text = String(texto || "");
+    const urlRegex = /(https?:\/\/[^\s]+)/g;
+    const nodes = [];
+    let lastIndex = 0;
+    let match;
+    let partIndex = 0;
+
+    while ((match = urlRegex.exec(text)) !== null) {
+      if (match.index > lastIndex) {
+        nodes.push(
+          ...renderRichTextSegment(text.slice(lastIndex, match.index), `part-${partIndex}`)
+        );
+      }
+
+      const url = match[0];
+      nodes.push(
         <a
-          key={`url-${i}`}
-          href={parte}
+          key={`url-${partIndex}-${match.index}`}
+          href={url}
           target="_blank"
           rel="noopener noreferrer"
           style={{
@@ -905,10 +1142,130 @@ const Message = ({
             wordBreak: "break-word",
           }}
         >
-          {parte}
-        </a>,
-      ] : renderMentionSegment(parte, `part-${i}`)
+          {url}
+        </a>
+      );
+
+      lastIndex = match.index + url.length;
+      partIndex += 1;
+    }
+
+    if (lastIndex < text.length) {
+      nodes.push(...renderRichTextSegment(text.slice(lastIndex), `part-${partIndex}`));
+    }
+
+    return nodes;
+  };
+
+  const renderFormattedMessageBlocks = (texto = "") => {
+    const lines = String(texto || "").replace(/\r\n/g, "\n").split("\n");
+    const blocks = [];
+    let index = 0;
+
+    const renderInlineLine = (line, keyPrefix) => (
+      <span className="wa-rich-line-content">
+        {renderTextoConLinks(line).map((node, nodeIndex) => (
+          <React.Fragment key={`${keyPrefix}-node-${nodeIndex}`}>{node}</React.Fragment>
+        ))}
+      </span>
     );
+
+    while (index < lines.length) {
+      const line = lines[index];
+
+      if (!line.trim()) {
+        blocks.push(<span key={`blank-${index}`} className="wa-rich-empty-line" />);
+        index += 1;
+        continue;
+      }
+
+      const orderedMatch = line.match(/^\s*(\d+)\.\s+(.+)$/);
+      if (orderedMatch) {
+        const startNumber = Number(orderedMatch[1]) || 1;
+        const items = [];
+
+        while (index < lines.length) {
+          const match = lines[index].match(/^\s*(\d+)\.\s+(.+)$/);
+          if (!match) break;
+          items.push(match[2]);
+          index += 1;
+        }
+
+        blocks.push(
+          <ol key={`ordered-${index}-${blocks.length}`} className="wa-rich-list wa-rich-ordered-list" start={startNumber}>
+            {items.map((item, itemIndex) => (
+              <li key={`ordered-item-${itemIndex}`}>{renderInlineLine(item, `ordered-${index}-${itemIndex}`)}</li>
+            ))}
+          </ol>
+        );
+        continue;
+      }
+
+      const bulletMatch = line.match(/^\s*[-*•]\s+(.+)$/);
+      if (bulletMatch) {
+        const items = [];
+
+        while (index < lines.length) {
+          const match = lines[index].match(/^\s*[-*•]\s+(.+)$/);
+          if (!match) break;
+          items.push(match[1]);
+          index += 1;
+        }
+
+        blocks.push(
+          <ul key={`bullet-${index}-${blocks.length}`} className="wa-rich-list wa-rich-bullet-list">
+            {items.map((item, itemIndex) => (
+              <li key={`bullet-item-${itemIndex}`}>{renderInlineLine(item, `bullet-${index}-${itemIndex}`)}</li>
+            ))}
+          </ul>
+        );
+        continue;
+      }
+
+      const quoteMatch = line.match(/^\s*>\s?(.*)$/);
+      if (quoteMatch) {
+        const quoteLines = [];
+
+        while (index < lines.length) {
+          const match = lines[index].match(/^\s*>\s?(.*)$/);
+          if (!match) break;
+          quoteLines.push(match[1]);
+          index += 1;
+        }
+
+        blocks.push(
+          <blockquote key={`quote-${index}-${blocks.length}`} className="wa-rich-quote-block">
+            {quoteLines.map((quoteLine, quoteIndex) => (
+              <span key={`quote-line-${quoteIndex}`} className="wa-rich-quote-line">
+                {renderInlineLine(quoteLine, `quote-${index}-${quoteIndex}`)}
+              </span>
+            ))}
+          </blockquote>
+        );
+        continue;
+      }
+
+      const normalLines = [];
+      while (index < lines.length) {
+        const currentLine = lines[index];
+        if (!currentLine.trim()) break;
+        if (/^\s*(\d+)\.\s+(.+)$/.test(currentLine)) break;
+        if (/^\s*[-*•]\s+(.+)$/.test(currentLine)) break;
+        if (/^\s*>\s?(.*)$/.test(currentLine)) break;
+        normalLines.push(currentLine);
+        index += 1;
+      }
+
+      normalLines.forEach((normalLine, normalIndex) => {
+        blocks.push(
+          <span key={`line-${index}-${normalIndex}`} className="wa-rich-line">
+            {renderInlineLine(normalLine, `line-${index}-${normalIndex}`)}
+          </span>
+        );
+      });
+    }
+
+    return blocks;
   };
 
   //REPRODUCCION DE AUDIO 
@@ -922,6 +1279,8 @@ const Message = ({
   const toggleAudio = () => {
     if (!audioRef.current) return;
 
+    audioRef.current.playbackRate = audioPlaybackRate;
+
     if (audioPlaying) {
       audioRef.current.pause();
     } else {
@@ -929,8 +1288,24 @@ const Message = ({
     }
   };
 
+  const cycleAudioPlaybackRate = (event) => {
+    event?.preventDefault?.();
+    event?.stopPropagation?.();
+
+    setAudioPlaybackRate((currentRate) => {
+      const nextRate = currentRate === 1 ? 1.5 : currentRate === 1.5 ? 2 : 1;
+
+      if (audioRef.current) {
+        audioRef.current.playbackRate = nextRate;
+      }
+
+      return nextRate;
+    });
+  };
+
   const handleLoadedMetadata = () => {
     if (!audioRef.current) return;
+    audioRef.current.playbackRate = audioPlaybackRate;
     setAudioDuration(audioRef.current.duration || 0);
   };
 
@@ -940,20 +1315,101 @@ const Message = ({
   };
 
   const handleAudioEnded = () => {
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current.currentTime = 0;
+    }
+
     setAudioPlaying(false);
+    setAudioCurrentTime(0);
   };
 
-  const handleSeekAudio = (e) => {
+  const seekAudioToClientX = (clientX) => {
     if (!progressRef.current || !audioRef.current || !audioDuration) return;
 
     const rect = progressRef.current.getBoundingClientRect();
-    const clickX = e.clientX - rect.left;
-    const percent = Math.max(0, Math.min(1, clickX / rect.width));
+    const playableWidth = Math.max(1, rect.width - AUDIO_MESSAGE_WAVE_BAR_WIDTH);
+    const relativeX = clientX - rect.left - AUDIO_MESSAGE_WAVE_BAR_WIDTH / 2;
+    const percent = Math.max(0, Math.min(1, relativeX / playableWidth));
     const newTime = percent * audioDuration;
 
     audioRef.current.currentTime = newTime;
     setAudioCurrentTime(newTime);
   };
+
+  const handleSeekAudioPointerDown = (event) => {
+    if (!progressRef.current || !audioRef.current || !audioDuration) return;
+    if (typeof event.button === "number" && event.button !== 0) return;
+
+    event.preventDefault();
+    event.stopPropagation();
+    seekAudioToClientX(event.clientX);
+
+    const handlePointerMove = (moveEvent) => {
+      moveEvent.preventDefault();
+      seekAudioToClientX(moveEvent.clientX);
+    };
+
+    const handlePointerUp = (upEvent) => {
+      upEvent.preventDefault();
+      seekAudioToClientX(upEvent.clientX);
+      window.removeEventListener("pointermove", handlePointerMove);
+      window.removeEventListener("pointerup", handlePointerUp);
+      window.removeEventListener("pointercancel", handlePointerUp);
+    };
+
+    window.addEventListener("pointermove", handlePointerMove);
+    window.addEventListener("pointerup", handlePointerUp);
+    window.addEventListener("pointercancel", handlePointerUp);
+  };
+
+  useEffect(() => {
+    if (!audioRef.current) return;
+    audioRef.current.playbackRate = audioPlaybackRate;
+  }, [audioPlaybackRate]);
+
+  useEffect(() => {
+    if (!audioPlaying) return undefined;
+
+    let animationFrameId;
+    const updateCurrentAudioTime = () => {
+      if (audioRef.current) {
+        setAudioCurrentTime(audioRef.current.currentTime || 0);
+      }
+      animationFrameId = requestAnimationFrame(updateCurrentAudioTime);
+    };
+
+    animationFrameId = requestAnimationFrame(updateCurrentAudioTime);
+
+    return () => cancelAnimationFrame(animationFrameId);
+  }, [audioPlaying]);
+
+  useEffect(() => {
+    setAudioPlaying(false);
+    setAudioDuration(0);
+    setAudioCurrentTime(0);
+    setAudioPlaybackRate(1);
+    setShowAudioRateControl(false);
+  }, [archivoUrlCrudo]);
+
+  useEffect(() => {
+    if (!showStickerModal || typeof document === "undefined") return undefined;
+
+    const currentCount = Number(document.body.dataset.waStickerDetailOpenCount || 0);
+    document.body.dataset.waStickerDetailOpenCount = String(currentCount + 1);
+    document.body.classList.add("wa-sticker-detail-open");
+
+    return () => {
+      const nextCount = Math.max(0, Number(document.body.dataset.waStickerDetailOpenCount || 1) - 1);
+
+      if (nextCount === 0) {
+        document.body.classList.remove("wa-sticker-detail-open");
+        delete document.body.dataset.waStickerDetailOpenCount;
+      } else {
+        document.body.dataset.waStickerDetailOpenCount = String(nextCount);
+      }
+    };
+  }, [showStickerModal]);
 
   const hasOpenFloatingLayer =
     dropdownOpen ||
@@ -1047,9 +1503,9 @@ const Message = ({
             <div
               className={`message-text position-relative ${
                 esMensajeConMedia ? "message-media-bubble" : ""
-              } ${tieneAudioSuelto ? "message-audio-bubble" : ""} ${
+              } ${esSticker ? "message-sticker-bubble" : ""} ${tieneAudioSuelto ? "message-audio-bubble" : ""} ${
                 tieneVideoSuelto ? "message-video-bubble" : ""
-              }`}
+              } ${mensajeData.eliminado ? "message-deleted-bubble" : ""}`}
             >
               {/* Nombre del remitente dentro de la burbuja */}
               {esGrupo && !enviadoPorMi && mostrarNombre && (
@@ -1271,6 +1727,25 @@ const Message = ({
                       </a>
                     </li>
 
+                    {tieneAudioSuelto && !mensajeData.eliminado && (
+                      <li>
+                        <a
+                          className="dropdown-item d-flex align-items-center"
+                          href={normalizarUrlImagen(archivoUrlCrudo)}
+                          download={mensajeData.nombre_archivo || "audio"}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setDropdownOpen(false);
+                          }}
+                        >
+                          <span className="me-auto">Descargar audio</span>
+                          <div className="icon">
+                            <i className="fa-solid fa-download" aria-hidden="true" />
+                          </div>
+                        </a>
+                      </li>
+                    )}
+
                     {isMine && (
                       <>
                         <li>
@@ -1318,7 +1793,7 @@ const Message = ({
                           href="#"
                           onClick={(e) => {
                             e.preventDefault();
-                            onGuardarStickerFavorito(stickerUrl);
+                            onGuardarStickerFavorito(normalizarUrlStickerParaAccion(stickerUrl));
                             setDropdownOpen(false);
                           }}
                         >
@@ -1412,7 +1887,7 @@ const Message = ({
                 </div>
               </div>
               {mensajeData.eliminado ? (
-                <div className="fst-italic text-muted d-flex align-items-center">
+                <div className="wa-deleted-message fst-italic text-muted d-flex align-items-center">
                   <svg
                     xmlns="http://www.w3.org/2000/svg"
                     width="14"
@@ -1429,6 +1904,7 @@ const Message = ({
                 (() => {
                   // 🧩 0️⃣ Mensaje con varias imágenes + caption
                   if (
+                    !esSticker &&
                     Array.isArray(mensajeData.imagenes) &&
                     mensajeData.imagenes.length > 0
                   ) {
@@ -1531,12 +2007,13 @@ const Message = ({
                   // 🧩 1️⃣ Stickers tipo WhatsApp con modal de detalle
                   if (mensajeData.mensaje?.startsWith("[sticker]")) {
                     const raw = mensajeData.mensaje.replace("[sticker]", "");
-                    const stickerUrl = normalizarUrlImagen(raw);
+                    const stickerActionUrl = normalizarUrlStickerParaAccion(raw);
+                    const stickerImageUrl = normalizarUrlImagen(raw);
 
                     // Nombre del sticker sacado del archivo
                     const nombreArchivoSticker = (() => {
                       try {
-                        const partes = stickerUrl.split("/");
+                        const partes = stickerActionUrl.split("/");
                         const nombre = partes.pop() || "Sticker";
                         return decodeURIComponent(nombre.replace(/\.\w+$/, ""));
                       } catch {
@@ -1556,13 +2033,13 @@ const Message = ({
                         if (esFavLocal) {
                           // Eliminar de favoritos
                           if (onEliminarStickerFavorito) {
-                            await onEliminarStickerFavorito(stickerUrl);
+                            await onEliminarStickerFavorito(stickerActionUrl);
                           }
                           setEsFavLocal(false);
                         } else {
                           // Añadir a favoritos
                           if (onGuardarStickerFavorito) {
-                            await onGuardarStickerFavorito(stickerUrl);
+                            await onGuardarStickerFavorito(stickerActionUrl);
                           }
                           setEsFavLocal(true);
                         }
@@ -1571,81 +2048,102 @@ const Message = ({
                       }
                     };
 
+                    const estadoSticker = mensajeData.estado;
+                    const stickerSubiendo = estadoSticker === "subiendo";
+                    const stickerError = estadoSticker === "error";
+
                     return (
                       <>
-                        {/* Sticker dentro del chat */}
-                        <div
-                          className="position-relative d-inline-block"
-                          style={{
-                            borderRadius: 18,
-                            overflow: "hidden",
-                            backgroundColor: "var(--surface-2)",
-                            padding: 6,
-                            cursor: "pointer",
-                          }}
-                          onClick={() => setShowStickerModal(true)} // 👈 al hacer click, abrimos modal
-                        >
-                          <img
-                            src={stickerUrl}
-                            alt="sticker"
-                            style={{
-                              width: 120,
-                              height: 120,
-                              objectFit: "contain",
-                              display: "block",
-                            }}
-                          />
+                        {/* Sticker dentro del chat, sin burbuja de fondo */}
+                        <span className="wa-sticker-message-wrap">
+                          <button
+                            type="button"
+                            className={`wa-sticker-message ${stickerSubiendo ? "is-uploading" : ""} ${stickerError ? "is-error" : ""}`}
+                            onClick={() => !stickerSubiendo && !stickerError && setShowStickerModal(true)}
+                            aria-label="Ver sticker"
+                            disabled={stickerSubiendo}
+                          >
+                            <img
+                              src={stickerImageUrl}
+                              alt="sticker"
+                              draggable="false"
+                              onError={(event) => {
+                                event.currentTarget.classList.add("is-broken");
+                              }}
+                            />
 
-                          {/* Estrellita pequeña arriba (opcional) */}
-                          {esFavLocal && (
-                            <span
-                              className="position-absolute top-0 end-0 m-1"
-                              style={{ fontSize: 16 }}
+                            {stickerSubiendo && (
+                              <span className="wa-media-upload-overlay wa-sticker-upload-overlay">
+                                <button
+                                  type="button"
+                                  className="wa-upload-cancel-btn"
+                                  onClick={(event) => {
+                                    event.preventDefault();
+                                    event.stopPropagation();
+                                    onCancelUpload?.(mensajeData.id || id);
+                                  }}
+                                  aria-label="Cancelar envío"
+                                  title="Cancelar envío"
+                                >
+                                  ×
+                                </button>
+                              </span>
+                            )}
+
+                            {esFavLocal && (
+                              <span className="wa-sticker-fav-badge" aria-label="Favorito">
+                                <i className="fa-solid fa-star" aria-hidden="true" />
+                              </span>
+                            )}
+                          </button>
+
+                          {stickerError && (
+                            <button
+                              type="button"
+                              className="wa-media-error-action"
+                              data-tooltip={mensajeData.error_mensaje || "Se produjo un error. Haz clic para obtener más información."}
+                              aria-label="Reintentar envío"
+                              onClick={(event) => {
+                                event.preventDefault();
+                                event.stopPropagation();
+                                onRetryUpload?.(mensajeData.id || id);
+                              }}
                             >
-                              ⭐
-                            </span>
+                              <i className="fa-solid fa-circle-exclamation" aria-hidden="true" />
+                            </button>
                           )}
-                        </div>
+                        </span>
 
                         {/* Modal estilo WhatsApp */}
-                        {showStickerModal && (
+                        {showStickerModal && typeof document !== "undefined" && createPortal(
                           <div
-                            className="position-fixed top-0 start-0 w-100 h-100 d-flex align-items-center justify-content-center"
-                            style={{ backgroundColor: "rgba(0,0,0,0.6)", zIndex: 6000 }}
+                            className="wa-sticker-detail-backdrop"
                             onClick={() => setShowStickerModal(false)}
                           >
                             <div
-                              className="bg-white rounded-4 shadow p-4 text-center"
-                              style={{ maxWidth: "360px", width: "90%" }}
+                              className="wa-sticker-detail-card"
                               onClick={(e) => e.stopPropagation()}
                             >
                               <img
-                                src={stickerUrl}
+                                src={stickerImageUrl}
                                 alt={nombreArchivoSticker}
-                                style={{
-                                  width: 240,
-                                  height: 240,
-                                  objectFit: "contain",
-                                  borderRadius: "24px",
-                                }}
                               />
 
-                              {/* 👇 Aquí va exactamente lo que querías */}
-                              <div className="mt-3 small text-muted">
-                                <strong>{nombreArchivoSticker}</strong> · by {creadorNombre}
+                              <div className="wa-sticker-detail-meta">
+                                <strong>{nombreArchivoSticker}</strong>
+                                <span>by {creadorNombre}</span>
                               </div>
 
                               <button
                                 type="button"
-                                className={`btn mt-3 ${
-                                  esFavLocal ? "btn-outline-danger" : "btn-success"
-                                }`}
+                                className={`wa-sticker-detail-fav ${esFavLocal ? "is-favorite" : ""}`}
                                 onClick={handleFavClick}
                               >
                                 {esFavLocal ? "Eliminar de favoritos" : "Añadir a favoritos"}
                               </button>
                             </div>
-                          </div>
+                          </div>,
+                          document.body
                         )}
                       </>
                     );
@@ -1712,22 +2210,36 @@ const Message = ({
 
                             {estado === "subiendo" && (
                               <div className="wa-media-upload-overlay">
-                                <div
-                                  className="spinner-border text-light"
-                                  role="status"
-                                  style={{
-                                    width: "28px",
-                                    height: "28px",
-                                    borderWidth: "3px",
+                                <button
+                                  type="button"
+                                  className="wa-upload-cancel-btn"
+                                  onClick={(event) => {
+                                    event.preventDefault();
+                                    event.stopPropagation();
+                                    onCancelUpload?.(mensajeData.id || id);
                                   }}
-                                />
+                                  aria-label="Cancelar envío"
+                                  title="Cancelar envío"
+                                >
+                                  ×
+                                </button>
                               </div>
                             )}
 
                             {estado === "error" && (
-                              <div className="wa-media-upload-overlay error">
-                                ×
-                              </div>
+                              <button
+                                type="button"
+                                className="wa-media-error-action"
+                                data-tooltip={mensajeData.error_mensaje || "Se produjo un error. Haz clic para obtener más información."}
+                                aria-label="Reintentar envío"
+                                onClick={(event) => {
+                                  event.preventDefault();
+                                  event.stopPropagation();
+                                  onRetryUpload?.(mensajeData.id || id);
+                                }}
+                              >
+                                <i className="fa-solid fa-circle-exclamation" aria-hidden="true" />
+                              </button>
                             )}
                           </div>
 
@@ -1741,8 +2253,9 @@ const Message = ({
                     }
 
                     if (esAudio) {
-                      const progressPercent =
-                        audioDuration > 0 ? (audioCurrentTime / audioDuration) * 100 : 0;
+                      const audioProgress = audioDuration > 0
+                        ? Math.max(0, Math.min(1, audioCurrentTime / audioDuration))
+                        : 0;
 
                       const avatarAudio = enviadoPorMi
                         ? getAvatarUrl(miUsuario?.url_imagen)
@@ -1756,13 +2269,117 @@ const Message = ({
                         ? getInitial(miUsuario?.nombre || "U")
                         : getInitial(usuario?.nombre || "U");
 
-                      const colorTiempo = enviadoPorMi ? "rgba(255,255,255,0.92)" : "#111827";
-                      const colorBarraBase = enviadoPorMi ? "rgba(255,255,255,0.28)" : "#d1d5db";
-                      const colorBarraProgreso = enviadoPorMi ? "#7dd3fc" : "#22c55e";
-                      const colorBoton = enviadoPorMi ? "#ffffff" : "#111827";
+                      const isVoiceNote = isRecordedVoiceNoteFile(mensajeData.nombre_archivo);
+                      const waveform = audioWaveform?.length
+                        ? audioWaveform
+                        : buildAudioMessageFallbackWave(urlArchivo);
+                      const elapsedOrDuration = audioPlaying || audioCurrentTime > 0
+                        ? audioCurrentTime
+                        : audioDuration;
+                      const audioTimeLabel = formatAudioTime(elapsedOrDuration);
+                      const audioPlayColor = enviadoPorMi || theme === "dark" ? "#ffffff" : "#111827";
+
+                      const renderAudioAvatar = () => (
+                        <div
+                          className="wa-audio-avatar"
+                          onMouseEnter={() => setShowAudioRateControl(true)}
+                          onMouseLeave={() => setShowAudioRateControl(false)}
+                        >
+                          {showAudioRateControl ? (
+                            <button
+                              type="button"
+                              className="wa-audio-speed-button"
+                              onClick={cycleAudioPlaybackRate}
+                              aria-label={`Cambiar velocidad de audio. Actual ${audioRateLabel}`}
+                              title="Cambiar velocidad"
+                            >
+                              {audioRateLabel}
+                            </button>
+                          ) : (
+                            <>
+                              {avatarAudio ? (
+                                <img
+                                  src={avatarAudio}
+                                  alt="avatar audio"
+                                  className="wa-audio-avatar-img"
+                                />
+                              ) : (
+                                <div
+                                  className="wa-audio-avatar-initial"
+                                  style={{ backgroundColor: bgAudio }}
+                                >
+                                  {initialAudio}
+                                </div>
+                              )}
+
+                              {isVoiceNote && (
+                                <span className="wa-audio-avatar-mic" aria-hidden="true">
+                                  <i className="fa-solid fa-microphone" />
+                                </span>
+                              )}
+                            </>
+                          )}
+                        </div>
+                      );
+
+                      const audioProgressPercent = Math.max(0, Math.min(100, audioProgress * 100));
+                      const audioPlayheadLeft = `calc(${audioProgressPercent}% + ${(0.5 - audioProgress) * AUDIO_MESSAGE_WAVE_BAR_WIDTH}px)`;
+                      const audioRateLabel = audioPlaybackRate === 1 ? "1" : String(audioPlaybackRate);
+
+                      const renderAudioWaveBars = (playedLayer = false) => waveform.map((sample, index) => {
+                        const normalizedSample = clampAudioWaveLevel(sample);
+                        const isDot = normalizedSample <= 0.09;
+                        const height = isDot
+                          ? 3
+                          : Math.max(5, Math.min(26, 4 + Math.pow(normalizedSample, 0.82) * 22));
+
+                        return (
+                          <span
+                            key={`audio-wave-${playedLayer ? "played" : "base"}-${index}`}
+                            className={`wa-audio-wave-bar ${playedLayer ? "played" : ""} ${isDot ? "is-dot" : ""}`}
+                            style={{ height: `${height}px` }}
+                          />
+                        );
+                      });
+
+                      const renderAudioWaveform = () => (
+                        <div className="wa-audio-main">
+                          <div
+                            ref={progressRef}
+                            onPointerDown={handleSeekAudioPointerDown}
+                            className="wa-audio-waveform"
+                            role="slider"
+                            aria-valuemin="0"
+                            aria-valuemax={Math.round(audioDuration || 0)}
+                            aria-valuenow={Math.round(audioCurrentTime || 0)}
+                            tabIndex={0}
+                          >
+                            <div className="wa-audio-wave-track" aria-hidden="true">
+                              {renderAudioWaveBars(false)}
+                            </div>
+
+                            <div
+                              className="wa-audio-wave-track wa-audio-wave-track-played"
+                              aria-hidden="true"
+                              style={{ clipPath: `inset(0 ${100 - audioProgressPercent}% 0 0)` }}
+                            >
+                              {renderAudioWaveBars(true)}
+                            </div>
+
+                            <span
+                              className="wa-audio-playhead"
+                              style={{ left: audioPlayheadLeft }}
+                            />
+                          </div>
+
+                          <div className="wa-audio-times">
+                            <span>{audioTimeLabel}</span>
+                          </div>
+                        </div>
+                      );
 
                       return (
-                        <div className={`wa-audio-player ${enviadoPorMi ? "out" : "in"}`}>
+                        <div className={`wa-audio-player ${enviadoPorMi ? "out" : "in"} ${isVoiceNote ? "voice-note" : "audio-file"}`}>
                           <audio
                             ref={audioRef}
                             preload="metadata"
@@ -1777,77 +2394,21 @@ const Message = ({
                             Tu navegador no soporta audio.
                           </audio>
 
-                          <div className="wa-audio-avatar">
-                            {avatarAudio ? (
-                              <img
-                                src={avatarAudio}
-                                alt="avatar audio"
-                                style={{
-                                  width: "42px",
-                                  height: "42px",
-                                  borderRadius: "50%",
-                                  objectFit: "cover",
-                                  display: "block",
-                                }}
-                              />
-                            ) : (
-                              <div
-                                style={{
-                                  width: "42px",
-                                  height: "42px",
-                                  borderRadius: "50%",
-                                  backgroundColor: bgAudio,
-                                  color: "#fff",
-                                  display: "flex",
-                                  alignItems: "center",
-                                  justifyContent: "center",
-                                  fontWeight: "bold",
-                                }}
-                              >
-                                {initialAudio}
-                              </div>
-                            )}
-                          </div>
+                          {enviadoPorMi && renderAudioAvatar()}
 
                           <button
                             type="button"
                             onClick={toggleAudio}
                             className="wa-audio-play"
-                            style={{ color: colorBoton }}
+                            style={{ color: audioPlayColor }}
+                            aria-label={audioPlaying ? "Pausar audio" : "Reproducir audio"}
                           >
-                            {audioPlaying ? (
-                              <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
-                                <rect x="6" y="5" width="4" height="14" rx="1"></rect>
-                                <rect x="14" y="5" width="4" height="14" rx="1"></rect>
-                              </svg>
-                            ) : (
-                              <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
-                                <path d="M8 5v14l11-7z"></path>
-                              </svg>
-                            )}
+                            <i className={`fa-solid ${audioPlaying ? "fa-pause" : "fa-play"}`} aria-hidden="true" />
                           </button>
 
-                          <div className="wa-audio-main">
-                            <div
-                              ref={progressRef}
-                              onClick={handleSeekAudio}
-                              className="wa-audio-progress"
-                              style={{ background: colorBarraBase }}
-                            >
-                              <div
-                                className="wa-audio-progress-fill"
-                                style={{
-                                  width: `${progressPercent}%`,
-                                  background: colorBarraProgreso,
-                                }}
-                              />
-                            </div>
+                          {renderAudioWaveform()}
 
-                            <div className="wa-audio-times" style={{ color: colorTiempo }}>
-                              <span>{formatAudioTime(audioCurrentTime)}</span>
-                              <span>{formatAudioTime(audioDuration)}</span>
-                            </div>
-                          </div>
+                          {!enviadoPorMi && renderAudioAvatar()}
                         </div>
                       );
                     }
@@ -1961,9 +2522,9 @@ const Message = ({
 
                   // 🧩 Texto normal
                   return (
-                    <p className="break-words whitespace-pre-wrap">
-                      {renderTextoConLinks(mensajeData.mensaje)}
-                    </p>
+                    <div className="break-words wa-rich-message">
+                      {renderFormattedMessageBlocks(mensajeData.mensaje)}
+                    </div>
                   );
                 })()
               )}
@@ -1972,9 +2533,15 @@ const Message = ({
               <div className="message-footer">
                 {mensajeData.eliminado === 1 && isMine && (
                   <button
-                    className="btn btn-link btn-sm p-0 text-decoration-none"
-                    style={{ fontSize: "10px" }}
-                    onClick={() => handleDeshacer(id)}
+                    type="button"
+                    className="wa-undo-delete-btn"
+                    aria-label="Deshacer eliminación del mensaje"
+                    title="Deshacer eliminación"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      handleDeshacer(id);
+                    }}
                   >
                     Deshacer
                   </button>

@@ -12,6 +12,7 @@ import { logDev } from "../utils/logger";
 import { getAvatarUrl } from "../utils/url";
 import { getMessagePreview, getReplyAuthorName } from "../utils/messagePreview";
 import { getProfileTitleStyle } from "../utils/profileColor";
+import { renderRichTextInline } from "../utils/richText.jsx";
 import ChatInput from "../components/ChatInput";
 import GroupAvatar from "../components/GroupAvatar";
 import data from "@emoji-mart/data";
@@ -80,6 +81,113 @@ const sortAndDedupeMessages = (items) => {
   });
 };
 
+
+
+const isTempOutgoingMessage = (message) => {
+  const id = message?.id;
+  return typeof id === "string" && id.startsWith("temp-");
+};
+
+const getOutgoingSenderId = (message) => Number(message?.usuario_id ?? message?.usuario_envia_id);
+
+const normalizeMessageText = (value) => String(value ?? "").trim();
+
+const isStickerText = (value) => normalizeMessageText(value).startsWith("[sticker]");
+
+const getMessageUploadKind = (message) => {
+  const text = normalizeMessageText(message?.mensaje);
+  const fileUrl = normalizeMessageText(message?.archivo_url || message?.url);
+  const type = normalizeMessageText(message?.tipo_archivo).toLowerCase();
+
+  if (isStickerText(text)) return "sticker";
+
+  const looksLikeImage =
+    type.startsWith("image/") ||
+    /\.(jpe?g|png|webp|gif)(\?.*)?$/i.test(fileUrl || text);
+
+  if (looksLikeImage) return "image";
+  return null;
+};
+
+const isSameUploadPayload = (optimisticMessage, serverMessage) => {
+  const localKind = getMessageUploadKind(optimisticMessage);
+  const serverKind = getMessageUploadKind(serverMessage);
+
+  if (!localKind || !serverKind || localKind !== serverKind) return false;
+
+  // Los stickers nuevos se muestran con un blob local mientras suben y el
+  // servidor devuelve /uploads/..., por eso no se puede comparar la URL.
+  if (localKind === "sticker") return true;
+
+  const localName = normalizeMessageText(optimisticMessage?.nombre_archivo);
+  const serverName = normalizeMessageText(serverMessage?.nombre_archivo);
+  const localSize = Number(optimisticMessage?.tamano || 0);
+  const serverSize = Number(serverMessage?.tamano || 0);
+  const localBatch = normalizeMessageText(optimisticMessage?.lote_id);
+  const serverBatch = normalizeMessageText(serverMessage?.lote_id);
+
+  if (localName && serverName && localName === serverName) return true;
+  if (localSize && serverSize && localSize === serverSize) return true;
+
+  // Fallback para respuestas que no devuelvan nombre/tamaño. Sólo se usa con
+  // mensajes temporales y una ventana corta de tiempo, así evitamos duplicados
+  // sin tocar mensajes normales.
+  if (localBatch && serverBatch && localBatch === serverBatch) return true;
+
+  return false;
+};
+
+const isSameOptimisticPayload = (optimisticMessage, serverMessage) => {
+  const localText = normalizeMessageText(optimisticMessage?.mensaje);
+  const serverText = normalizeMessageText(serverMessage?.mensaje);
+
+  if (localText && serverText && localText === serverText) return true;
+
+  const localFile = normalizeMessageText(optimisticMessage?.archivo_url);
+  const serverFile = normalizeMessageText(serverMessage?.archivo_url);
+  if (localFile && serverFile && localFile === serverFile) return true;
+
+  return isSameUploadPayload(optimisticMessage, serverMessage);
+};
+
+const isNearOptimisticTime = (optimisticMessage, serverMessage) => {
+  const localTime = getMessageSortTime(optimisticMessage);
+  const serverTime = getMessageSortTime(serverMessage);
+  if (!localTime || !serverTime) return true;
+  return Math.abs(localTime - serverTime) <= 5 * 60 * 1000;
+};
+
+const isMatchingOptimisticMessage = (optimisticMessage, serverMessage, currentUserId) => {
+  if (!isTempOutgoingMessage(optimisticMessage)) return false;
+  if (getOutgoingSenderId(optimisticMessage) !== Number(currentUserId)) return false;
+  if (getOutgoingSenderId(serverMessage) !== Number(currentUserId)) return false;
+  if (!isSameOptimisticPayload(optimisticMessage, serverMessage)) return false;
+  return isNearOptimisticTime(optimisticMessage, serverMessage);
+};
+
+const replaceMatchingOptimisticMessage = (messages, serverMessage, currentUserId) => {
+  let replaced = false;
+
+  const merged = messages.map((message) => {
+    if (replaced || !isMatchingOptimisticMessage(message, serverMessage, currentUserId)) {
+      return message;
+    }
+
+    replaced = true;
+    return {
+      ...message,
+      ...serverMessage,
+      estado: "enviado",
+      reacciones: serverMessage.reacciones || message.reacciones || [],
+    };
+  });
+
+  return {
+    messages: sortAndDedupeMessages(merged),
+    replaced,
+  };
+};
+
 const applyPinnedToMessages = (mensajes, mensajesFijados) => {
   const pinnedMap = new Map(
     (mensajesFijados || [])
@@ -121,6 +229,36 @@ const getAudioExtensionFromMimeType = (mimeType = "") => {
   return "webm";
 };
 
+const RECORDER_WAVE_BAR_COUNT = 42;
+const RECORDER_WAVE_SAMPLE_INTERVAL_MS = 70;
+const RECORDER_SILENCE_THRESHOLD = 0.018;
+
+const clampRecorderLevel = (value) => Math.max(0, Math.min(1, value));
+
+const buildIdleRecorderWave = () =>
+  Array.from({ length: RECORDER_WAVE_BAR_COUNT }, () => 0);
+
+
+const STICKER_EDITOR_FILTERS = {
+  none: { label: "Ninguno", css: "none" },
+  pop: { label: "Pop", css: "saturate(1.35) contrast(1.08) brightness(1.03)" },
+  bw: { label: "B/N", css: "grayscale(1) contrast(1.08)" },
+  cold: { label: "Frío", css: "saturate(1.08) hue-rotate(190deg) brightness(1.03)" },
+  chrome: { label: "Cromo", css: "saturate(1.55) contrast(1.22)" },
+  cine: { label: "Cine", css: "contrast(1.16) brightness(0.94) sepia(0.12)" },
+};
+
+const STICKER_EDITOR_COLORS = [
+  "#4b5563",
+  "#9ca3af",
+  "#ffffff",
+  "#38bdf8",
+  "#22c55e",
+  "#a855f7",
+  "#fb923c",
+  "#ef4444",
+];
+
 
 const ChatBox = ({ chat, user, setChat, onVerPerfil }) => {
 
@@ -139,6 +277,10 @@ const ChatBox = ({ chat, user, setChat, onVerPerfil }) => {
   const [isDragOver, setIsDragOver] = useState(false);
   const [inputText, setInputText] = useState("");
   const [isRecordingAudio, setIsRecordingAudio] = useState(false);
+  const [isAudioPaused, setIsAudioPaused] = useState(false);
+  const [recordingSeconds, setRecordingSeconds] = useState(0);
+  const [audioLevel, setAudioLevel] = useState(0);
+  const [audioWaveSamples, setAudioWaveSamples] = useState(() => buildIdleRecorderWave());
   const [isSendingAudio, setIsSendingAudio] = useState(false);
 
   const [showEmojiPicker, setShowEmojiPicker] = useState(false); // 👈 control del picker
@@ -158,11 +300,26 @@ const ChatBox = ({ chat, user, setChat, onVerPerfil }) => {
   const gifBtnRef = useRef(null); // ref para el botón
   const stickerRef = useRef(null);   // ref para el contenedor del picker
   const stickerBtnRef = useRef(null); // ref para el botón
+  const stickerFileInputRef = useRef(null);
+  const stickerEditorCanvasRef = useRef(null);
+  const stickerEditorImageRef = useRef(null);
+  const stickerDrawingRef = useRef(false);
+  const stickerCropDragRef = useRef(null);
+  const typingStopTimeoutRef = useRef(null);
+  const typingUsersTimeoutRef = useRef({});
   const callMenuRef = useRef(null);
   const audioRecorderRef = useRef(null);
   const audioStreamRef = useRef(null);
   const audioChunksRef = useRef([]);
   const recordingReplyRef = useRef(null);
+  const discardRecordingRef = useRef(false);
+  const audioContextRef = useRef(null);
+  const audioAnalyserRef = useRef(null);
+  const audioAnimationFrameRef = useRef(null);
+  const audioSmoothedLevelRef = useRef(0);
+  const audioLastWaveSampleAtRef = useRef(0);
+  const audioPausedRef = useRef(false);
+  const pendingUploadsRef = useRef(new Map());
   const [showGifPicker, setShowGifPicker] = useState(false);
   const [gifSearch, setGifSearch] = useState(""); // texto a buscar
   const [gifResults, setGifResults] = useState([]); // resultados de la API
@@ -176,6 +333,21 @@ const ChatBox = ({ chat, user, setChat, onVerPerfil }) => {
 
   // STICKER
   const [showStickerPicker, setShowStickerPicker] = useState(false);
+  const [showStickerEditor, setShowStickerEditor] = useState(false);
+  const [pendingStickerFile, setPendingStickerFile] = useState(null);
+  const [pendingStickerPreview, setPendingStickerPreview] = useState("");
+  const [stickerEditorRotation, setStickerEditorRotation] = useState(0);
+  const [stickerEditorFlipX, setStickerEditorFlipX] = useState(false);
+  const [stickerEditorTool, setStickerEditorTool] = useState("crop");
+  const [stickerEditorFilter, setStickerEditorFilter] = useState("none");
+  const [stickerDrawColor, setStickerDrawColor] = useState("#22c55e");
+  const [stickerShapeType, setStickerShapeType] = useState("rect");
+  const [stickerTextItems, setStickerTextItems] = useState([]);
+  const [stickerShapeItems, setStickerShapeItems] = useState([]);
+  const [stickerDrawPaths, setStickerDrawPaths] = useState([]);
+  const [stickerCropRect, setStickerCropRect] = useState({ x: 0, y: 0, w: 1, h: 1 });
+  const [isCreatingSticker, setIsCreatingSticker] = useState(false);
+  const [typingUsers, setTypingUsers] = useState([]);
 
   // pestaña activa: "todos" o "favoritos" (si luego quieres más)
   const [stickerTab, setStickerTab] = useState("todos");
@@ -188,6 +360,39 @@ const ChatBox = ({ chat, user, setChat, onVerPerfil }) => {
 
   const listaStickers =
   stickerTab === "favoritos" ? stickersFavoritos : stickersTodos;
+
+  const normalizeStickerMessageUrl = useCallback((url = "") => {
+    let cleanUrl = String(url || "").trim().replace(/^(\[sticker\])+/i, "");
+
+    if (cleanUrl.startsWith("/api/uploads/")) {
+      cleanUrl = cleanUrl.replace(/^\/api/, "");
+    }
+
+    if (cleanUrl.startsWith("uploads/")) {
+      cleanUrl = `/${cleanUrl}`;
+    }
+
+    if (/^https?:\/\//i.test(cleanUrl)) {
+      try {
+        const parsed = new URL(cleanUrl);
+        if (parsed.pathname.startsWith("/uploads/")) {
+          cleanUrl = `${parsed.pathname}${parsed.search}`;
+        }
+      } catch (err) {
+        // Dejamos la URL original si no se puede parsear.
+      }
+    }
+
+    return cleanUrl;
+  }, []);
+
+  const getStickerImageUrl = useCallback((url = "") => {
+    const cleanUrl = normalizeStickerMessageUrl(url);
+    if (!cleanUrl) return "";
+    if (/^(blob:|data:|https?:\/\/)/i.test(cleanUrl)) return cleanUrl;
+    if (cleanUrl.startsWith("/uploads/")) return getAvatarUrl(cleanUrl);
+    return cleanUrl;
+  }, [normalizeStickerMessageUrl]);
 
   useEffect(() => {
     const cargarEstados = async () => {
@@ -211,12 +416,24 @@ const ChatBox = ({ chat, user, setChat, onVerPerfil }) => {
 
   useEffect(() => {
     return () => {
-      if (audioRecorderRef.current?.state === "recording") {
+      if (["recording", "paused"].includes(audioRecorderRef.current?.state)) {
+        discardRecordingRef.current = true;
         audioRecorderRef.current.stop();
       }
       audioStreamRef.current?.getTracks?.().forEach((track) => track.stop());
+      stopAudioMeter();
     };
   }, []);
+
+  useEffect(() => {
+    if (!isRecordingAudio || isAudioPaused) return undefined;
+
+    const timer = window.setInterval(() => {
+      setRecordingSeconds((seconds) => seconds + 1);
+    }, 1000);
+
+    return () => window.clearInterval(timer);
+  }, [isRecordingAudio, isAudioPaused]);
 
   const mentionOptions = useMemo(() => {
     if (!chat) return [];
@@ -266,6 +483,115 @@ const ChatBox = ({ chat, user, setChat, onVerPerfil }) => {
     ].filter((m) => m.id);
   }, [chat, user?.id]);
 
+  const getTypingPayload = useCallback(() => {
+    if (!chat || !user?.id) return null;
+
+    return {
+      tipo: chat.tipo === "grupo" ? "grupo" : "privado",
+      grupoId: chat.tipo === "grupo" ? chat.grupo_id : null,
+      receiverId: chat.tipo === "grupo" ? null : chat.usuario_id,
+      senderId: user.id,
+      nombre: user.nombre || "Usuario",
+      apellido: user.apellido || "",
+    };
+  }, [chat, user?.id, user?.nombre, user?.apellido]);
+
+  const emitTypingStop = useCallback(() => {
+    const payload = getTypingPayload();
+    if (!payload) return;
+    socket.emit("typing:stop", payload);
+  }, [getTypingPayload]);
+
+  useEffect(() => {
+    if (!chat || !user?.id) return undefined;
+
+    if (typingStopTimeoutRef.current) {
+      window.clearTimeout(typingStopTimeoutRef.current);
+      typingStopTimeoutRef.current = null;
+    }
+
+    const payload = getTypingPayload();
+    if (!payload) return undefined;
+
+    if (inputText.trim()) {
+      socket.emit("typing:start", payload);
+      typingStopTimeoutRef.current = window.setTimeout(() => {
+        socket.emit("typing:stop", payload);
+      }, 1800);
+    } else {
+      socket.emit("typing:stop", payload);
+    }
+
+    return () => {
+      if (typingStopTimeoutRef.current) {
+        window.clearTimeout(typingStopTimeoutRef.current);
+        typingStopTimeoutRef.current = null;
+      }
+    };
+  }, [inputText, chat?.tipo, chat?.grupo_id, chat?.usuario_id, user?.id, getTypingPayload]);
+
+  useEffect(() => {
+    return () => emitTypingStop();
+  }, [emitTypingStop]);
+
+  useEffect(() => {
+    if (!chat || !user?.id) return undefined;
+
+    setTypingUsers([]);
+
+    const handleTypingUpdate = (payload = {}) => {
+      const senderId = Number(payload.senderId);
+      if (!senderId || senderId === Number(user.id)) return;
+
+      const isSameChat = chat.tipo === "grupo"
+        ? payload.tipo === "grupo" && Number(payload.grupoId) === Number(chat.grupo_id)
+        : payload.tipo === "privado" && Number(senderId) === Number(chat.usuario_id);
+
+      if (!isSameChat) return;
+
+      if (!payload.isTyping) {
+        setTypingUsers((prev) => prev.filter((item) => Number(item.senderId) !== senderId));
+        if (typingUsersTimeoutRef.current[senderId]) {
+          window.clearTimeout(typingUsersTimeoutRef.current[senderId]);
+          delete typingUsersTimeoutRef.current[senderId];
+        }
+        return;
+      }
+
+      const at = payload.at || Date.now();
+      const nombre = [payload.nombre, payload.apellido].filter(Boolean).join(" ").trim() || "Usuario";
+
+      setTypingUsers((prev) => {
+        const withoutUser = prev.filter((item) => Number(item.senderId) !== senderId);
+        return [...withoutUser, { senderId, nombre, at }];
+      });
+
+      if (typingUsersTimeoutRef.current[senderId]) {
+        window.clearTimeout(typingUsersTimeoutRef.current[senderId]);
+      }
+
+      typingUsersTimeoutRef.current[senderId] = window.setTimeout(() => {
+        setTypingUsers((prev) => prev.filter((item) => !(Number(item.senderId) === senderId && item.at === at)));
+        delete typingUsersTimeoutRef.current[senderId];
+      }, 3600);
+    };
+
+    socket.on("typing:update", handleTypingUpdate);
+    return () => {
+      socket.off("typing:update", handleTypingUpdate);
+      Object.values(typingUsersTimeoutRef.current).forEach((timer) => window.clearTimeout(timer));
+      typingUsersTimeoutRef.current = {};
+    };
+  }, [chat?.tipo, chat?.grupo_id, chat?.usuario_id, user?.id]);
+
+  const getTypingHeaderText = () => {
+    if (!typingUsers.length) return "";
+    if (chat?.tipo === "grupo") {
+      return `${typingUsers[0].nombre} está escribiendo...`;
+    }
+    return "escribiendo...";
+  };
+
 
   const crearLoteId = () =>
   `lote-${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -314,27 +640,33 @@ const ChatBox = ({ chat, user, setChat, onVerPerfil }) => {
     };
 
     setMessages((prev) => {
-      const existente = prev.find((m) => m.id === msg.id);
+      const existente = prev.find((m) => Number(m.id) === Number(msg.id));
 
       if (existente) {
-        // Ya lo teníamos (por el envío local / actualización),
-        // solo mergeamos datos nuevos
+        // Ya lo teníamos por socket/POST; solo mergeamos datos nuevos.
         return prev.map((m) =>
-          m.id === msg.id
+          Number(m.id) === Number(msg.id)
             ? {
                 ...m,
                 ...mensajeTransformado,
+                estado: "enviado",
                 reacciones: m.reacciones || mensajeTransformado.reacciones || [],
               }
             : m
         );
       }
 
-      // Primer vez que lo vemos ⇒ lo añadimos
+      // Si el mensaje llegó por socket después de mostrarse como temporal,
+      // reemplazamos ese temporal en vez de agregar otra burbuja.
+      const optimisticResult = replaceMatchingOptimisticMessage(prev, mensajeTransformado, user.id);
+      if (optimisticResult.replaced) return optimisticResult.messages;
+
+      // Primera vez que lo vemos ⇒ lo añadimos.
       return sortAndDedupeMessages([
         ...prev,
         {
           ...mensajeTransformado,
+          estado: "enviado",
           reacciones: mensajeTransformado.reacciones || [],
         },
       ]);
@@ -407,15 +739,25 @@ const ChatBox = ({ chat, user, setChat, onVerPerfil }) => {
           return;
         }
 
+        const jumpMessageId = chat.__jumpToMessageId || null;
+
         const [resPrivados, resFijadosPrivados] = await Promise.all([
-          axios.get("/api/mensajes", {
-            params: {
-              usuario1: user.id,
-              usuario2: chat.usuario_id,
-              paginated: 1,
-              limit: MESSAGE_PAGE_SIZE,
-            },
-          }),
+          jumpMessageId
+            ? axios.get(`/api/mensajes/contexto/${jumpMessageId}`, {
+                params: {
+                  usuario1: user.id,
+                  usuario2: chat.usuario_id,
+                  limit: GROUP_CONTEXT_PAGE_SIZE,
+                },
+              })
+            : axios.get("/api/mensajes", {
+                params: {
+                  usuario1: user.id,
+                  usuario2: chat.usuario_id,
+                  paginated: 1,
+                  limit: MESSAGE_PAGE_SIZE,
+                },
+              }),
           axios.get("/api/mensajes/fijados", {
             params: { usuario1: user.id, usuario2: chat.usuario_id },
           }),
@@ -439,6 +781,17 @@ const ChatBox = ({ chat, user, setChat, onVerPerfil }) => {
         setMessages(sortAndDedupeMessages(applyPinnedToMessages(mensajes, mensajesFijados)));
         setHasMoreMessages(hasMore);
         setNextBeforeId(nextId);
+
+        if (jumpMessageId) {
+          setReplyJumpTarget({
+            type: "privado",
+            usuarioId: Number(chat.usuario_id),
+            messageId: Number(jumpMessageId),
+            token: chat.__jumpToken || Date.now(),
+          });
+        } else {
+          setReplyJumpTarget(null);
+        }
       } catch (err) {
         console.error("❌ Error cargando historial paginado:", err);
       } finally {
@@ -524,7 +877,7 @@ const ChatBox = ({ chat, user, setChat, onVerPerfil }) => {
     const cargarStickers = async () => {
       try {
         const [resTodos, resFav] = await Promise.all([
-          axios.get("/api/stickers/todos"),
+          axios.get("/api/stickers/todos", { params: { usuarioId: user.id } }),
           axios.get("/api/stickers", { params: { usuarioId: user.id } }),
         ]);
 
@@ -814,16 +1167,23 @@ const ChatBox = ({ chat, user, setChat, onVerPerfil }) => {
                 ? {
                     ...m,
                     ...msg,
+                    estado: "enviado",
                     reacciones: m.reacciones || msg.reacciones || [],
                   }
                 : m
             );
           }
 
+          // Si es un mensaje mío que ya se pintó como temporal, se reemplaza
+          // por el mensaje real del backend para evitar burbujas duplicadas.
+          const optimisticResult = replaceMatchingOptimisticMessage(prev, msg, user.id);
+          if (optimisticResult.replaced) return optimisticResult.messages;
+
           return sortAndDedupeMessages([
             ...prev,
             {
               ...msg,
+              estado: "enviado",
               reacciones: msg.reacciones || [],
             },
           ]);
@@ -1118,6 +1478,58 @@ const ChatBox = ({ chat, user, setChat, onVerPerfil }) => {
     }
   }, []);
 
+  const cargarContextoMensajePrivado = useCallback(async (mensajeId) => {
+    if (!mensajeId || !chat?.usuario_id || !user?.id) return false;
+
+    const targetMessageId = Number(mensajeId);
+
+    setIsLoadingMessages(true);
+    setReplyJumpTarget({
+      type: "privado",
+      usuarioId: Number(chat.usuario_id),
+      messageId: targetMessageId,
+      token: Date.now(),
+    });
+
+    try {
+      const [resMensajes, resFijadosPrivados] = await Promise.all([
+        axios.get(`/api/mensajes/contexto/${targetMessageId}`, {
+          params: {
+            usuario1: user.id,
+            usuario2: chat.usuario_id,
+            limit: GROUP_CONTEXT_PAGE_SIZE,
+          },
+        }),
+        axios.get("/api/mensajes/fijados", {
+          params: { usuario1: user.id, usuario2: chat.usuario_id },
+        }),
+      ]);
+
+      const {
+        mensajes,
+        hasMore,
+        nextBeforeId: nextId,
+      } = extractMessagesPayload(resMensajes.data);
+
+      const mensajesFijados = Array.isArray(resFijadosPrivados.data)
+        ? resFijadosPrivados.data
+        : Array.isArray(resFijadosPrivados.data?.mensajes_fijados)
+          ? resFijadosPrivados.data.mensajes_fijados
+          : [];
+
+      setPinnedMessages(mensajesFijados);
+      setMessages(sortAndDedupeMessages(applyPinnedToMessages(mensajes, mensajesFijados)));
+      setHasMoreMessages(hasMore);
+      setNextBeforeId(nextId);
+      return true;
+    } catch (err) {
+      console.error("❌ Error cargando contexto del mensaje privado:", err);
+      return false;
+    } finally {
+      setIsLoadingMessages(false);
+    }
+  }, [chat?.usuario_id, user?.id]);
+
   const openGroupAndJumpToMessage = useCallback(async (grupoId, mensajeId, grupoNombre = "Grupo") => {
     if (!grupoId || !mensajeId) return false;
 
@@ -1215,20 +1627,189 @@ const ChatBox = ({ chat, user, setChat, onVerPerfil }) => {
 
   const renderPreviewLine = (message) => {
     const preview = getMessagePreview(message);
+    const rawText = preview.kind === "text" ? (preview.rawText || preview.text) : preview.text;
 
     return (
       <span className="wa-preview-line">
         {preview.iconClass && <i className={`wa-preview-icon ${preview.iconClass}`} aria-hidden="true" />}
-        <span className="wa-preview-label">{preview.text}</span>
+        <span className="wa-preview-label">
+          {preview.kind === "text"
+            ? renderRichTextInline(rawText, "reply-compose-preview")
+            : preview.text}
+        </span>
       </span>
     );
   };
 
+  const createLocalOutgoingMessage = (overrides = {}) => {
+    const base = {
+      id: overrides.id || `temp-${Date.now()}-${Math.random()}`,
+      mensaje: overrides.mensaje || "",
+      eliminado: 0,
+      editado: 0,
+      fijado: 0,
+      visto: 0,
+      fecha_envio: overrides.fecha_envio || new Date().toISOString(),
+      estado: overrides.estado || "enviando",
+      lote_id: overrides.lote_id || null,
+      reply_to_id: overrides.reply_to_id || null,
+      reply_to_tipo: overrides.reply_to_tipo || null,
+      reply_to_grupo_id: overrides.reply_to_grupo_id || null,
+      reply_to: overrides.reply_to || null,
+      ...overrides,
+    };
+
+    if (chat?.tipo === "grupo") {
+      return {
+        ...base,
+        grupo_id: chat.grupo_id,
+        usuario_id: user.id,
+        nombre: user.nombre,
+        apellido: user.apellido,
+        url_imagen: user.url_imagen,
+        background: user.background,
+        correo: user.correo,
+      };
+    }
+
+    return {
+      ...base,
+      usuario_envia_id: user.id,
+      usuario_recibe_id: chat.usuario_id,
+      emisor_nombre: user.nombre,
+      emisor_apellido: user.apellido,
+      emisor_avatar: user.url_imagen,
+      emisor_background: user.background,
+      emisor_correo: user.correo,
+      receptor_nombre: chat.usuario_nombre,
+      receptor_apellido: "",
+      receptor_avatar: chat.url_imagen,
+      receptor_background: chat.background,
+      receptor_correo: chat.usuario_correo,
+    };
+  };
+
+  const makePendingController = (pendingId, baseEntry = {}) => {
+    const controller = new AbortController();
+    pendingUploadsRef.current.set(pendingId, {
+      ...baseEntry,
+      controller,
+    });
+    return controller;
+  };
+
+  const clearPendingUpload = (pendingId) => {
+    pendingUploadsRef.current.delete(pendingId);
+  };
+
+  const markPendingUploadError = (pendingId, errorMessage = "Se produjo un error. Haz clic para obtener más información.") => {
+    setMessages((prev) =>
+      prev.map((m) =>
+        m.id === pendingId
+          ? {
+              ...m,
+              estado: "error",
+              progreso: 0,
+              error_mensaje: errorMessage,
+            }
+          : m
+      )
+    );
+  };
+
+  const cancelPendingUpload = useCallback((pendingId) => {
+    const entry = pendingUploadsRef.current.get(pendingId);
+    entry?.controller?.abort?.();
+    markPendingUploadError(pendingId, "Envío cancelado. Haz clic para volver a intentar.");
+  }, []);
+
+  const retryPendingUpload = useCallback((pendingId) => {
+    const entry = pendingUploadsRef.current.get(pendingId);
+    if (!entry) return;
+
+    if (entry.kind === "image") {
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === pendingId ? { ...m, estado: "subiendo", progreso: 0, error_mensaje: null } : m
+        )
+      );
+
+      const controller = makePendingController(pendingId, { ...entry, kind: "image" });
+
+      uploadImageMessage(
+        entry.file,
+        entry.loteId,
+        (percent) => {
+          setMessages((prev) =>
+            prev.map((m) => (m.id === pendingId ? { ...m, progreso: percent } : m))
+          );
+        },
+        entry.replyToId,
+        entry.replyToType,
+        entry.replyToGrupoId,
+        { signal: controller.signal }
+      )
+        .then((mensajeServidor) => {
+          if (!mensajeServidor) {
+            markPendingUploadError(pendingId);
+            return;
+          }
+
+          const msgSrv = {
+            ...mensajeServidor,
+            lote_id: mensajeServidor.lote_id || entry.loteId,
+          };
+
+          setMessages((prev) => {
+            const yaExisteReal = prev.find((m) => Number(m.id) === Number(msgSrv.id));
+            if (yaExisteReal) {
+              return prev
+                .filter((m) => m.id !== pendingId)
+                .map((m) => Number(m.id) === Number(msgSrv.id) ? { ...m, ...msgSrv, estado: "enviado", progreso: 100 } : m);
+            }
+
+            return sortAndDedupeMessages(
+              prev.map((m) => m.id === pendingId ? { ...m, ...msgSrv, estado: "enviado", progreso: 100 } : m)
+            );
+          });
+          clearPendingUpload(pendingId);
+        })
+        .catch((err) => {
+          if (axios.isCancel?.(err) || err?.name === "CanceledError" || err?.code === "ERR_CANCELED") {
+            markPendingUploadError(pendingId, "Envío cancelado. Haz clic para volver a intentar.");
+            return;
+          }
+          console.error("❌ Error reintentando imagen:", err);
+          markPendingUploadError(pendingId);
+        });
+      return;
+    }
+
+    if (entry.kind === "sticker") {
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === pendingId ? { ...m, estado: "subiendo", error_mensaje: null } : m
+        )
+      );
+
+      if (entry.file) {
+        uploadAndSendStickerFile(entry.file, { pendingId, localPreviewUrl: entry.localPreviewUrl, originalStickerData: entry.stickerData })
+          .catch(() => markPendingUploadError(pendingId));
+      } else if (entry.stickerUrl) {
+        sendStickerMessage(entry.stickerUrl, entry.stickerData || null, {
+          pendingId,
+          localPreviewUrl: entry.localPreviewUrl || entry.stickerUrl,
+          keepExistingPending: true,
+        }).catch(() => markPendingUploadError(pendingId));
+      }
+    }
+  }, [chat, user]);
+
   // Función para enviar mensaje
-  const handleSendMessage = async (messageText) => {
+  const handleSendMessage = async (messageText, options = {}) => {
     const text = (messageText || "").trim();
     const hayTexto = !!text;
-    const hayImagenes = pendingImages.length > 0;
+    const hayImagenes = !options.ignorePendingImages && pendingImages.length > 0;
     const replyToId = replyingTo?.id || null;
     const replyPayload = replyingTo || null;
     const replyToType = replyingTo?.reply_to_tipo || replyingTo?.reply_source || "privado";
@@ -1303,8 +1884,17 @@ const ChatBox = ({ chat, user, setChat, onVerPerfil }) => {
             };
           }
 
-          // Añadimos el mensaje temporal al chat
+          // Añadimos la vista de envío en curso al chat.
           setMessages((prev) => sortAndDedupeMessages([...prev, tempMsg]));
+
+          const controller = makePendingController(tempId, {
+            kind: "image",
+            file: img.file,
+            loteId,
+            replyToId,
+            replyToType,
+            replyToGrupoId,
+          });
 
           // Subimos la imagen de verdad
           uploadImageMessage(img.file, loteId, (percent) => {
@@ -1313,7 +1903,7 @@ const ChatBox = ({ chat, user, setChat, onVerPerfil }) => {
                 m.id === tempId ? { ...m, progreso: percent } : m
               )
             );
-          }, replyToId, replyToType, replyToGrupoId)
+          }, replyToId, replyToType, replyToGrupoId, { signal: controller.signal })
             .then((mensajeServidor) => {
               if (!mensajeServidor) {
                 // marcar error si no hay respuesta
@@ -1333,7 +1923,7 @@ const ChatBox = ({ chat, user, setChat, onVerPerfil }) => {
 
               setMessages((prev) => {
                 // ¿Ya entró el mensaje real por socket?
-                const yaExisteReal = prev.find((m) => m.id === msgSrv.id);
+                const yaExisteReal = prev.find((m) => Number(m.id) === Number(msgSrv.id));
 
                 if (yaExisteReal) {
                   // llegó por socket: actualizamos ese y borramos el temporal
@@ -1363,62 +1953,77 @@ const ChatBox = ({ chat, user, setChat, onVerPerfil }) => {
                     : m
                 );
               });
+              clearPendingUpload(tempId);
             })
             .catch((err) => {
+              if (axios.isCancel?.(err) || err?.name === "CanceledError" || err?.code === "ERR_CANCELED") {
+                markPendingUploadError(tempId, "Envío cancelado. Haz clic para volver a intentar.");
+                return;
+              }
               console.error("❌ Error subiendo imagen:", err);
-              setMessages((prev) =>
-                prev.map((m) =>
-                  m.id === tempId ? { ...m, estado: "error" } : m
-                )
-              );
+              markPendingUploadError(tempId);
             });
         }
       }
 
-      // 2️⃣ Si hay texto, lo enviamos (como caption si hay loteId)
+      // 2️⃣ Texto: ya no agregamos una burbuja temporal.
+      // Esperamos la respuesta del backend/socket para evitar duplicados y conflictos.
       if (hayTexto) {
-        if (chat.tipo === "grupo") {
-          const res = await axios.post("/api/mensajes/grupo", {
-            grupoId: chat.grupo_id,
-            usuarioId: user.id,
-            mensaje: text,
-            loteId,
-            replyToId,
-            replyToType,
-            replyToGrupoId,
-          });
+        try {
+          let nuevo;
 
-          const nuevo = res.data?.mensaje || res.data;
-          logDev("✅ Respuesta POST /api/mensajes:", nuevo);
+          if (chat.tipo === "grupo") {
+            const res = await axios.post("/api/mensajes/grupo", {
+              grupoId: chat.grupo_id,
+              usuarioId: user.id,
+              mensaje: text,
+              loteId,
+              replyToId,
+              replyToType,
+              replyToGrupoId,
+            });
+            nuevo = res.data?.mensaje || res.data;
+            logDev("✅ Respuesta POST /api/mensajes:", nuevo);
+          } else {
+            const res = await axios.post("/api/mensajes", {
+              senderId: user.id,
+              receiverId: chat.usuario_id,
+              message: text,
+              loteId,
+              replyToId,
+              replyToType,
+              replyToGrupoId,
+            });
+            nuevo = res.data?.mensaje || res.data;
+          }
 
-          setMessages((prev) => {
-            const yaExiste = prev.some((m) => Number(m.id) === Number(nuevo.id));
-            if (yaExiste) return prev;
-            return sortAndDedupeMessages([...prev, nuevo]);
-          });
-        } else {
-          const res = await axios.post("/api/mensajes", {
-            senderId: user.id,
-            receiverId: chat.usuario_id,
-            message: text,
-            loteId,
-            replyToId,
-            replyToType,
-            replyToGrupoId,
-          });
-
-          const nuevo = res.data?.mensaje || res.data;
-          if (replyPayload && !nuevo.reply_to) {
+          if (replyPayload && nuevo && !nuevo.reply_to) {
             nuevo.reply_to = replyPayload;
             nuevo.reply_to_tipo = replyToType;
             nuevo.reply_to_grupo_id = replyToGrupoId;
           }
 
-          setMessages((prev) => {
-            const yaExiste = prev.some((m) => Number(m.id) === Number(nuevo.id));
-            if (yaExiste) return prev;
-            return sortAndDedupeMessages([...prev, nuevo]);
-          });
+          if (nuevo?.id) {
+            setMessages((prev) => {
+              const existe = prev.some((m) => Number(m.id) === Number(nuevo.id));
+              if (existe) {
+                return sortAndDedupeMessages(
+                  prev.map((m) => Number(m.id) === Number(nuevo.id)
+                    ? { ...m, ...nuevo, estado: "enviado", reacciones: m.reacciones || nuevo.reacciones || [] }
+                    : m
+                  )
+                );
+              }
+
+              return sortAndDedupeMessages([
+                ...prev,
+                { ...nuevo, estado: "enviado", reacciones: nuevo.reacciones || [] },
+              ]);
+            });
+          }
+        } catch (err) {
+          console.error("❌ Error enviando mensaje:", err);
+          alert("No se pudo enviar el mensaje. Inténtalo otra vez.");
         }
       }
 
@@ -1472,20 +2077,486 @@ const ChatBox = ({ chat, user, setChat, onVerPerfil }) => {
     }
   };
 
-  // 👇 Subir Sticker (catálogo, NO favorito)
-  const handleStickerUpload = async (file) => {
-    if (!file || !user?.id) return;
+  const closeStickerEditor = useCallback(() => {
+    setShowStickerEditor(false);
+    setPendingStickerFile(null);
+    setStickerEditorRotation(0);
+    setStickerEditorFlipX(false);
+    setStickerEditorTool("crop");
+    setStickerEditorFilter("none");
+    setStickerDrawColor("#22c55e");
+    setStickerShapeType("rect");
+    setStickerTextItems([]);
+    setStickerShapeItems([]);
+    setStickerDrawPaths([]);
+    setStickerCropRect({ x: 0, y: 0, w: 1, h: 1 });
+    if (pendingStickerPreview) {
+      URL.revokeObjectURL(pendingStickerPreview);
+      setPendingStickerPreview("");
+    }
+    if (stickerFileInputRef.current) {
+      stickerFileInputRef.current.value = "";
+    }
+  }, [pendingStickerPreview]);
+
+  const openStickerCreator = useCallback(() => {
+    setShowStickerPicker(false);
+    stickerFileInputRef.current?.click?.();
+  }, []);
+
+  const handleStickerFileSelected = useCallback((event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    if (pendingStickerPreview) {
+      URL.revokeObjectURL(pendingStickerPreview);
+    }
+
+    setPendingStickerFile(file);
+    setPendingStickerPreview(URL.createObjectURL(file));
+    setStickerEditorRotation(0);
+    setStickerEditorFlipX(false);
+    setStickerEditorTool("crop");
+    setStickerEditorFilter("none");
+    setStickerDrawColor("#22c55e");
+    setStickerShapeType("rect");
+    setStickerTextItems([]);
+    setStickerShapeItems([]);
+    setStickerDrawPaths([]);
+    setStickerCropRect({ x: 0, y: 0, w: 1, h: 1 });
+    setShowStickerEditor(true);
+  }, [pendingStickerPreview]);
+
+  useEffect(() => {
+    return () => {
+      if (pendingStickerPreview) {
+        URL.revokeObjectURL(pendingStickerPreview);
+      }
+    };
+  }, [pendingStickerPreview]);
+
+  const getStickerPointerPoint = (event) => {
+    const rect = stickerEditorCanvasRef.current?.getBoundingClientRect();
+    if (!rect) return null;
+
+    return {
+      x: Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width)),
+      y: Math.max(0, Math.min(1, (event.clientY - rect.top) / rect.height)),
+    };
+  };
+
+  const updateStickerCropFromPointer = useCallback((event) => {
+    const corner = stickerCropDragRef.current;
+    if (!corner) return;
+
+    const point = getStickerPointerPoint(event);
+    if (!point) return;
+
+    event.preventDefault();
+    const minSize = 0.16;
+
+    setStickerCropRect((current) => {
+      const left = current.x;
+      const top = current.y;
+      const right = current.x + current.w;
+      const bottom = current.y + current.h;
+      let nextLeft = left;
+      let nextTop = top;
+      let nextRight = right;
+      let nextBottom = bottom;
+
+      if (corner.includes("left")) {
+        nextLeft = Math.max(0, Math.min(point.x, right - minSize));
+      }
+      if (corner.includes("right")) {
+        nextRight = Math.min(1, Math.max(point.x, left + minSize));
+      }
+      if (corner.includes("top")) {
+        nextTop = Math.max(0, Math.min(point.y, bottom - minSize));
+      }
+      if (corner.includes("bottom")) {
+        nextBottom = Math.min(1, Math.max(point.y, top + minSize));
+      }
+
+      return {
+        x: nextLeft,
+        y: nextTop,
+        w: nextRight - nextLeft,
+        h: nextBottom - nextTop,
+      };
+    });
+  }, []);
+
+  const startStickerCropDrag = (corner) => (event) => {
+    if (stickerEditorTool !== "crop") return;
+    event.preventDefault();
+    event.stopPropagation();
+    stickerCropDragRef.current = corner;
+  };
+
+  useEffect(() => {
+    if (!showStickerEditor) return undefined;
+
+    const handleMove = (event) => updateStickerCropFromPointer(event);
+    const handleUp = () => {
+      stickerCropDragRef.current = null;
+    };
+
+    window.addEventListener("pointermove", handleMove);
+    window.addEventListener("pointerup", handleUp);
+    window.addEventListener("pointercancel", handleUp);
+
+    return () => {
+      window.removeEventListener("pointermove", handleMove);
+      window.removeEventListener("pointerup", handleUp);
+      window.removeEventListener("pointercancel", handleUp);
+    };
+  }, [showStickerEditor, updateStickerCropFromPointer]);
+
+  const handleStickerCanvasPointerDown = (event) => {
+    if (stickerEditorTool !== "paint") return;
+    const point = getStickerPointerPoint(event);
+    if (!point) return;
+    event.preventDefault();
+    stickerDrawingRef.current = true;
+    setStickerDrawPaths((prev) => [
+      ...prev,
+      {
+        id: `path-${Date.now()}`,
+        color: stickerDrawColor,
+        points: [point],
+      },
+    ]);
+  };
+
+  const handleStickerCanvasPointerMove = (event) => {
+    if (!stickerDrawingRef.current || stickerEditorTool !== "paint") return;
+    const point = getStickerPointerPoint(event);
+    if (!point) return;
+    event.preventDefault();
+    setStickerDrawPaths((prev) => {
+      if (!prev.length) return prev;
+      const next = [...prev];
+      const last = next[next.length - 1];
+      next[next.length - 1] = { ...last, points: [...last.points, point] };
+      return next;
+    });
+  };
+
+  const stopStickerDrawing = () => {
+    stickerDrawingRef.current = false;
+  };
+
+  const addStickerText = () => {
+    const text = window.prompt("Texto del sticker", "Hola como estan");
+    if (!text) return;
+    setStickerEditorTool("text");
+    setStickerTextItems((prev) => [
+      ...prev,
+      {
+        id: `text-${Date.now()}`,
+        text,
+        x: 0.5,
+        y: 0.5,
+        color: stickerDrawColor,
+        background: true,
+        fontSize: 28,
+      },
+    ]);
+  };
+
+  const addStickerShape = (type = stickerShapeType) => {
+    setStickerEditorTool("shape");
+    setStickerShapeItems((prev) => [
+      ...prev,
+      {
+        id: `shape-${Date.now()}`,
+        type,
+        x: 0.5,
+        y: 0.5,
+        w: 0.22,
+        h: 0.16,
+        color: stickerDrawColor,
+      },
+    ]);
+  };
+
+  const buildEditedStickerFile = async () => {
+    if (!pendingStickerFile) return null;
+    const image = stickerEditorImageRef.current;
+    if (!image) return pendingStickerFile;
+
+    const size = 512;
+    const sourceCanvas = document.createElement("canvas");
+    sourceCanvas.width = size;
+    sourceCanvas.height = size;
+    const ctx = sourceCanvas.getContext("2d");
+    if (!ctx) return pendingStickerFile;
+
+    const sourceWidth = image.naturalWidth || image.width || size;
+    const sourceHeight = image.naturalHeight || image.height || size;
+    const maxImageSize = size * 0.88;
+    const scale = Math.min(maxImageSize / sourceWidth, maxImageSize / sourceHeight);
+    const drawWidth = sourceWidth * scale;
+    const drawHeight = sourceHeight * scale;
+
+    ctx.clearRect(0, 0, size, size);
+    ctx.save();
+    ctx.translate(size / 2, size / 2);
+    ctx.rotate((stickerEditorRotation * Math.PI) / 180);
+    ctx.scale(stickerEditorFlipX ? -1 : 1, 1);
+    ctx.filter = STICKER_EDITOR_FILTERS[stickerEditorFilter]?.css || "none";
+    ctx.drawImage(image, -drawWidth / 2, -drawHeight / 2, drawWidth, drawHeight);
+    ctx.restore();
+    ctx.filter = "none";
+
+    const toPx = (point) => ({ x: point.x * size, y: point.y * size });
+
+    stickerDrawPaths.forEach((path) => {
+      if (!path.points?.length) return;
+      ctx.save();
+      ctx.strokeStyle = path.color || "#22c55e";
+      ctx.lineWidth = 8;
+      ctx.lineCap = "round";
+      ctx.lineJoin = "round";
+      ctx.beginPath();
+      path.points.forEach((point, index) => {
+        const px = toPx(point);
+        if (index === 0) ctx.moveTo(px.x, px.y);
+        else ctx.lineTo(px.x, px.y);
+      });
+      ctx.stroke();
+      ctx.restore();
+    });
+
+    stickerShapeItems.forEach((shape) => {
+      const x = (shape.x - shape.w / 2) * size;
+      const y = (shape.y - shape.h / 2) * size;
+      const w = shape.w * size;
+      const h = shape.h * size;
+      ctx.save();
+      ctx.strokeStyle = shape.color || "#22c55e";
+      ctx.lineWidth = 7;
+      ctx.lineCap = "round";
+      ctx.lineJoin = "round";
+
+      if (shape.type === "circle") {
+        ctx.beginPath();
+        ctx.ellipse(shape.x * size, shape.y * size, Math.abs(w) / 2, Math.abs(h) / 2, 0, 0, Math.PI * 2);
+        ctx.stroke();
+      } else if (shape.type === "line" || shape.type === "arrow") {
+        ctx.beginPath();
+        ctx.moveTo(x, y + h);
+        ctx.lineTo(x + w, y);
+        ctx.stroke();
+        if (shape.type === "arrow") {
+          const angle = Math.atan2(-h, w);
+          const head = 24;
+          ctx.beginPath();
+          ctx.moveTo(x + w, y);
+          ctx.lineTo(x + w - head * Math.cos(angle - Math.PI / 6), y - head * Math.sin(angle - Math.PI / 6));
+          ctx.moveTo(x + w, y);
+          ctx.lineTo(x + w - head * Math.cos(angle + Math.PI / 6), y - head * Math.sin(angle + Math.PI / 6));
+          ctx.stroke();
+        }
+      } else {
+        ctx.strokeRect(x, y, w, h);
+      }
+      ctx.restore();
+    });
+
+    stickerTextItems.forEach((item) => {
+      const x = item.x * size;
+      const y = item.y * size;
+      const fontSize = item.fontSize || 28;
+      ctx.save();
+      ctx.font = `700 ${fontSize}px Arial, sans-serif`;
+      ctx.textBaseline = "middle";
+      ctx.textAlign = "center";
+      const metrics = ctx.measureText(item.text);
+      const padX = 12;
+      const padY = 7;
+      if (item.background) {
+        ctx.fillStyle = "rgba(255,255,255,0.92)";
+        ctx.strokeStyle = item.color || "#22c55e";
+        ctx.lineWidth = 4;
+        const boxW = metrics.width + padX * 2;
+        const boxH = fontSize + padY * 2;
+        ctx.fillRect(x - boxW / 2, y - boxH / 2, boxW, boxH);
+        ctx.strokeRect(x - boxW / 2, y - boxH / 2, boxW, boxH);
+      }
+      ctx.fillStyle = "#111827";
+      ctx.fillText(item.text, x, y);
+      ctx.restore();
+    });
+
+    const crop = stickerCropRect || { x: 0, y: 0, w: 1, h: 1 };
+    const cropX = Math.max(0, Math.min(size - 1, crop.x * size));
+    const cropY = Math.max(0, Math.min(size - 1, crop.y * size));
+    const cropW = Math.max(1, Math.min(size - cropX, crop.w * size));
+    const cropH = Math.max(1, Math.min(size - cropY, crop.h * size));
+
+    const canvas = document.createElement("canvas");
+    canvas.width = size;
+    canvas.height = size;
+    const outCtx = canvas.getContext("2d");
+    if (!outCtx) return pendingStickerFile;
+    outCtx.clearRect(0, 0, size, size);
+    outCtx.drawImage(sourceCanvas, cropX, cropY, cropW, cropH, 0, 0, size, size);
+
+    const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/png"));
+    if (!blob) return pendingStickerFile;
+    return new File([blob], `sticker_${Date.now()}.png`, { type: "image/png" });
+  };
+
+  const addOrKeepPendingStickerMessage = (pendingId, previewUrl, replyPayload = null, replyToId = null, replyToType = "privado", replyToGrupoId = null) => {
+    const pendingText = `[sticker]${previewUrl}`;
+    const pendingMessage = createLocalOutgoingMessage({
+      id: pendingId,
+      mensaje: pendingText,
+      estado: "subiendo",
+      reply_to_id: replyToId,
+      reply_to_tipo: replyToType,
+      reply_to_grupo_id: replyToGrupoId,
+      reply_to: replyPayload,
+    });
+
+    setMessages((prev) => {
+      if (prev.some((m) => m.id === pendingId)) return prev;
+      return sortAndDedupeMessages([...prev, pendingMessage]);
+    });
+  };
+
+  const sendStickerMessage = async (rawStickerUrl, stickerData = null, options = {}) => {
+    if (!chat || !user?.id || !rawStickerUrl) return null;
+
+    const stickerUrl = normalizeStickerMessageUrl(rawStickerUrl);
+    const text = `[sticker]${stickerUrl}`;
+    const replyToId = options.replyToId ?? replyingTo?.id ?? null;
+    const replyToType = options.replyToType ?? replyingTo?.reply_to_tipo ?? replyingTo?.reply_source ?? "privado";
+    const replyToGrupoId = options.replyToGrupoId ?? replyingTo?.reply_to_grupo_id ?? replyingTo?.source_group_id ?? null;
+    const replyPayload = options.replyPayload ?? replyingTo ?? null;
+    const pendingStickerId = options.pendingId || `temp-sticker-${Date.now()}-${Math.random()}`;
+    const localPreviewUrl = options.localPreviewUrl || stickerUrl;
+
+    if (replyToId) setReplyingTo(null);
+
+    addOrKeepPendingStickerMessage(
+      pendingStickerId,
+      localPreviewUrl,
+      replyPayload,
+      replyToId,
+      replyToType,
+      replyToGrupoId
+    );
+
+    pendingUploadsRef.current.set(pendingStickerId, {
+      kind: "sticker",
+      stickerUrl,
+      stickerData,
+      localPreviewUrl,
+      replyToId,
+      replyToType,
+      replyToGrupoId,
+      replyPayload,
+    });
+
+    inputRef.current?.reset?.();
+    setShowStickerPicker(false);
+
+    try {
+      let nuevo;
+      if (chat.tipo === "grupo") {
+        const res = await axios.post("/api/mensajes/grupo", {
+          grupoId: chat.grupo_id,
+          usuarioId: user.id,
+          mensaje: text,
+          replyToId,
+          replyToType,
+          replyToGrupoId,
+        });
+        nuevo = res.data?.mensaje || res.data;
+      } else {
+        const res = await axios.post("/api/mensajes", {
+          senderId: user.id,
+          receiverId: chat.usuario_id,
+          message: text,
+          replyToId,
+          replyToType,
+          replyToGrupoId,
+        });
+        nuevo = res.data?.mensaje || res.data;
+      }
+
+      if (replyPayload && nuevo && !nuevo.reply_to) {
+        nuevo.reply_to = replyPayload;
+        nuevo.reply_to_tipo = replyToType;
+        nuevo.reply_to_grupo_id = replyToGrupoId;
+      }
+
+      if (nuevo?.id) {
+        setMessages((prev) => {
+          const exists = prev.some((m) => Number(m.id) === Number(nuevo.id));
+          if (exists) {
+            return prev
+              .filter((m) => m.id !== pendingStickerId)
+              .map((m) => Number(m.id) === Number(nuevo.id) ? { ...m, ...nuevo, estado: "enviado" } : m);
+          }
+          return sortAndDedupeMessages(
+            prev.map((m) => m.id === pendingStickerId ? { ...m, ...nuevo, estado: "enviado" } : m)
+          );
+        });
+      }
+
+      clearPendingUpload(pendingStickerId);
+
+      setStickersTodos((prev) => {
+        const sinDuplicados = prev.filter((item) => normalizeStickerMessageUrl(item.url) !== stickerUrl);
+        return [
+          {
+            ...(stickerData || {}),
+            id: stickerData?.id || `local-${Date.now()}`,
+            url: stickerUrl,
+            enviado_en: new Date().toISOString(),
+          },
+          ...sinDuplicados,
+        ];
+      });
+
+      return nuevo;
+    } catch (err) {
+      console.error("❌ Error enviando sticker:", err);
+      markPendingUploadError(pendingStickerId);
+      throw err;
+    }
+  };
+
+  const uploadAndSendStickerFile = async (file, options = {}) => {
+    if (!file || !user?.id) return null;
+
+    const pendingId = options.pendingId || `temp-sticker-${Date.now()}-${Math.random()}`;
+    const localPreviewUrl = options.localPreviewUrl || URL.createObjectURL(file);
+    const replyToId = options.replyToId ?? replyingTo?.id ?? null;
+    const replyToType = options.replyToType ?? replyingTo?.reply_to_tipo ?? replyingTo?.reply_source ?? "privado";
+    const replyToGrupoId = options.replyToGrupoId ?? replyingTo?.reply_to_grupo_id ?? replyingTo?.source_group_id ?? null;
+    const replyPayload = options.replyPayload ?? replyingTo ?? null;
+
+    addOrKeepPendingStickerMessage(pendingId, localPreviewUrl, replyPayload, replyToId, replyToType, replyToGrupoId);
+    pendingUploadsRef.current.set(pendingId, {
+      kind: "sticker",
+      file,
+      localPreviewUrl,
+      stickerData: options.originalStickerData || null,
+      replyToId,
+      replyToType,
+      replyToGrupoId,
+      replyPayload,
+    });
 
     try {
       const formData = new FormData();
-      // 👈 nombre DEL CAMPO que espera multer: "archivo"
       formData.append("archivo", file);
-
-      // 👈 nombre DEL CAMPO que lee tu backend: "usuarioId"
       formData.append("usuarioId", user.id);
-
-      // opcional, si luego quieres usarlo en la BD
-      // formData.append("nombre", nombreSticker || file.name);
 
       const res = await axios.post(`/api/stickers?usuarioId=${user.id}`, formData, {
         headers: { "Content-Type": "multipart/form-data" },
@@ -1493,26 +2564,55 @@ const ChatBox = ({ chat, user, setChat, onVerPerfil }) => {
 
       if (!res.data?.success || !res.data?.sticker) {
         console.error("❌ Respuesta inesperada /api/stickers:", res.data);
-        return;
+        markPendingUploadError(pendingId);
+        return null;
       }
 
-      const sticker = res.data.sticker; // { id, url, nombre_archivo_original, ... }
+      const sticker = {
+        ...res.data.sticker,
+        url: normalizeStickerMessageUrl(res.data.sticker.url),
+      };
 
-      // 1️⃣ Añadir al catálogo local (pestaña "Todos")
-      setStickersTodos((prev) => [sticker, ...prev]);
-
-      // 2️⃣ Enviar mensaje con ese sticker
-      await handleSendMessage(`[sticker]${sticker.url}`);
-
-      setShowStickerPicker(false);
+      return await sendStickerMessage(sticker.url, sticker, {
+        pendingId,
+        localPreviewUrl,
+        replyToId,
+        replyToType,
+        replyToGrupoId,
+        replyPayload,
+      });
     } catch (err) {
       console.error("❌ Error subiendo sticker:", {
         status: err.response?.status,
         data: err.response?.data,
         headers: err.response?.headers,
       });
+      markPendingUploadError(pendingId);
+      throw err;
     }
   };
+
+  // 👇 Subir Sticker (catálogo, NO favorito)
+  const handleStickerUpload = async (file) => {
+    if (!file || !user?.id || isCreatingSticker) return;
+
+    setIsCreatingSticker(true);
+
+    try {
+      const stickerFile = showStickerEditor ? await buildEditedStickerFile() : file;
+      await uploadAndSendStickerFile(stickerFile || file);
+      closeStickerEditor();
+    } catch (err) {
+      console.error("❌ Error subiendo/enviando sticker:", err);
+    } finally {
+      setIsCreatingSticker(false);
+    }
+  };
+
+  const confirmStickerCreation = useCallback(async () => {
+    if (!pendingStickerFile || isCreatingSticker) return;
+    await handleStickerUpload(pendingStickerFile);
+  }, [pendingStickerFile, isCreatingSticker, showStickerEditor, stickerEditorRotation, stickerEditorFlipX, stickerEditorFilter, stickerDrawPaths, stickerTextItems, stickerShapeItems]);
 
   // 👉 Función para sacar inicial (si no hay avatar)
   const getInitial = (text) => {
@@ -1610,6 +2710,19 @@ const ChatBox = ({ chat, user, setChat, onVerPerfil }) => {
     return cargarContextoMensajeGrupo(chat.grupo_id, mensajeId);
   }, [chat?.grupo_id, cargarContextoMensajeGrupo]);
 
+  const handlePinnedMessageClick = useCallback(async (mensajeId) => {
+    if (!mensajeId) return false;
+
+    const foundInCurrentPage = scrollToMessage(mensajeId);
+    if (foundInCurrentPage) return true;
+
+    if (chat?.tipo === "grupo") {
+      return cargarContextoMensajeGrupo(chat.grupo_id, mensajeId);
+    }
+
+    return cargarContextoMensajePrivado(mensajeId);
+  }, [chat?.tipo, chat?.grupo_id, cargarContextoMensajeGrupo, cargarContextoMensajePrivado]);
+
   const handleReplyPreviewClick = useCallback((replyMessage = {}, currentMessage = {}) => {
     const targetId = replyMessage.id || replyMessage.reply_to_id || currentMessage.reply_to_id;
     if (!targetId) return false;
@@ -1662,6 +2775,43 @@ const ChatBox = ({ chat, user, setChat, onVerPerfil }) => {
     chat?.usuario_nombre,
     openGroupAndJumpToMessage,
   ]);
+
+  const markCurrentChatAsRead = useCallback(async () => {
+    if (!chat || !user?.id) return;
+
+    try {
+      if (chat.tipo === "grupo") {
+        await axios.put("/api/mensajes/grupo/marcar-vistos-grupo", {
+          userId: user.id,
+          grupoId: chat.grupo_id,
+        });
+
+        setMessages((prev) =>
+          prev.map((message) =>
+            Number(message.grupo_id) === Number(chat.grupo_id) && Number(message.usuario_id) !== Number(user.id)
+              ? { ...message, visto: 1 }
+              : message
+          )
+        );
+        return;
+      }
+
+      await axios.put("/api/mensajes/marcar-vistos", {
+        userId: user.id,
+        contactoId: chat.usuario_id,
+      });
+
+      setMessages((prev) =>
+        prev.map((message) =>
+          Number(message.usuario_envia_id) === Number(chat.usuario_id) && Number(message.usuario_recibe_id) === Number(user.id)
+            ? { ...message, visto: 1 }
+            : message
+        )
+      );
+    } catch (err) {
+      console.error("❌ Error marcando chat como visto desde el scroll:", err);
+    }
+  }, [chat?.tipo, chat?.grupo_id, chat?.usuario_id, user?.id]);
 
   const handleArchivoSeleccionado = (e) => {
     const files = e.target.files;
@@ -1738,7 +2888,7 @@ const ChatBox = ({ chat, user, setChat, onVerPerfil }) => {
   };
 
   // 👇 sube UNA imagen y devuelve el objeto mensaje del backend
-  const uploadImageMessage = async (file, loteId, onProgress, replyToId = null, replyToType = "privado", replyToGrupoId = null) => {
+  const uploadImageMessage = async (file, loteId, onProgress, replyToId = null, replyToType = "privado", replyToGrupoId = null, requestOptions = {}) => {
     if (file.size > 100 * 1024 * 1024) {
       alert("⚠️ El archivo supera los 100 MB permitidos.");
       return null;
@@ -1760,6 +2910,7 @@ const ChatBox = ({ chat, user, setChat, onVerPerfil }) => {
         formData,
         {
           headers: { "Content-Type": "multipart/form-data" },
+          signal: requestOptions.signal,
           onUploadProgress: (e) => {
             if (onProgress && e.total) {
               const percent = Math.round((e.loaded * 100) / e.total);
@@ -1777,6 +2928,7 @@ const ChatBox = ({ chat, user, setChat, onVerPerfil }) => {
         formData,
         {
           headers: { "Content-Type": "multipart/form-data" },
+          signal: requestOptions.signal,
           onUploadProgress: (e) => {
             if (onProgress && e.total) {
               const percent = Math.round((e.loaded * 100) / e.total);
@@ -1809,9 +2961,116 @@ const ChatBox = ({ chat, user, setChat, onVerPerfil }) => {
   };
 
 
+  const formatRecordingDuration = (seconds = 0) => {
+    const safeSeconds = Math.max(0, Number(seconds) || 0);
+    const mins = Math.floor(safeSeconds / 60);
+    const secs = safeSeconds % 60;
+    return `${mins}:${String(secs).padStart(2, "0")}`;
+  };
+
+  const stopAudioMeter = () => {
+    if (audioAnimationFrameRef.current) {
+      cancelAnimationFrame(audioAnimationFrameRef.current);
+      audioAnimationFrameRef.current = null;
+    }
+
+    audioAnalyserRef.current = null;
+
+    if (audioContextRef.current) {
+      audioContextRef.current.close?.().catch(() => {});
+      audioContextRef.current = null;
+    }
+
+    audioSmoothedLevelRef.current = 0;
+    audioLastWaveSampleAtRef.current = 0;
+    audioPausedRef.current = false;
+    setAudioLevel(0);
+    setAudioWaveSamples(buildIdleRecorderWave());
+  };
+
+  const startAudioMeter = (stream) => {
+    stopAudioMeter();
+
+    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContextClass) return;
+
+    try {
+      const audioContext = new AudioContextClass();
+      const analyser = audioContext.createAnalyser();
+      const source = audioContext.createMediaStreamSource(stream);
+
+      analyser.fftSize = 512;
+      analyser.smoothingTimeConstant = 0.88;
+
+      const dataArray = new Uint8Array(analyser.fftSize);
+      source.connect(analyser);
+
+      audioContextRef.current = audioContext;
+      audioAnalyserRef.current = analyser;
+      audioSmoothedLevelRef.current = 0;
+      audioLastWaveSampleAtRef.current = performance.now();
+      audioPausedRef.current = false;
+
+      const updateLevel = (now = performance.now()) => {
+        if (!audioAnalyserRef.current) return;
+
+        if (audioPausedRef.current) {
+          audioAnimationFrameRef.current = requestAnimationFrame(updateLevel);
+          return;
+        }
+
+        audioAnalyserRef.current.getByteTimeDomainData(dataArray);
+        let sum = 0;
+
+        for (let i = 0; i < dataArray.length; i += 1) {
+          const normalized = (dataArray[i] - 128) / 128;
+          sum += normalized * normalized;
+        }
+
+        const rms = Math.sqrt(sum / dataArray.length);
+        const gatedLevel = rms < RECORDER_SILENCE_THRESHOLD ? 0 : (rms - RECORDER_SILENCE_THRESHOLD) * 16;
+        const rawLevel = clampRecorderLevel(gatedLevel);
+        const previousLevel = audioSmoothedLevelRef.current;
+        const smoothing = rawLevel > previousLevel ? 0.45 : 0.14;
+        const nextLevel = previousLevel + (rawLevel - previousLevel) * smoothing;
+        const visualLevel = nextLevel < 0.04 ? 0 : clampRecorderLevel(0.16 + nextLevel * 0.95);
+
+        audioSmoothedLevelRef.current = nextLevel;
+
+        if (now - audioLastWaveSampleAtRef.current >= RECORDER_WAVE_SAMPLE_INTERVAL_MS) {
+          audioLastWaveSampleAtRef.current = now;
+          setAudioLevel(visualLevel);
+          setAudioWaveSamples((previousSamples) => [
+            ...previousSamples.slice(1),
+            visualLevel,
+          ]);
+        }
+
+        audioAnimationFrameRef.current = requestAnimationFrame(updateLevel);
+      };
+
+      updateLevel();
+    } catch (err) {
+      console.error("❌ No se pudo iniciar el medidor de voz:", err);
+      setAudioLevel(0);
+      setAudioWaveSamples(buildIdleRecorderWave());
+    }
+  };
+
   const stopAudioTracks = () => {
     audioStreamRef.current?.getTracks?.().forEach((track) => track.stop());
     audioStreamRef.current = null;
+  };
+
+  const resetAudioRecordingUi = () => {
+    audioPausedRef.current = false;
+    audioSmoothedLevelRef.current = 0;
+    audioLastWaveSampleAtRef.current = 0;
+    setIsRecordingAudio(false);
+    setIsAudioPaused(false);
+    setRecordingSeconds(0);
+    setAudioLevel(0);
+    setAudioWaveSamples(buildIdleRecorderWave());
   };
 
   const uploadRecordedAudio = async (audioFile, replyContext = null) => {
@@ -1843,12 +3102,50 @@ const ChatBox = ({ chat, user, setChat, onVerPerfil }) => {
     }
   };
 
-  const handleAudioRecordClick = async () => {
+  const stopAndSendAudioRecording = () => {
     if (isSendingAudio) return;
 
     const recorder = audioRecorderRef.current;
-    if (isRecordingAudio && recorder?.state === "recording") {
-      recorder.stop();
+    if (!recorder || !["recording", "paused"].includes(recorder.state)) return;
+
+    discardRecordingRef.current = false;
+    recorder.stop();
+  };
+
+  const cancelAudioRecording = () => {
+    const recorder = audioRecorderRef.current;
+    if (!recorder || !["recording", "paused"].includes(recorder.state)) return;
+
+    discardRecordingRef.current = true;
+    recorder.stop();
+  };
+
+  const togglePauseAudioRecording = () => {
+    const recorder = audioRecorderRef.current;
+    if (!recorder) return;
+
+    if (recorder.state === "recording") {
+      recorder.pause();
+      audioPausedRef.current = true;
+      audioSmoothedLevelRef.current = 0;
+      setIsAudioPaused(true);
+      setAudioLevel(0);
+      return;
+    }
+
+    if (recorder.state === "paused") {
+      recorder.resume();
+      audioPausedRef.current = false;
+      audioLastWaveSampleAtRef.current = performance.now();
+      setIsAudioPaused(false);
+    }
+  };
+
+  const handleAudioRecordClick = async () => {
+    if (isSendingAudio) return;
+
+    if (isRecordingAudio) {
+      stopAndSendAudioRecording();
       return;
     }
 
@@ -1869,6 +3166,7 @@ const ChatBox = ({ chat, user, setChat, onVerPerfil }) => {
       audioStreamRef.current = stream;
       audioRecorderRef.current = nextRecorder;
       recordingReplyRef.current = replyingTo || null;
+      discardRecordingRef.current = false;
 
       nextRecorder.ondataavailable = (event) => {
         if (event.data?.size > 0) {
@@ -1877,20 +3175,24 @@ const ChatBox = ({ chat, user, setChat, onVerPerfil }) => {
       };
 
       nextRecorder.onstop = () => {
+        const shouldDiscard = discardRecordingRef.current;
         const recordedMimeType = nextRecorder.mimeType || mimeType || "audio/webm";
         const audioBlob = new Blob(audioChunksRef.current, { type: recordedMimeType });
         const replyContext = recordingReplyRef.current;
 
         stopAudioTracks();
-        setIsRecordingAudio(false);
+        stopAudioMeter();
+        resetAudioRecordingUi();
+        audioRecorderRef.current = null;
 
-        if (!audioBlob.size) {
+        if (shouldDiscard || !audioBlob.size) {
           recordingReplyRef.current = null;
+          discardRecordingRef.current = false;
           return;
         }
 
         const extension = getAudioExtensionFromMimeType(recordedMimeType);
-        const audioFile = new File([audioBlob], `audio_${Date.now()}.${extension}`, {
+        const audioFile = new File([audioBlob], `voice_note_${Date.now()}.${extension}`, {
           type: recordedMimeType,
         });
 
@@ -1900,21 +3202,33 @@ const ChatBox = ({ chat, user, setChat, onVerPerfil }) => {
       nextRecorder.onerror = (event) => {
         console.error("❌ Error grabando audio:", event.error || event);
         stopAudioTracks();
-        setIsRecordingAudio(false);
+        stopAudioMeter();
+        resetAudioRecordingUi();
+        audioRecorderRef.current = null;
         recordingReplyRef.current = null;
+        discardRecordingRef.current = false;
         alert("No se pudo grabar el audio.");
       };
 
       nextRecorder.start();
+      audioPausedRef.current = false;
+      audioSmoothedLevelRef.current = 0;
+      setRecordingSeconds(0);
+      setIsAudioPaused(false);
+      setAudioWaveSamples(buildIdleRecorderWave());
       setIsRecordingAudio(true);
+      startAudioMeter(stream);
       setShowEmojiPicker(false);
       setShowGifPicker(false);
       setShowStickerPicker(false);
     } catch (err) {
       console.error("❌ Permiso de micrófono denegado o no disponible:", err);
       stopAudioTracks();
-      setIsRecordingAudio(false);
+      stopAudioMeter();
+      resetAudioRecordingUi();
+      audioRecorderRef.current = null;
       recordingReplyRef.current = null;
+      discardRecordingRef.current = false;
       alert("No se pudo acceder al micrófono.");
     }
   };
@@ -2024,8 +3338,8 @@ const ChatBox = ({ chat, user, setChat, onVerPerfil }) => {
                               <h5 className="text-truncate mb-0">
                                 {chat.usuario_nombre || chat.nombre || "Grupo"}
                               </h5>
-                              <small className="text-muted text-truncate d-block">
-                                {getHeaderSubtitle()}
+                              <small className={`text-truncate d-block ${getTypingHeaderText() ? "wa-header-typing" : "text-muted"}`}>
+                                {getTypingHeaderText() || getHeaderSubtitle()}
                               </small>
                             </div>
                           </div>
@@ -2075,8 +3389,10 @@ const ChatBox = ({ chat, user, setChat, onVerPerfil }) => {
                               <h5 className="text-truncate mb-0">
                                 {chat.usuario_nombre}
                               </h5>
-                              {getHeaderSubtitle() && (
-                                <small className="text-muted text-truncate d-block">{getHeaderSubtitle()}</small>
+                              {(getTypingHeaderText() || getHeaderSubtitle()) && (
+                                <small className={`text-truncate d-block ${getTypingHeaderText() ? "wa-header-typing" : "text-muted"}`}>
+                                  {getTypingHeaderText() || getHeaderSubtitle()}
+                                </small>
                               )}
                             </div>
                           </div>
@@ -2371,7 +3687,7 @@ const ChatBox = ({ chat, user, setChat, onVerPerfil }) => {
                     <div 
                       key={msg.fijado_id || pinnedMessageId} 
                       className="pinned-item position-relative d-flex align-items-center mx-1"
-                      onClick={() => scrollToMessage(pinnedMessageId)}
+                      onClick={() => handlePinnedMessageClick(pinnedMessageId)}
                     >
                       <div className="pinned-content px-3 py-2 bg-white rounded-pill shadow-sm d-flex align-items-center">
                         <i className="bi bi-pin-angle-fill text-primary me-2"></i>
@@ -2525,6 +3841,10 @@ const ChatBox = ({ chat, user, setChat, onVerPerfil }) => {
                         onReplyPreviewClick={handleReplyPreviewClick}
                         scrollTargetMessageId={replyJumpTarget?.messageId || null}
                         scrollTargetToken={replyJumpTarget?.token || null}
+                        typingUsers={typingUsers}
+                        onMarkVisibleMessages={markCurrentChatAsRead}
+                        onCancelUpload={cancelPendingUpload}
+                        onRetryUpload={retryPendingUpload}
                       />
                     </div>
                   )}
@@ -2566,6 +3886,72 @@ const ChatBox = ({ chat, user, setChat, onVerPerfil }) => {
                   </button>
                 </div>
               )}
+              {isRecordingAudio ? (
+                <div className={`wa-audio-recorder-composer ${isAudioPaused ? "paused" : "recording"}`} aria-live="polite">
+                  <button
+                    type="button"
+                    className="wa-recorder-action wa-recorder-delete"
+                    onClick={cancelAudioRecording}
+                    disabled={isSendingAudio}
+                    aria-label="Eliminar audio"
+                    title="Eliminar audio"
+                  >
+                    <i className="fa-regular fa-trash-can" aria-hidden="true" />
+                  </button>
+
+                  <button
+                    type="button"
+                    className="wa-recorder-action wa-recorder-toggle"
+                    onClick={togglePauseAudioRecording}
+                    disabled={isSendingAudio}
+                    aria-label={isAudioPaused ? "Reanudar audio" : "Pausar audio"}
+                    title={isAudioPaused ? "Reanudar" : "Pausar"}
+                  >
+                    <i className={`fa-solid ${isAudioPaused ? "fa-play" : "fa-pause"}`} aria-hidden="true" />
+                  </button>
+
+                  <div className="wa-recorder-track" aria-label={isAudioPaused ? "Audio pausado" : "Nivel de voz en vivo"}>
+                    <span className={`wa-recorder-live-dot ${isAudioPaused ? "paused" : ""}`} />
+                    <div className="wa-recorder-wave">
+                      {audioWaveSamples.map((sample, index) => {
+                        const normalizedSample = clampRecorderLevel(sample);
+                        const isSilent = normalizedSample <= 0.03;
+                        const height = isSilent
+                          ? 3
+                          : Math.max(5, Math.min(28, 4 + Math.pow(normalizedSample, 0.75) * 24));
+
+                        return (
+                          <span
+                            key={`wave-${index}`}
+                            className={`wa-recorder-wave-bar ${isSilent ? "is-silent" : "is-speaking"}`}
+                            style={{
+                              height: `${height}px`,
+                              opacity: isAudioPaused ? 0.38 : isSilent ? 0.78 : 0.95,
+                            }}
+                          />
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  <span className="wa-recorder-time">{formatRecordingDuration(recordingSeconds)}</span>
+
+                  <span className="wa-recorder-mic" title={isAudioPaused ? "Pausado" : "Grabando"}>
+                    <i className="fa-solid fa-microphone" aria-hidden="true" />
+                  </span>
+
+                  <button
+                    type="button"
+                    className="wa-recorder-send"
+                    onClick={stopAndSendAudioRecording}
+                    disabled={isSendingAudio}
+                    aria-label="Enviar audio"
+                    title="Enviar audio"
+                  >
+                    <i className="fa-solid fa-paper-plane" aria-hidden="true" />
+                  </button>
+                </div>
+              ) : (
               <div className="row align-items-center gx-0">
                 {/* Botón para adjuntar archivo */}
                 <div className="col-auto">
@@ -2577,6 +3963,7 @@ const ChatBox = ({ chat, user, setChat, onVerPerfil }) => {
                     onChange={handleArchivoSeleccionado}
                   />
                   <button
+                    type="button"
                     className="btn btn-icon btn-link text-body rounded-circle"
                     onClick={() => document.getElementById("fileInput").click()}
                   >
@@ -2707,6 +4094,334 @@ const ChatBox = ({ chat, user, setChat, onVerPerfil }) => {
                       </span>
                     </a>
                   </div>
+                  <input
+                    ref={stickerFileInputRef}
+                    type="file"
+                    accept="image/*,image/gif"
+                    className="d-none"
+                    onChange={handleStickerFileSelected}
+                  />
+
+                  {/* Editor previo para crear sticker */}
+                  {showStickerEditor && pendingStickerPreview && (
+                    <div className="wa-sticker-editor" role="dialog" aria-label="Crear sticker">
+                      <div className="wa-sticker-editor-topbar">
+                        <button
+                          type="button"
+                          className="wa-sticker-editor-close-inline"
+                          onClick={closeStickerEditor}
+                          aria-label="Cerrar editor de sticker"
+                        >
+                          <i className="fa-solid fa-xmark" aria-hidden="true" />
+                        </button>
+                        <button type="button" className="wa-sticker-editor-undo" title="Deshacer" onClick={() => setStickerDrawPaths((prev) => prev.slice(0, -1))}>
+                          <i className="fa-solid fa-rotate-left" aria-hidden="true" />
+                        </button>
+                        <button
+                          type="button"
+                          className="wa-sticker-editor-undo"
+                          title="Rehacer"
+                          onClick={() => {}}
+                        >
+                          <i className="fa-solid fa-rotate-right" aria-hidden="true" />
+                        </button>
+                      </div>
+
+                      <div className="wa-sticker-editor-toolbar" aria-label="Herramientas de sticker">
+                        <button
+                          type="button"
+                          className={`wa-sticker-editor-tool ${stickerEditorTool === "crop" ? "active" : ""}`}
+                          title="Recortar y rotar"
+                          onClick={() => setStickerEditorTool("crop")}
+                        >
+                          <i className="fa-solid fa-crop-simple" aria-hidden="true" />
+                        </button>
+                        <button
+                          type="button"
+                          className={`wa-sticker-editor-tool ${stickerEditorTool === "filter" ? "active" : ""}`}
+                          title="Filtros"
+                          onClick={() => setStickerEditorTool("filter")}
+                        >
+                          <i className="fa-solid fa-wand-magic-sparkles" aria-hidden="true" />
+                        </button>
+                        <button
+                          type="button"
+                          className={`wa-sticker-editor-tool ${stickerEditorTool === "paint" ? "active" : ""}`}
+                          title="Dibujar"
+                          onClick={() => setStickerEditorTool("paint")}
+                        >
+                          <i className="fa-solid fa-pen" aria-hidden="true" />
+                        </button>
+                        <button
+                          type="button"
+                          className={`wa-sticker-editor-tool ${stickerEditorTool === "text" ? "active" : ""}`}
+                          title="Texto"
+                          onClick={addStickerText}
+                        >
+                          Aa
+                        </button>
+                        <button
+                          type="button"
+                          className={`wa-sticker-editor-tool ${stickerEditorTool === "shape" ? "active" : ""}`}
+                          title="Formas"
+                          onClick={() => setStickerEditorTool((value) => value === "shape" ? "crop" : "shape")}
+                        >
+                          <i className="fa-regular fa-square" aria-hidden="true" />
+                        </button>
+                      </div>
+
+                      {stickerEditorTool === "filter" && (
+                        <div className="wa-sticker-filter-strip">
+                          {Object.entries(STICKER_EDITOR_FILTERS).map(([key, filter]) => (
+                            <button
+                              key={key}
+                              type="button"
+                              className={`wa-sticker-filter-item ${stickerEditorFilter === key ? "active" : ""}`}
+                              onClick={() => setStickerEditorFilter(key)}
+                            >
+                              <span className="wa-sticker-filter-thumb">
+                                <img src={pendingStickerPreview} alt={filter.label} style={{ filter: filter.css }} />
+                              </span>
+                              <span>{filter.label}</span>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+
+                      {stickerEditorTool === "paint" && (
+                        <div className="wa-sticker-color-strip">
+                          {STICKER_EDITOR_COLORS.map((color) => (
+                            <button
+                              key={color}
+                              type="button"
+                              className={`wa-sticker-color-dot ${stickerDrawColor === color ? "active" : ""}`}
+                              style={{ backgroundColor: color }}
+                              onClick={() => setStickerDrawColor(color)}
+                              aria-label={`Color ${color}`}
+                            />
+                          ))}
+                        </div>
+                      )}
+
+                      {stickerEditorTool === "shape" && (
+                        <div className="wa-sticker-shape-popover">
+                          <button type="button" onClick={() => { setStickerShapeType("rect"); addStickerShape("rect"); }} title="Cuadrado">
+                            <i className="fa-regular fa-square" aria-hidden="true" />
+                          </button>
+                          <button type="button" onClick={() => { setStickerShapeType("circle"); addStickerShape("circle"); }} title="Círculo">
+                            <i className="fa-regular fa-circle" aria-hidden="true" />
+                          </button>
+                          <button type="button" onClick={() => { setStickerShapeType("line"); addStickerShape("line"); }} title="Línea">
+                            <i className="fa-solid fa-minus" aria-hidden="true" />
+                          </button>
+                          <button type="button" onClick={() => { setStickerShapeType("arrow"); addStickerShape("arrow"); }} title="Flecha">
+                            <i className="fa-solid fa-arrow-right-long" aria-hidden="true" />
+                          </button>
+                        </div>
+                      )}
+
+                      <div className="wa-sticker-editor-stage">
+                        <div
+                          ref={stickerEditorCanvasRef}
+                          className={`wa-sticker-editor-canvas tool-${stickerEditorTool}`}
+                          onPointerDown={handleStickerCanvasPointerDown}
+                          onPointerMove={handleStickerCanvasPointerMove}
+                          onPointerUp={stopStickerDrawing}
+                          onPointerLeave={stopStickerDrawing}
+                        >
+                          {stickerEditorTool === "crop" && (
+                            <>
+                              <span
+                                className="wa-sticker-crop-box"
+                                style={{
+                                  left: `${stickerCropRect.x * 100}%`,
+                                  top: `${stickerCropRect.y * 100}%`,
+                                  width: `${stickerCropRect.w * 100}%`,
+                                  height: `${stickerCropRect.h * 100}%`,
+                                }}
+                                aria-hidden="true"
+                              >
+                                <span className="wa-sticker-editor-handle top-left" onPointerDown={startStickerCropDrag("top-left")} />
+                                <span className="wa-sticker-editor-handle top-right" onPointerDown={startStickerCropDrag("top-right")} />
+                                <span className="wa-sticker-editor-handle bottom-left" onPointerDown={startStickerCropDrag("bottom-left")} />
+                                <span className="wa-sticker-editor-handle bottom-right" onPointerDown={startStickerCropDrag("bottom-right")} />
+                              </span>
+                              <span
+                                className="wa-sticker-crop-overlay top"
+                                style={{ height: `${stickerCropRect.y * 100}%` }}
+                                aria-hidden="true"
+                              />
+                              <span
+                                className="wa-sticker-crop-overlay bottom"
+                                style={{ top: `${(stickerCropRect.y + stickerCropRect.h) * 100}%` }}
+                                aria-hidden="true"
+                              />
+                              <span
+                                className="wa-sticker-crop-overlay left"
+                                style={{
+                                  top: `${stickerCropRect.y * 100}%`,
+                                  width: `${stickerCropRect.x * 100}%`,
+                                  height: `${stickerCropRect.h * 100}%`,
+                                }}
+                                aria-hidden="true"
+                              />
+                              <span
+                                className="wa-sticker-crop-overlay right"
+                                style={{
+                                  top: `${stickerCropRect.y * 100}%`,
+                                  left: `${(stickerCropRect.x + stickerCropRect.w) * 100}%`,
+                                  height: `${stickerCropRect.h * 100}%`,
+                                }}
+                                aria-hidden="true"
+                              />
+                            </>
+                          )}
+                          <img
+                            ref={stickerEditorImageRef}
+                            src={pendingStickerPreview}
+                            alt="Vista previa del sticker"
+                            style={{
+                              filter: STICKER_EDITOR_FILTERS[stickerEditorFilter]?.css || "none",
+                              transform: `rotate(${stickerEditorRotation}deg) scaleX(${stickerEditorFlipX ? -1 : 1})`,
+                            }}
+                          />
+
+                          <svg className="wa-sticker-draw-layer" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+                            {stickerDrawPaths.map((path) => (
+                              <polyline
+                                key={path.id}
+                                points={(path.points || []).map((point) => `${point.x * 100},${point.y * 100}`).join(" ")}
+                                fill="none"
+                                stroke={path.color || "#22c55e"}
+                                strokeWidth="1.7"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                              />
+                            ))}
+                            {stickerShapeItems.map((shape) => {
+                              const x = (shape.x - shape.w / 2) * 100;
+                              const y = (shape.y - shape.h / 2) * 100;
+                              const w = shape.w * 100;
+                              const h = shape.h * 100;
+                              if (shape.type === "circle") {
+                                return <ellipse key={shape.id} cx={shape.x * 100} cy={shape.y * 100} rx={w / 2} ry={h / 2} fill="none" stroke={shape.color} strokeWidth="1.7" />;
+                              }
+                              if (shape.type === "line" || shape.type === "arrow") {
+                                return (
+                                  <line
+                                    key={shape.id}
+                                    x1={x}
+                                    y1={y + h}
+                                    x2={x + w}
+                                    y2={y}
+                                    stroke={shape.color}
+                                    strokeWidth="1.7"
+                                    strokeLinecap="round"
+                                    markerEnd={shape.type === "arrow" ? "url(#waStickerArrow)" : undefined}
+                                  />
+                                );
+                              }
+                              return <rect key={shape.id} x={x} y={y} width={w} height={h} fill="none" stroke={shape.color} strokeWidth="1.7" />;
+                            })}
+                            <defs>
+                              <marker id="waStickerArrow" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto" markerUnits="strokeWidth">
+                                <path d="M0,0 L6,3 L0,6 Z" fill={stickerDrawColor} />
+                              </marker>
+                            </defs>
+                          </svg>
+
+                          {stickerTextItems.map((item) => (
+                            <div
+                              key={item.id}
+                              className="wa-sticker-text-item"
+                              style={{
+                                left: `${item.x * 100}%`,
+                                top: `${item.y * 100}%`,
+                                borderColor: item.color,
+                              }}
+                              onDoubleClick={() => {
+                                const text = window.prompt("Editar texto", item.text);
+                                if (!text) return;
+                                setStickerTextItems((prev) => prev.map((entry) => entry.id === item.id ? { ...entry, text } : entry));
+                              }}
+                            >
+                              <span>{item.text}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div className="wa-sticker-editor-actions">
+                        {stickerEditorTool === "crop" && (
+                          <>
+                            <button
+                              type="button"
+                              className="wa-sticker-editor-mini"
+                              title="Girar"
+                              onClick={() => setStickerEditorRotation((value) => (value + 90) % 360)}
+                            >
+                              <i className="fa-solid fa-rotate-right" aria-hidden="true" />
+                            </button>
+                            <button
+                              type="button"
+                              className="wa-sticker-editor-mini"
+                              title="Voltear"
+                              onClick={() => setStickerEditorFlipX((value) => !value)}
+                            >
+                              <i className="fa-solid fa-right-left" aria-hidden="true" />
+                            </button>
+                          </>
+                        )}
+                        {(stickerEditorRotation !== 0 || stickerEditorFlipX || stickerEditorFilter !== "none" || stickerTextItems.length || stickerShapeItems.length || stickerDrawPaths.length || stickerCropRect.x !== 0 || stickerCropRect.y !== 0 || stickerCropRect.w !== 1 || stickerCropRect.h !== 1) && (
+                          <button
+                            type="button"
+                            className="wa-sticker-editor-reset"
+                            onClick={() => {
+                              setStickerEditorRotation(0);
+                              setStickerEditorFlipX(false);
+                              setStickerEditorFilter("none");
+                              setStickerTextItems([]);
+                              setStickerShapeItems([]);
+                              setStickerDrawPaths([]);
+                              setStickerCropRect({ x: 0, y: 0, w: 1, h: 1 });
+                            }}
+                          >
+                            Restablecer
+                          </button>
+                        )}
+                      </div>
+
+                      <div className="wa-sticker-editor-bottom">
+                        <div className="wa-sticker-editor-thumb">
+                          <img src={pendingStickerPreview} alt="Sticker seleccionado" />
+                        </div>
+                        <div className="wa-sticker-editor-bottom-actions">
+                          <button
+                            type="button"
+                            className="wa-sticker-editor-ok"
+                            onClick={confirmStickerCreation}
+                            disabled={isCreatingSticker}
+                          >
+                            OK
+                          </button>
+                          <button
+                            type="button"
+                            className="wa-sticker-editor-send"
+                            onClick={confirmStickerCreation}
+                            disabled={isCreatingSticker}
+                            aria-label="Enviar sticker"
+                          >
+                            {isCreatingSticker ? (
+                              <span className="spinner-border spinner-border-sm" role="status" aria-hidden="true" />
+                            ) : (
+                              <i className="fa-solid fa-paper-plane" aria-hidden="true" />
+                            )}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
                   {/* Picker flotante */}
                   {showEmojiPicker && (
                   <div
@@ -2776,141 +4491,72 @@ const ChatBox = ({ chat, user, setChat, onVerPerfil }) => {
                   {showStickerPicker && (
                     <div
                       ref={stickerRef}
-                      style={{
-                        position: "absolute",
-                        bottom: "60px",
-                        right: "100px",
-                        zIndex: 1000,
-                        width: "320px",
-                        background: "#fff",
-                        borderRadius: "16px",
-                        boxShadow: "0 4px 16px rgba(0,0,0,0.15)",
-                        border: "1px solid #e5e5e5",
-                        padding: "10px 10px 6px",
-                        maxHeight: "420px",
-                        display: "flex",
-                        flexDirection: "column",
-                      }}
+                      className="wa-sticker-picker"
+                      role="dialog"
+                      aria-label="Stickers"
                     >
-                      {/* Pestañas arriba */}
-                      <div className="d-flex mb-2">
+                      <div className="wa-sticker-tabs" role="tablist" aria-label="Filtros de stickers">
                         <button
                           type="button"
-                          className={`flex-fill btn btn-sm ${
-                            stickerTab === "todos" ? "btn-primary" : "btn-light"
-                          }`}
+                          className={`wa-sticker-tab ${stickerTab === "todos" ? "active" : ""}`}
                           onClick={() => setStickerTab("todos")}
+                          role="tab"
+                          aria-selected={stickerTab === "todos"}
                         >
                           Todos
                         </button>
                         <button
                           type="button"
-                          className={`flex-fill btn btn-sm ms-2 ${
-                            stickerTab === "favoritos" ? "btn-primary" : "btn-light"
-                          }`}
+                          className={`wa-sticker-tab ${stickerTab === "favoritos" ? "active" : ""}`}
                           onClick={() => setStickerTab("favoritos")}
+                          role="tab"
+                          aria-selected={stickerTab === "favoritos"}
                         >
                           Favoritos
                         </button>
                       </div>
 
-                      {/* Grid de stickers */}
-                      <div
-                        style={{
-                          flex: 1,
-                          overflowY: "auto",
-                          paddingTop: "4px",
-                        }}
-                      >
-                        <div
-                          style={{
-                            display: "grid",
-                            gridTemplateColumns: "repeat(3, 1fr)",
-                            gap: "8px",
-                          }}
-                        >
-                          {/* Botón Crear */}
-                          <div
-                            style={{
-                              display: "flex",
-                              flexDirection: "column",
-                              alignItems: "center",
-                              gap: "6px",
-                            }}
-                          >
-                            <button
-                              style={{
-                                width: "80px",
-                                height: "80px",
-                                display: "flex",
-                                alignItems: "center",
-                                justifyContent: "center",
-                                borderRadius: "20px",
-                                border: "1px dashed #ccc",
-                                background: "#fafafa",
-                                cursor: "pointer",
-                                transition: "all 0.2s ease",
-                              }}
-                              onMouseEnter={(e) =>
-                                (e.currentTarget.style.background = "#f0f0f0")
-                              }
-                              onMouseLeave={(e) =>
-                                (e.currentTarget.style.background = "#fafafa")
-                              }
-                              onClick={() => {
-                                const input = document.createElement("input");
-                                input.type = "file";
-                                input.accept = "image/*,image/gif";
-                                input.onchange = async (e) => {
-                                  const file = e.target.files[0];
-                                  if (file) {
-                                    await handleStickerUpload(file); // ✅ ahora sí lo sube al servidor
-                                  }
-                                };
-                                input.click();
-                              }}
-                            >
-                              <svg
-                                xmlns="http://www.w3.org/2000/svg"
-                                width="28"
-                                height="28"
-                                viewBox="0 0 24 24"
-                                fill="none"
-                                stroke="#a7a7a6"
-                                strokeWidth="2.5"
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
+                      <div className="wa-sticker-grid-wrap">
+                        <div className="wa-sticker-grid">
+                          {stickerTab === "todos" && (
+                            <div className="wa-sticker-cell">
+                              <button
+                                type="button"
+                                className="wa-sticker-create"
+                                title="Crear sticker"
+                                aria-label="Crear sticker"
+                                onClick={openStickerCreator}
                               >
-                                <line x1="12" y1="5" x2="12" y2="19"></line>
-                                <line x1="5" y1="12" x2="19" y2="12"></line>
-                              </svg>
-                            </button>
-                          </div>
-
-                          {/* Stickers según pestaña */}
-                          {listaStickers.map((sticker) => (
-                            <div
-                              key={sticker.id || sticker.url}
-                              style={{ position: "relative", display: "flex", justifyContent: "center" }}
-                            >
-                              <img
-                                src={sticker.url}
-                                alt="sticker"
-                                style={{
-                                  width: "80px",
-                                  height: "80px",
-                                  borderRadius: "20px",
-                                  objectFit: "cover",
-                                  cursor: "pointer",
-                                  backgroundColor: "#f5f5f5",
-                                }}
-                                onClick={() => {
-                                  handleSendMessage(`[sticker]${sticker.url}`);
-                                  setShowStickerPicker(false);
-                                }}
-                              />
+                                <i className="fa-solid fa-plus" aria-hidden="true" />
+                              </button>
                             </div>
-                          ))}
+                          )}
+
+                          {listaStickers.length > 0 ? (
+                            listaStickers.map((sticker) => (
+                              <button
+                                key={sticker.id || sticker.url}
+                                type="button"
+                                className="wa-sticker-item"
+                                title="Enviar sticker"
+                                onClick={() => {
+                                  const stickerUrl = normalizeStickerMessageUrl(sticker.url);
+                                  sendStickerMessage(stickerUrl, sticker).catch((err) => {
+                                    console.error("❌ Error enviando sticker:", err);
+                                    alert("No se pudo enviar el sticker.");
+                                  });
+                                }}
+                              >
+                                <img src={getStickerImageUrl(sticker.url)} alt="sticker" />
+                              </button>
+                            ))
+                          ) : (
+                            <div className="wa-sticker-empty">
+                              {stickerTab === "favoritos"
+                                ? "Tus stickers favoritos aparecerán aquí"
+                                : "Tus stickers enviados aparecerán aquí"}
+                            </div>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -2991,6 +4637,7 @@ const ChatBox = ({ chat, user, setChat, onVerPerfil }) => {
                   )}
                 </div>
               </div>
+              )}
             </form>
             {/* Chat: Form */}
 

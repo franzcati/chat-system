@@ -29,12 +29,24 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat }) => {
   const [menuChatPosition, setMenuChatPosition] = useState(null);
   const [activeFilter, setActiveFilter] = useState("todos");
   const [filterMenuOpen, setFilterMenuOpen] = useState(false);
+  const [typingByChat, setTypingByChat] = useState({});
 
  // ----------------------------
  // SILENCIAR NOTIFICACIONES
 
  const getChatKey = (chat) =>
   `${chat.tipo}-${chat.tipo === "grupo" ? chat.grupo_id : chat.usuario_id}`;
+ const getTypingKeyFromPayload = (payload = {}) => {
+  if (payload.tipo === "grupo" && payload.grupoId) return `grupo-${payload.grupoId}`;
+  if (payload.tipo === "privado") {
+    const senderId = Number(payload.senderId);
+    const receiverId = Number(payload.receiverId);
+    const myId = Number(userId);
+    const otherId = senderId === myId ? receiverId : senderId;
+    return otherId ? `privado-${otherId}` : null;
+  }
+  return null;
+ };
  const esFavorito = (chat) =>
   favoritos.some(
     (f) =>
@@ -269,6 +281,51 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat }) => {
     socket.on("actualizarUsuarios", handleActualizarUsuarios);
     return () => socket.off("actualizarUsuarios", handleActualizarUsuarios);
   }, []);
+
+  useEffect(() => {
+    if (!userId) return;
+
+    const handleTypingUpdate = (payload = {}) => {
+      const senderId = Number(payload.senderId);
+      if (!senderId || senderId === Number(userId)) return;
+
+      const key = getTypingKeyFromPayload(payload);
+      if (!key) return;
+
+      if (!payload.isTyping) {
+        setTypingByChat((prev) => {
+          const next = { ...prev };
+          delete next[key];
+          return next;
+        });
+        return;
+      }
+
+      const at = payload.at || Date.now();
+      const nombre = [payload.nombre, payload.apellido].filter(Boolean).join(" ").trim() || "Usuario";
+
+      setTypingByChat((prev) => ({
+        ...prev,
+        [key]: {
+          senderId,
+          nombre,
+          at,
+        },
+      }));
+
+      window.setTimeout(() => {
+        setTypingByChat((prev) => {
+          if (prev[key]?.at !== at) return prev;
+          const next = { ...prev };
+          delete next[key];
+          return next;
+        });
+      }, 3600);
+    };
+
+    socket.on("typing:update", handleTypingUpdate);
+    return () => socket.off("typing:update", handleTypingUpdate);
+  }, [userId]);
 
   // -------------------------------
   // 🔹 Agrupar mensajes privados
@@ -1382,6 +1439,24 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat }) => {
     );
   };
 
+  const renderTypingPreview = (chat) => {
+    const entry = typingByChat[getChatKey(chat)];
+    if (!entry) return null;
+
+    const label = chat.tipo === "grupo" ? `${entry.nombre} está escribiendo` : "escribiendo";
+
+    return (
+      <span className="wa-chat-typing-preview">
+        <span>{label}</span>
+        <span className="wa-chat-typing-wave" aria-hidden="true">
+          <i />
+          <i />
+          <i />
+        </span>
+      </span>
+    );
+  };
+
   const renderReadStatus = (chat) => {
     if (chat.tipo_mensaje !== "enviado" || chat.eliminado === 1) return null;
 
@@ -1589,6 +1664,7 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat }) => {
       Number(getChatId(selectedChat)) === Number(getChatId(chat));
     const isMuted = estaSilenciado(chat.tipo, getChatId(chat));
     const previewPrefix = getPreviewPrefix(chat);
+    const typingPreview = renderTypingPreview(chat);
 
     return (
       <a
@@ -1629,7 +1705,9 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat }) => {
               <div className="wa-chat-list-bottom">
                 {renderReadStatus(chat)}
                 <div className="line-clamp wa-chat-list-preview">
-                  {chat.eliminado === 1 ? (
+                  {typingPreview ? (
+                    typingPreview
+                  ) : chat.eliminado === 1 ? (
                     <span className="fst-italic text-muted d-inline-flex align-items-center gap-1">
                       <i className="fa-solid fa-ban" aria-hidden="true" />
                       Se eliminó este mensaje

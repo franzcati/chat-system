@@ -1,3 +1,5 @@
+import { stripRichTextSyntax } from "./richText.jsx";
+
 const URL_LIKE_RE = /^(https?:\/\/|\/uploads\/|blob:)/i;
 
 export const cleanUploadFileName = (value = "") => {
@@ -118,7 +120,14 @@ export const getMessagePreview = (message = {}) => {
   }
 
   const text = String(message.mensaje ?? message.ultimo_mensaje ?? "").trim();
-  return { kind: "text", icon: "", text: text || "Mensaje", label: text || "Mensaje" };
+  const cleanText = stripRichTextSyntax(text);
+  return {
+    kind: "text",
+    icon: "",
+    text: cleanText || text || "Mensaje",
+    rawText: text || "",
+    label: cleanText || text || "Mensaje",
+  };
 };
 
 export const getReplyAuthorName = (message = {}, myUserId) => {
