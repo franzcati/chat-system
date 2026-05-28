@@ -14,16 +14,37 @@ const mensajesRoutes = require("./routes/mensajes");
 const mensajesGruposRoutes = require("./routes/mensajesGrupo");
 
 // 🔹 Configuración CORS para producción
-const allowedOrigins = [
+const defaultAllowedOrigins = [
   "http://chatvista.click",
   "https://chatvista.click",
   "http://www.chatvista.click",
-  "https://www.chatvista.click"
+  "https://www.chatvista.click",
+  "http://quickchat.click",
+  "https://quickchat.click",
+  "http://www.quickchat.click",
+  "https://www.quickchat.click",
 ];
 
+const envAllowedOrigins = String(
+  process.env.ALLOWED_ORIGINS ||
+  process.env.FRONTEND_URLS ||
+  ""
+)
+  .split(",")
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+
+const allowedOrigins = Array.from(new Set([...defaultAllowedOrigins, ...envAllowedOrigins]));
+
 app.use(cors({
-  origin: allowedOrigins,
-  methods: ["GET", "POST"],
+  origin(origin, callback) {
+    if (!origin || allowedOrigins.includes("*") || allowedOrigins.includes(origin)) {
+      callback(null, true);
+      return;
+    }
+    callback(null, false);
+  },
+  methods: ["GET", "POST", "PUT", "PATCH", "DELETE"],
   credentials: true
 }));
 

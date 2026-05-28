@@ -307,6 +307,7 @@ const ChatBox = ({ chat, user, setChat, onVerPerfil }) => {
   const stickerDrawingRef = useRef(false);
   const stickerCropDragRef = useRef(null);
   const typingStopTimeoutRef = useRef(null);
+  const typingSenderStateRef = useRef({ isTyping: false, key: null, payload: null, lastStartAt: 0 });
   const typingUsersTimeoutRef = useRef({});
   const callMenuRef = useRef(null);
   const audioRecorderRef = useRef(null);
@@ -504,43 +505,88 @@ const ChatBox = ({ chat, user, setChat, onVerPerfil }) => {
     };
   }, [chat, user?.id, user?.nombre, user?.apellido]);
 
-  const emitTypingStop = useCallback(() => {
-    const payload = getTypingPayload();
-    if (!payload) return;
-    socket.emit("typing:stop", payload);
-  }, [getTypingPayload]);
+  const getTypingPayloadKey = (payload) => {
+    if (!payload) return "";
+    return payload.tipo === "grupo"
+      ? `grupo-${payload.grupoId}`
+      : `privado-${payload.receiverId}`;
+  };
 
-  useEffect(() => {
-    if (!chat || !user?.id) return undefined;
+  const emitTypingStop = useCallback((payloadOverride = null) => {
+    const payload = payloadOverride || typingSenderStateRef.current.payload || getTypingPayload();
+    if (!payload) return;
 
     if (typingStopTimeoutRef.current) {
       window.clearTimeout(typingStopTimeoutRef.current);
       typingStopTimeoutRef.current = null;
     }
 
-    const payload = getTypingPayload();
-    if (!payload) return undefined;
+    socket.emit("typing:stop", payload);
+    typingSenderStateRef.current = {
+      isTyping: false,
+      key: null,
+      payload: null,
+      lastStartAt: 0,
+    };
+  }, [getTypingPayload]);
 
-    if (inputText.trim()) {
-      socket.emit("typing:start", payload);
-      typingStopTimeoutRef.current = window.setTimeout(() => {
-        socket.emit("typing:stop", payload);
-      }, 1800);
-    } else {
-      socket.emit("typing:stop", payload);
+  useEffect(() => {
+    if (!chat || !user?.id) return undefined;
+
+    const payload = getTypingPayload();
+    const payloadKey = getTypingPayloadKey(payload);
+    const previousPayload = typingSenderStateRef.current.payload;
+    const previousKey = typingSenderStateRef.current.key;
+    const hasText = Boolean(inputText.trim());
+
+    if (!payload || !hasText) {
+      if (typingSenderStateRef.current.isTyping) {
+        emitTypingStop(previousPayload || payload);
+      }
+      return undefined;
     }
 
+    if (typingSenderStateRef.current.isTyping && previousKey && previousKey !== payloadKey) {
+      emitTypingStop(previousPayload);
+    }
+
+    const now = Date.now();
+    const shouldEmitStart =
+      !typingSenderStateRef.current.isTyping ||
+      typingSenderStateRef.current.key !== payloadKey ||
+      now - typingSenderStateRef.current.lastStartAt >= 1200;
+
+    if (shouldEmitStart) {
+      socket.emit("typing:start", payload);
+      typingSenderStateRef.current = {
+        isTyping: true,
+        key: payloadKey,
+        payload,
+        lastStartAt: now,
+      };
+    }
+
+    if (typingStopTimeoutRef.current) {
+      window.clearTimeout(typingStopTimeoutRef.current);
+    }
+
+    typingStopTimeoutRef.current = window.setTimeout(() => {
+      emitTypingStop(payload);
+    }, 2400);
+
+    return undefined;
+  }, [inputText, chat?.tipo, chat?.grupo_id, chat?.usuario_id, user?.id, getTypingPayload, emitTypingStop]);
+
+  useEffect(() => {
     return () => {
+      const payload = typingSenderStateRef.current.payload;
       if (typingStopTimeoutRef.current) {
         window.clearTimeout(typingStopTimeoutRef.current);
         typingStopTimeoutRef.current = null;
       }
+      if (payload) socket.emit("typing:stop", payload);
     };
-  }, [inputText, chat?.tipo, chat?.grupo_id, chat?.usuario_id, user?.id, getTypingPayload]);
-
-  useEffect(() => {
-    return () => emitTypingStop();
-  }, [emitTypingStop]);
+  }, []);
 
   useEffect(() => {
     if (!chat || !user?.id) return undefined;

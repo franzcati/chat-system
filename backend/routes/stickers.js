@@ -126,24 +126,141 @@ router.get("/", async (req, res) => {
 });
 
 /**
- * GET /api/stickers/todos
- * Devuelve TODOS los stickers del catálogo (puedes paginar luego si quieres)
+ * GET /api/stickers/todos?usuarioId=XX
+ *
+ * Antes devolvía el catálogo global, por eso cada usuario veía stickers que
+ * enviaron otras personas. Ahora, cuando llega usuarioId, devuelve sólo los
+ * stickers propios del usuario y los stickers que ese usuario ya envió.
+ * Sin usuarioId conserva el comportamiento global por compatibilidad.
  */
 router.get("/todos", async (req, res) => {
   try {
-    const [rows] = await db.query(
+    const usuarioId = Number(req.query.usuarioId);
+
+    if (!usuarioId) {
+      const [rows] = await db.query(
+        `SELECT s.id,
+                s.url,
+                s.nombre_archivo_original,
+                s.usuario_id AS creador_id,
+                u.nombre AS creador_nombre,
+                u.apellido AS creador_apellido,
+                s.creado_en
+         FROM stickers s
+         LEFT JOIN usuario u ON u.id = s.usuario_id
+         ORDER BY s.creado_en DESC`
+      );
+
+      return res.json({ success: true, stickers: rows });
+    }
+
+    const [propios] = await db.query(
       `SELECT s.id,
               s.url,
               s.nombre_archivo_original,
               s.usuario_id AS creador_id,
               u.nombre AS creador_nombre,
-              u.apellido AS creador_apellido
+              u.apellido AS creador_apellido,
+              s.creado_en,
+              s.creado_en AS enviado_en
        FROM stickers s
        LEFT JOIN usuario u ON u.id = s.usuario_id
-       ORDER BY s.creado_en DESC`
+       WHERE s.usuario_id = ?
+       ORDER BY s.creado_en DESC`,
+      [usuarioId]
     );
 
-    return res.json({ success: true, stickers: rows });
+    const [privadosEnviados] = await db.query(
+      `SELECT REPLACE(m.mensaje, '[sticker]', '') AS url,
+              MAX(m.fecha_envio) AS enviado_en
+       FROM mensajes m
+       WHERE m.usuario_envia_id = ?
+         AND m.mensaje LIKE '[sticker]%'
+       GROUP BY url`,
+      [usuarioId]
+    );
+
+    const [gruposEnviados] = await db.query(
+      `SELECT REPLACE(mg.mensaje, '[sticker]', '') AS url,
+              MAX(mg.fecha_envio) AS enviado_en
+       FROM mensajes_grupo mg
+       WHERE mg.usuario_id = ?
+         AND mg.mensaje LIKE '[sticker]%'
+       GROUP BY url`,
+      [usuarioId]
+    );
+
+    const enviadosPorUrl = new Map();
+    [...privadosEnviados, ...gruposEnviados].forEach((row) => {
+      const url = String(row.url || '').trim();
+      if (!url) return;
+
+      const prev = enviadosPorUrl.get(url);
+      const prevTime = prev?.enviado_en ? new Date(prev.enviado_en).getTime() : 0;
+      const nextTime = row.enviado_en ? new Date(row.enviado_en).getTime() : 0;
+
+      if (!prev || nextTime >= prevTime) {
+        enviadosPorUrl.set(url, { url, enviado_en: row.enviado_en });
+      }
+    });
+
+    const urlsEnviadas = [...enviadosPorUrl.keys()];
+    let enviadosCatalogo = [];
+
+    if (urlsEnviadas.length) {
+      const [rows] = await db.query(
+        `SELECT s.id,
+                s.url,
+                s.nombre_archivo_original,
+                s.usuario_id AS creador_id,
+                u.nombre AS creador_nombre,
+                u.apellido AS creador_apellido,
+                s.creado_en
+         FROM stickers s
+         LEFT JOIN usuario u ON u.id = s.usuario_id
+         WHERE s.url IN (?)`,
+        [urlsEnviadas]
+      );
+      enviadosCatalogo = rows;
+    }
+
+    const stickersPorUrl = new Map();
+
+    propios.forEach((sticker) => {
+      if (!sticker?.url) return;
+      stickersPorUrl.set(sticker.url, sticker);
+    });
+
+    enviadosCatalogo.forEach((sticker) => {
+      if (!sticker?.url) return;
+      const enviado = enviadosPorUrl.get(sticker.url);
+      stickersPorUrl.set(sticker.url, {
+        ...sticker,
+        enviado_en: enviado?.enviado_en || sticker.creado_en,
+      });
+    });
+
+    enviadosPorUrl.forEach((enviado, url) => {
+      if (stickersPorUrl.has(url)) return;
+      stickersPorUrl.set(url, {
+        id: `sent-${Buffer.from(url).toString('base64')}`,
+        url,
+        nombre_archivo_original: path.basename(url),
+        creador_id: usuarioId,
+        creador_nombre: null,
+        creador_apellido: null,
+        creado_en: enviado.enviado_en,
+        enviado_en: enviado.enviado_en,
+      });
+    });
+
+    const stickers = [...stickersPorUrl.values()].sort((a, b) => {
+      const aTime = new Date(a.enviado_en || a.creado_en || 0).getTime();
+      const bTime = new Date(b.enviado_en || b.creado_en || 0).getTime();
+      return bTime - aTime;
+    });
+
+    return res.json({ success: true, stickers });
   } catch (err) {
     console.error("❌ Error obteniendo stickers:", err);
     return res

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import axios from "axios";
 import socket from "../socket";
@@ -30,6 +30,7 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat }) => {
   const [activeFilter, setActiveFilter] = useState("todos");
   const [filterMenuOpen, setFilterMenuOpen] = useState(false);
   const [typingByChat, setTypingByChat] = useState({});
+  const typingPreviewTimersRef = useRef({});
 
  // ----------------------------
  // SILENCIAR NOTIFICACIONES
@@ -293,6 +294,11 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat }) => {
       if (!key) return;
 
       if (!payload.isTyping) {
+        if (typingPreviewTimersRef.current[key]) {
+          window.clearTimeout(typingPreviewTimersRef.current[key]);
+          delete typingPreviewTimersRef.current[key];
+        }
+
         setTypingByChat((prev) => {
           const next = { ...prev };
           delete next[key];
@@ -313,18 +319,27 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat }) => {
         },
       }));
 
-      window.setTimeout(() => {
+      if (typingPreviewTimersRef.current[key]) {
+        window.clearTimeout(typingPreviewTimersRef.current[key]);
+      }
+
+      typingPreviewTimersRef.current[key] = window.setTimeout(() => {
         setTypingByChat((prev) => {
           if (prev[key]?.at !== at) return prev;
           const next = { ...prev };
           delete next[key];
           return next;
         });
-      }, 3600);
+        delete typingPreviewTimersRef.current[key];
+      }, 4200);
     };
 
     socket.on("typing:update", handleTypingUpdate);
-    return () => socket.off("typing:update", handleTypingUpdate);
+    return () => {
+      socket.off("typing:update", handleTypingUpdate);
+      Object.values(typingPreviewTimersRef.current).forEach((timer) => window.clearTimeout(timer));
+      typingPreviewTimersRef.current = {};
+    };
   }, [userId]);
 
   // -------------------------------

@@ -5,6 +5,11 @@ const socketsPorUsuario = new Map();
 const detallesSocketsPorUsuario = new Map();
 const estadoManualPorUsuario = new Map();
 const INACTIVITY_LIMIT_MS = 5 * 60 * 1000;
+const PRESENCE_BROADCAST_INTERVAL_MS = Number(process.env.PRESENCE_BROADCAST_INTERVAL_MS || 5000);
+const TYPING_KEEPALIVE_INTERVAL_MS = Number(process.env.TYPING_KEEPALIVE_INTERVAL_MS || 900);
+const typingStates = new Map();
+let presenceBroadcastTimer = null;
+let lastPresenceBroadcastAt = 0;
 
 function normalizarId(id) {
   if (id === undefined || id === null) return null;
@@ -90,6 +95,162 @@ function recalcularEstadoUsuario(userId) {
 function publicarEstadoUsuarios(io) {
   Object.keys(usuariosConectados).forEach((userId) => recalcularEstadoUsuario(userId));
   io.emit("actualizarUsuarios", usuariosConectados);
+}
+
+function programarPublicarEstadoUsuarios(io, options = {}) {
+  if (!io) return;
+
+  const immediate = Boolean(options.immediate);
+  const now = Date.now();
+  const elapsed = now - lastPresenceBroadcastAt;
+
+  const emitir = () => {
+    if (presenceBroadcastTimer) {
+      clearTimeout(presenceBroadcastTimer);
+      presenceBroadcastTimer = null;
+    }
+
+    lastPresenceBroadcastAt = Date.now();
+    publicarEstadoUsuarios(io);
+  };
+
+  if (immediate && elapsed >= PRESENCE_BROADCAST_INTERVAL_MS) {
+    emitir();
+    return;
+  }
+
+  if (presenceBroadcastTimer) return;
+
+  const delay = Math.max(250, PRESENCE_BROADCAST_INTERVAL_MS - elapsed);
+  presenceBroadcastTimer = setTimeout(emitir, delay);
+}
+
+function getAllowedSocketOrigins() {
+  const defaults = [
+    "http://chatvista.click",
+    "https://chatvista.click",
+    "http://www.chatvista.click",
+    "https://www.chatvista.click",
+    "http://quickchat.click",
+    "https://quickchat.click",
+    "http://www.quickchat.click",
+    "https://www.quickchat.click",
+  ];
+
+  const envOrigins = String(
+    process.env.SOCKET_ALLOWED_ORIGINS ||
+    process.env.ALLOWED_ORIGINS ||
+    process.env.FRONTEND_URLS ||
+    ""
+  )
+    .split(",")
+    .map((origin) => origin.trim())
+    .filter(Boolean);
+
+  return Array.from(new Set([...defaults, ...envOrigins]));
+}
+
+function validarSocketOrigin(origin, callback) {
+  const allowedOrigins = getAllowedSocketOrigins();
+
+  if (!origin || allowedOrigins.includes("*") || allowedOrigins.includes(origin)) {
+    callback(null, true);
+    return;
+  }
+
+  callback(null, false);
+}
+
+function normalizarTypingPayload(payload = {}, socket) {
+  const senderId = normalizarId(payload.senderId || socket.userId);
+  if (!senderId) return null;
+
+  const tipo = payload.tipo === "grupo" ? "grupo" : "privado";
+  const grupoId = tipo === "grupo" ? normalizarId(payload.grupoId) : null;
+  const receiverId = tipo === "privado" ? normalizarId(payload.receiverId) : null;
+
+  if (tipo === "grupo" && !grupoId) return null;
+  if (tipo === "privado" && !receiverId) return null;
+  if (tipo === "privado" && receiverId === senderId) return null;
+
+  return {
+    tipo,
+    grupoId,
+    receiverId,
+    senderId,
+    nombre: String(payload.nombre || "Usuario"),
+    apellido: String(payload.apellido || ""),
+  };
+}
+
+function getTypingKey(payload) {
+  const target = payload.tipo === "grupo" ? `grupo_${payload.grupoId}` : `usuario_${payload.receiverId}`;
+  return `${payload.senderId}:${target}`;
+}
+
+function emitirTypingUpdate(io, socket, payload, isTyping) {
+  const eventPayload = {
+    ...payload,
+    isTyping,
+    at: Date.now(),
+  };
+
+  if (payload.tipo === "grupo") {
+    socket.to(`grupo_${payload.grupoId}`).emit("typing:update", eventPayload);
+    return;
+  }
+
+  io.to(`usuario_${payload.receiverId}`).emit("typing:update", eventPayload);
+}
+
+function iniciarTyping(io, socket, payload = {}) {
+  const normalized = normalizarTypingPayload(payload, socket);
+  if (!normalized) return;
+
+  const key = getTypingKey(normalized);
+  const now = Date.now();
+  const current = typingStates.get(key);
+
+  if (current?.isTyping && now - current.lastEmittedAt < TYPING_KEEPALIVE_INTERVAL_MS) {
+    typingStates.set(key, {
+      ...current,
+      ...normalized,
+      socketId: socket.id,
+      lastSeenAt: now,
+    });
+    return;
+  }
+
+  typingStates.set(key, {
+    ...normalized,
+    socketId: socket.id,
+    isTyping: true,
+    lastSeenAt: now,
+    lastEmittedAt: now,
+  });
+
+  emitirTypingUpdate(io, socket, normalized, true);
+}
+
+function detenerTyping(io, socket, payload = {}) {
+  const normalized = normalizarTypingPayload(payload, socket);
+  if (!normalized) return;
+
+  const key = getTypingKey(normalized);
+  const current = typingStates.get(key);
+
+  if (current && current.socketId && current.socketId !== socket.id) return;
+
+  typingStates.delete(key);
+  emitirTypingUpdate(io, socket, normalized, false);
+}
+
+function detenerTypingDeSocket(io, socket) {
+  Array.from(typingStates.entries()).forEach(([key, state]) => {
+    if (state.socketId !== socket.id) return;
+    typingStates.delete(key);
+    emitirTypingUpdate(io, socket, state, false);
+  });
 }
 
 async function unirUsuarioASusSalas(socket, userId) {
@@ -199,7 +360,7 @@ function setEstadoManualUsuario(userId, estado) {
   }
 
   const nextState = recalcularEstadoUsuario(id);
-  if (ioGlobal) publicarEstadoUsuarios(ioGlobal);
+  if (ioGlobal) programarPublicarEstadoUsuarios(ioGlobal, { immediate: true });
   return nextState;
 }
 
@@ -213,16 +374,7 @@ function initSocket(server) {
 
   const io = new Server(server, {
     cors: {
-      origin: [
-        "http://chatvista.click",
-        "https://chatvista.click",
-        "http://www.chatvista.click",
-        "https://www.chatvista.click",
-        "http://quickchat.click",
-        "https://quickchat.click",
-        "http://www.quickchat.click",
-        "https://www.quickchat.click",
-      ],
+      origin: validarSocketOrigin,
       methods: ["GET", "POST"],
       credentials: true,
     },
@@ -254,7 +406,7 @@ function initSocket(server) {
         deviceType: socket.deviceType,
         userAgent: socket.userAgent,
       });
-      publicarEstadoUsuarios(io);
+      programarPublicarEstadoUsuarios(io, { immediate: true });
     };
 
     socket.on("registrarUsuario", registrarUsuario);
@@ -265,7 +417,7 @@ function initSocket(server) {
         deviceType: payload.deviceType || socket.deviceType,
         userAgent: payload.userAgent || socket.userAgent,
       });
-      publicarEstadoUsuarios(io);
+      programarPublicarEstadoUsuarios(io);
     });
 
     socket.on("cambiarEstadoUsuario", (payload = {}) => {
@@ -286,12 +438,20 @@ function initSocket(server) {
       console.log(`↩️ Socket ${socket.id} salió de grupo_${grupoId}`);
     });
 
+
+    // Indicador de escritura tipo WhatsApp.
+    // Se envía de forma dirigida y con rate limit para que no se sature cuando hay muchos usuarios conectados.
+    socket.on("typing:start", (payload = {}) => iniciarTyping(io, socket, payload));
+    socket.on("typing:stop", (payload = {}) => detenerTyping(io, socket, payload));
+
     socket.on("disconnect", (reason) => {
       console.log("🔴 Usuario desconectado:", socket.id, reason);
 
+      detenerTypingDeSocket(io, socket);
+
       if (socket.userId) {
         quitarSocketDeUsuario(socket.userId, socket.id);
-        publicarEstadoUsuarios(io);
+        programarPublicarEstadoUsuarios(io, { immediate: true });
       }
     });
 

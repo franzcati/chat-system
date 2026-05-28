@@ -42,6 +42,11 @@ async function ensureReplyColumn() {
       if (!columns.length) {
         await db.query("ALTER TABLE mensajes_grupo ADD COLUMN reply_to_id INT NULL AFTER lote_id");
       }
+
+      const [forwardColumns] = await db.query("SHOW COLUMNS FROM mensajes_grupo LIKE 'reenviado'");
+      if (!forwardColumns.length) {
+        await db.query("ALTER TABLE mensajes_grupo ADD COLUMN reenviado TINYINT(1) NOT NULL DEFAULT 0 AFTER reply_to_id");
+      }
     })().catch((err) => {
       replyColumnReadyPromise = null;
       throw err;
@@ -185,6 +190,7 @@ router.get("/:grupoId/contexto/:mensajeId", async (req, res) => {
         mg.editado,
         mg.lote_id,
         mg.reply_to_id,
+        mg.reenviado,
         mga.archivo_url,
         mga.tipo_archivo,
         mga.nombre_archivo,
@@ -448,6 +454,7 @@ router.get("/:grupoId", async (req, res) => {
         mg.editado,
         mg.lote_id,
         mg.reply_to_id,
+        mg.reenviado,
         mga.archivo_url,
         mga.tipo_archivo,
         mga.nombre_archivo,
@@ -627,8 +634,8 @@ router.post("/", async (req, res) => {
     await ensureReplyColumn();
 
     const [result] = await db.query(
-      `INSERT INTO mensajes_grupo (grupo_id, usuario_id, mensaje, fecha_envio, lote_id, reply_to_id)
-       VALUES (?, ?, ?, UTC_TIMESTAMP(3), ?, ?)`,
+      `INSERT INTO mensajes_grupo (grupo_id, usuario_id, mensaje, fecha_envio, lote_id, reply_to_id, reenviado)
+       VALUES (?, ?, ?, UTC_TIMESTAMP(3), ?, ?, 0)`,
       [grupoId, usuarioId, mensaje, loteId || null, replyToIdNum]
     );
 
@@ -650,6 +657,7 @@ router.post("/", async (req, res) => {
       lote_id: loteId || null,
       reply_to_id: replyToIdNum,
       reply_to: replyToIdNum ? await getReplyMessageById(replyToIdNum) : null,
+      reenviado: 0,
       ...usuario,
     };
 

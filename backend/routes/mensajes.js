@@ -45,6 +45,11 @@ async function ensureReplyColumn() {
       if (!replyGroupColumns.length) {
         await db.query("ALTER TABLE mensajes ADD COLUMN reply_to_grupo_id INT NULL AFTER reply_to_tipo");
       }
+
+      const [forwardColumns] = await db.query("SHOW COLUMNS FROM mensajes LIKE 'reenviado'");
+      if (!forwardColumns.length) {
+        await db.query("ALTER TABLE mensajes ADD COLUMN reenviado TINYINT(1) NOT NULL DEFAULT 0 AFTER reply_to_grupo_id");
+      }
     })().catch((err) => {
       replyColumnReadyPromise = null;
       throw err;
@@ -52,6 +57,163 @@ async function ensureReplyColumn() {
   }
 
   return replyColumnReadyPromise;
+}
+
+async function ensureGroupForwardColumn() {
+  const [forwardColumns] = await db.query("SHOW COLUMNS FROM mensajes_grupo LIKE 'reenviado'");
+  if (!forwardColumns.length) {
+    await db.query("ALTER TABLE mensajes_grupo ADD COLUMN reenviado TINYINT(1) NOT NULL DEFAULT 0 AFTER reply_to_id");
+  }
+}
+
+const normalizeForwardUrl = (value = "") => String(value || "").trim().replace(/^(\[sticker\])+/i, "");
+
+const looksLikeImageUrl = (value = "", mime = "") =>
+  String(mime || "").startsWith("image/") || /\.(jpe?g|png|webp|gif)(\?.*)?$/i.test(String(value || ""));
+
+const looksLikeMediaUrl = (value = "", mime = "") =>
+  looksLikeImageUrl(value, mime) ||
+  String(mime || "").startsWith("audio/") ||
+  String(mime || "").startsWith("video/") ||
+  /\.(mp3|wav|ogg|m4a|aac|webm|mp4|mov)(\?.*)?$/i.test(String(value || ""));
+
+function buildForwardUnits(original = {}) {
+  const units = [];
+  const caption = String(original.mensaje || "").trim();
+  const imageList = Array.isArray(original.imagenes)
+    ? original.imagenes.map(normalizeForwardUrl).filter(Boolean)
+    : [];
+
+  if (imageList.length) {
+    imageList.forEach((url) => units.push({ mensaje: url, tipo_archivo: "image/*" }));
+    if (caption && !imageList.includes(caption)) units.push({ mensaje: caption });
+    return units;
+  }
+
+  const archivoUrl = normalizeForwardUrl(original.archivo_url || "");
+  const tipoArchivo = String(original.tipo_archivo || "");
+  const rawMessage = String(original.mensaje || "").trim();
+
+  if (archivoUrl) {
+    units.push({
+      mensaje: archivoUrl,
+      tipo_archivo: tipoArchivo,
+      nombre_archivo: original.nombre_archivo || "",
+      tamano: original.tamano || 0,
+    });
+
+    if (rawMessage && rawMessage !== archivoUrl && !rawMessage.startsWith("[sticker]") && !looksLikeMediaUrl(rawMessage, tipoArchivo)) {
+      units.push({ mensaje: rawMessage });
+    }
+
+    return units;
+  }
+
+  if (rawMessage) {
+    units.push({ mensaje: rawMessage });
+  }
+
+  return units;
+}
+
+async function insertForwardedPrivateMessage({ senderId, receiverId, unit, loteId, fechaEnvioMySQL, fechaEnvioISO, enviarEventoAlUsuario }) {
+  const [result] = await db.query(
+    `INSERT INTO mensajes
+      (usuario_envia_id, usuario_recibe_id, mensaje, lote_id, reply_to_id, reply_to_tipo, reply_to_grupo_id, reenviado, fecha_envio, fijado)
+     VALUES (?, ?, ?, ?, NULL, NULL, NULL, 1, ?, 0)`,
+    [senderId, receiverId, unit.mensaje, loteId || null, fechaEnvioMySQL]
+  );
+
+  const [[sender]] = await db.query(
+    "SELECT nombre, apellido, correo, url_imagen, background FROM usuario WHERE id = ?",
+    [senderId]
+  );
+  const [[receiver]] = await db.query(
+    "SELECT nombre, apellido, correo, url_imagen, background FROM usuario WHERE id = ?",
+    [receiverId]
+  );
+
+  const nuevoMensaje = {
+    id: result.insertId,
+    usuario_envia_id: senderId,
+    usuario_recibe_id: receiverId,
+    mensaje: unit.mensaje,
+    lote_id: loteId || null,
+    reply_to_id: null,
+    reply_to_tipo: null,
+    reply_to_grupo_id: null,
+    reply_to: null,
+    reenviado: 1,
+    fecha_envio: fechaEnvioISO,
+    fecha_envio_db: fechaEnvioMySQL,
+    eliminado: 0,
+    editado: 0,
+    visto: 0,
+    fijado: false,
+    archivo_url: unit.tipo_archivo ? unit.mensaje : null,
+    tipo_archivo: unit.tipo_archivo || "",
+    nombre_archivo: unit.nombre_archivo || "",
+    tamano: unit.tamano || 0,
+    emisor_nombre: sender?.nombre,
+    emisor_apellido: sender?.apellido,
+    emisor_correo: sender?.correo,
+    emisor_avatar: sender?.url_imagen,
+    emisor_background: sender?.background,
+    receptor_nombre: receiver?.nombre,
+    receptor_apellido: receiver?.apellido,
+    receptor_correo: receiver?.correo,
+    receptor_avatar: receiver?.url_imagen,
+    receptor_background: receiver?.background,
+    reacciones: [],
+  };
+
+  enviarEventoAlUsuario(senderId, "nuevoMensaje", nuevoMensaje);
+  enviarEventoAlUsuario(receiverId, "nuevoMensaje", nuevoMensaje);
+  return nuevoMensaje;
+}
+
+async function insertForwardedGroupMessage({ grupoId, senderId, unit, loteId, fechaEnvioISO, enviarEventoAlUsuario }) {
+  const [result] = await db.query(
+    `INSERT INTO mensajes_grupo (grupo_id, usuario_id, mensaje, fecha_envio, lote_id, reply_to_id, reenviado)
+     VALUES (?, ?, ?, UTC_TIMESTAMP(3), ?, NULL, 1)`,
+    [grupoId, senderId, unit.mensaje, loteId || null]
+  );
+
+  const [[usuario]] = await db.query(
+    "SELECT nombre, apellido, correo, url_imagen, background FROM usuario WHERE id = ?",
+    [senderId]
+  );
+
+  const nuevoMensaje = {
+    id: result.insertId,
+    grupo_id: Number(grupoId),
+    usuario_id: Number(senderId),
+    mensaje: unit.mensaje,
+    eliminado: 0,
+    fecha_envio: fechaEnvioISO,
+    editado: 0,
+    lote_id: loteId || null,
+    reply_to_id: null,
+    reply_to: null,
+    reenviado: 1,
+    archivo_url: unit.tipo_archivo ? unit.mensaje : null,
+    tipo_archivo: unit.tipo_archivo || "",
+    nombre_archivo: unit.nombre_archivo || "",
+    tamano: unit.tamano || 0,
+    reacciones: [],
+    ...usuario,
+  };
+
+  const [miembros] = await db.query(
+    "SELECT usuario_id FROM usuario_grupo WHERE grupo_id = ?",
+    [grupoId]
+  );
+
+  miembros.forEach(({ usuario_id }) => {
+    enviarEventoAlUsuario(usuario_id, "nuevoMensajeGrupo", nuevoMensaje);
+  });
+
+  return nuevoMensaje;
 }
 
 async function getReplyMessagesByIds(ids = []) {
@@ -223,6 +385,7 @@ router.get("/contexto/:mensajeId", async (req, res) => {
         m.reply_to_id,
         m.reply_to_tipo,
         m.reply_to_grupo_id,
+        m.reenviado,
         m.fecha_envio,
         m.eliminado,
         m.editado,
@@ -380,6 +543,7 @@ router.get("/", async (req, res) => {
         m.reply_to_id,
         m.reply_to_tipo,
         m.reply_to_grupo_id,
+        m.reenviado,
         m.fecha_envio,
         m.eliminado,
         m.editado,
@@ -520,8 +684,8 @@ router.post("/", async (req, res) => {
 
     const [result] = await db.query(
       `INSERT INTO mensajes 
-        (usuario_envia_id, usuario_recibe_id, mensaje, lote_id, reply_to_id, reply_to_tipo, reply_to_grupo_id, fecha_envio, fijado)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0)`,
+        (usuario_envia_id, usuario_recibe_id, mensaje, lote_id, reply_to_id, reply_to_tipo, reply_to_grupo_id, reenviado, fecha_envio, fijado)
+      VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, 0)`,
       [senderId, receiverId, message, loteId || null, replyToIdNum, replyToTipo, replyToGrupoIdNum, fechaEnvioMySQL]
     );
 
@@ -547,6 +711,7 @@ router.post("/", async (req, res) => {
       reply_to_tipo: replyToTipo,
       reply_to_grupo_id: replyToGrupoIdNum,
       reply_to: replyToIdNum ? await getReplyMessageByContext(replyToIdNum, replyToTipo) : null,
+      reenviado: 0,
       fecha_envio: fechaEnvioISO,
       fecha_envio_db: fechaEnvioMySQL,
       editado: 0,
@@ -580,6 +745,75 @@ router.post("/", async (req, res) => {
   } catch (err) {
     console.error("❌ Error al insertar mensaje:", err);
     res.status(500).json({ error: "Error al guardar mensaje" });
+  }
+});
+
+// =======================
+// Reenviar mensajes a chats privados o grupos
+// =======================
+router.post("/reenviar", async (req, res) => {
+  const usuarioId = Number(req.body.usuarioId);
+  const mensajes = Array.isArray(req.body.mensajes) ? req.body.mensajes : [];
+  const destinos = Array.isArray(req.body.destinos) ? req.body.destinos : [];
+
+  if (!usuarioId || !mensajes.length || !destinos.length) {
+    return res.status(400).json({ error: "Faltan usuarioId, mensajes o destinos" });
+  }
+
+  const { enviarEventoAlUsuario } = req.app.get("socketUtils");
+
+  try {
+    await ensureReplyColumn();
+    await ensureGroupForwardColumn();
+
+    const reenviados = [];
+
+    for (const destino of destinos) {
+      const tipoDestino = destino.tipo === "grupo" ? "grupo" : "privado";
+      const destinoId = Number(destino.id);
+      if (!destinoId) continue;
+
+      for (const original of mensajes) {
+        const units = buildForwardUnits(original);
+        if (!units.length) continue;
+
+        const loteId = units.length > 1 ? `forward-${Date.now()}-${Math.random().toString(36).slice(2)}` : null;
+
+        for (const unit of units) {
+          const fechaUTC = new Date();
+          const fechaEnvioMySQL = formatDateToMySQL(fechaUTC);
+          const fechaEnvioISO = fechaUTC.toISOString();
+
+          if (tipoDestino === "grupo") {
+            const nuevo = await insertForwardedGroupMessage({
+              grupoId: destinoId,
+              senderId: usuarioId,
+              unit,
+              loteId,
+              fechaEnvioISO,
+              enviarEventoAlUsuario,
+            });
+            reenviados.push(nuevo);
+          } else if (destinoId !== usuarioId) {
+            const nuevo = await insertForwardedPrivateMessage({
+              senderId: usuarioId,
+              receiverId: destinoId,
+              unit,
+              loteId,
+              fechaEnvioMySQL,
+              fechaEnvioISO,
+              enviarEventoAlUsuario,
+            });
+            reenviados.push(nuevo);
+          }
+        }
+      }
+    }
+
+    return res.status(201).json({ success: true, mensajes: reenviados });
+  } catch (err) {
+    console.error("❌ Error reenviando mensajes:", err);
+    return res.status(500).json({ error: "Error reenviando mensajes" });
   }
 });
 
@@ -1107,6 +1341,7 @@ router.post("/archivo", upload.single("archivo"), async (req, res) => {
       reply_to_tipo: replyToTipo,
       reply_to_grupo_id: replyToGrupoIdNum,
       reply_to: replyToIdNum ? await getReplyMessageByContext(replyToIdNum, replyToTipo) : null,
+      reenviado: 0,
       fecha_envio: fechaEnvioISO,
       editado: 0,
       eliminado: 0,
