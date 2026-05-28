@@ -125,6 +125,27 @@ const imageSrcToFile = async (src, index = 0) => {
   });
 };
 
+const getClipboardImageFileKey = (file) => {
+  if (!file) return "";
+  // En algunos navegadores la misma imagen pegada llega duplicada como
+  // DataTransfer.files y DataTransfer.items con nombres/lastModified distintos.
+  // Para pegado desde portapapeles deduplicamos por tipo + tamaño, que es
+  // estable para esos duplicados.
+  return `${file.type || "image"}:${file.size || 0}`;
+};
+
+const uniqueClipboardImageFiles = (files = []) => {
+  const seen = new Set();
+
+  return Array.from(files || []).filter((file) => {
+    if (!file || !file.type?.startsWith("image/")) return false;
+    const key = getClipboardImageFileKey(file);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+};
+
 const FORMAT_ACTIONS = [
   { key: "bold", label: "B", title: "Negrita", shortcut: "Ctrl+B" },
   { key: "italic", label: "I", title: "Cursiva", shortcut: "Ctrl+I" },
@@ -835,13 +856,7 @@ const ChatInput = forwardRef(({ onSend, onPasteFiles, onValueChange, mentionOpti
 
     if (hasClipboardImages && typeof onPasteFiles === "function") {
       const imageFiles = [...filesFromFiles, ...filesFromItems];
-      const seenFiles = new Set();
-      const uniqueImageFiles = imageFiles.filter((file) => {
-        const key = `${file.name}-${file.size}-${file.type}-${file.lastModified}`;
-        if (seenFiles.has(key)) return false;
-        seenFiles.add(key);
-        return true;
-      });
+      const uniqueImageFiles = uniqueClipboardImageFiles(imageFiles);
 
       const htmlSourcesToConvert = uniqueImageFiles.length ? [] : htmlImageSources;
       const imageSourceFilesPromise = Promise.all(
@@ -854,10 +869,10 @@ const ChatInput = forwardRef(({ onSend, onPasteFiles, onValueChange, mentionOpti
       );
 
       imageSourceFilesPromise.then((sourceFiles) => {
-        const allImageFiles = [
+        const allImageFiles = uniqueClipboardImageFiles([
           ...uniqueImageFiles,
           ...sourceFiles.filter(Boolean),
-        ];
+        ]);
 
         if (allImageFiles.length) {
           onPasteFiles(allImageFiles, { source: "paste", text: pastedText });

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { createPortal } from "react-dom";
 import axios from "axios";
 import ChatBody from "../components/ChatBody";
 import MiembrosGrupos from "../components/MiembrosGrupos";
@@ -348,6 +349,13 @@ const ChatBox = ({ chat, user, setChat, onVerPerfil }) => {
   const [stickerCropRect, setStickerCropRect] = useState({ x: 0, y: 0, w: 1, h: 1 });
   const [isCreatingSticker, setIsCreatingSticker] = useState(false);
   const [typingUsers, setTypingUsers] = useState([]);
+  const [forwardSelectionMode, setForwardSelectionMode] = useState(false);
+  const [forwardSelectedMessages, setForwardSelectedMessages] = useState([]);
+  const [showForwardModal, setShowForwardModal] = useState(false);
+  const [forwardTargets, setForwardTargets] = useState([]);
+  const [forwardSelectedTargets, setForwardSelectedTargets] = useState([]);
+  const [forwardSearch, setForwardSearch] = useState("");
+  const [isForwardingMessages, setIsForwardingMessages] = useState(false);
 
   // pestaña activa: "todos" o "favoritos" (si luego quieres más)
   const [stickerTab, setStickerTab] = useState("todos");
@@ -1625,6 +1633,283 @@ const ChatBox = ({ chat, user, setChat, onVerPerfil }) => {
     setTimeout(() => inputRef.current?.focus?.(), 0);
   }, []);
 
+  const getForwardMessageKey = useCallback((message = {}) => {
+    const source = message.source_tipo || message.forward_source || chat?.tipo || "chat";
+    return `${source}-${message.id}`;
+  }, [chat?.tipo]);
+
+  const buildForwardPayload = useCallback((message = {}) => ({
+    id: message.id,
+    source_tipo: message.source_tipo || chat?.tipo || "privado",
+    source_grupo_id: message.source_grupo_id || message.grupo_id || chat?.grupo_id || null,
+    mensaje: message.mensaje || "",
+    archivo_url: message.archivo_url || null,
+    tipo_archivo: message.tipo_archivo || "",
+    nombre_archivo: message.nombre_archivo || "",
+    tamano: message.tamano || 0,
+    lote_id: message.lote_id || message.loteId || null,
+    imagenes: Array.isArray(message.imagenes) ? message.imagenes : undefined,
+  }), [chat?.tipo, chat?.grupo_id]);
+
+  const normalizeForwardSelectionMessage = useCallback((message = {}) => ({
+    ...message,
+    source_tipo: message.source_tipo || chat?.tipo || "privado",
+    source_grupo_id: message.source_grupo_id || message.grupo_id || chat?.grupo_id || null,
+  }), [chat?.tipo, chat?.grupo_id]);
+
+  const startForwardSelection = useCallback((message) => {
+    if (!message?.id) return;
+    const normalized = normalizeForwardSelectionMessage(message);
+    setForwardSelectionMode(true);
+    setForwardSelectedMessages([normalized]);
+    setShowForwardModal(false);
+  }, [normalizeForwardSelectionMessage]);
+
+  const toggleForwardSelectedMessage = useCallback((message) => {
+    if (!message?.id) return;
+    const normalized = normalizeForwardSelectionMessage(message);
+    const key = getForwardMessageKey(normalized);
+
+    setForwardSelectedMessages((prev) => {
+      const exists = prev.some((item) => getForwardMessageKey(item) === key);
+      if (exists) return prev.filter((item) => getForwardMessageKey(item) !== key);
+      return [...prev, normalized];
+    });
+  }, [getForwardMessageKey, normalizeForwardSelectionMessage]);
+
+  const cancelForwardSelection = useCallback(() => {
+    setForwardSelectionMode(false);
+    setForwardSelectedMessages([]);
+    setShowForwardModal(false);
+    setForwardSelectedTargets([]);
+    setForwardSearch("");
+  }, []);
+
+  const getForwardTargetTime = (value) => {
+    const parsed = new Date(value || 0).getTime();
+    return Number.isFinite(parsed) ? parsed : 0;
+  };
+
+  const upsertForwardTarget = (map, target) => {
+    if (!target?.key || !target.id) return;
+    const previous = map.get(target.key);
+    if (!previous || (target.lastTime || 0) > (previous.lastTime || 0)) {
+      map.set(target.key, { ...previous, ...target });
+    }
+  };
+
+  const buildForwardTargetFromPrivate = (item = {}, section = "project") => {
+    const currentId = Number(user?.id);
+    const enviaId = Number(item.usuario_envia_id || item.emisor_id || item.sender_id);
+    const recibeId = Number(item.usuario_recibe_id || item.receptor_id || item.receiver_id);
+
+    let otherId = Number(item.usuario_id || item.id || item.contacto_id);
+    let nombre = item.usuario_nombre || item.nombre_completo || `${item.nombre || ""} ${item.apellido || ""}`.trim();
+    let correo = item.usuario_correo || item.correo || "";
+    let avatar = item.url_imagen || item.usuario_imagen || item.avatar || null;
+    let background = item.background || "#6c757d";
+
+    if (Number.isFinite(enviaId) && Number.isFinite(recibeId) && (enviaId === currentId || recibeId === currentId)) {
+      const soyEmisor = enviaId === currentId;
+      otherId = soyEmisor ? recibeId : enviaId;
+      nombre = soyEmisor
+        ? item.receptor_nombre || nombre || "Usuario"
+        : item.emisor_nombre || nombre || "Usuario";
+      correo = soyEmisor
+        ? item.receptor_correo || correo || ""
+        : item.emisor_correo || correo || "";
+      avatar = soyEmisor
+        ? item.receptor_avatar || avatar || null
+        : item.emisor_avatar || avatar || null;
+      background = soyEmisor
+        ? item.receptor_background || background || "#6c757d"
+        : item.emisor_background || background || "#6c757d";
+    }
+
+    return {
+      key: `privado-${otherId}`,
+      tipo: "privado",
+      id: otherId,
+      nombre: nombre || correo || "Usuario",
+      subtitle: section === "recent" ? "" : "Miembro de proyecto",
+      url_imagen: avatar,
+      background,
+      section,
+      lastTime: getForwardTargetTime(item.fecha_envio || item.updated_at || item.creado_en),
+    };
+  };
+
+  const buildForwardTargetFromGroup = (item = {}, section = "groups") => {
+    const groupId = Number(item.grupo_id || item.id);
+    const memberCount = Array.isArray(item.miembros) ? item.miembros.length : 0;
+
+    return {
+      key: `grupo-${groupId}`,
+      tipo: "grupo",
+      id: groupId,
+      nombre: item.usuario_nombre || item.nombre || "Grupo",
+      subtitle: memberCount ? `${memberCount} miembros` : "Grupo",
+      imagen_url: item.imagen_url || null,
+      background: item.background || "#6c757d",
+      miembros: item.miembros || [],
+      section,
+      lastTime: getForwardTargetTime(item.fecha_envio),
+      createdTime: getForwardTargetTime(item.fecha_creacion),
+    };
+  };
+
+  const loadForwardTargets = useCallback(async () => {
+    if (!user?.id) return;
+
+    try {
+      const [resChats, resGrupos, resProjectUsers] = await Promise.all([
+        axios.get(`/api/chats/${user.id}`),
+        axios.get(`/api/grupos/usuario/${user.id}`),
+        axios.get(`/api/grupos/${user.id}/todos-usuarios`),
+      ]);
+
+      const privateRecentMap = new Map();
+      (Array.isArray(resChats.data) ? resChats.data : []).forEach((item) => {
+        const target = buildForwardTargetFromPrivate(item, "recent");
+        if (target.id && Number(target.id) !== Number(user.id)) {
+          upsertForwardTarget(privateRecentMap, target);
+        }
+      });
+
+      const groupMap = new Map();
+      (Array.isArray(resGrupos.data) ? resGrupos.data : []).forEach((item) => {
+        const target = buildForwardTargetFromGroup(item, "groups");
+        if (target.id) upsertForwardTarget(groupMap, target);
+      });
+
+      const recentCandidates = [
+        ...privateRecentMap.values(),
+        ...groupMap.values().filter((target) => target.lastTime > 0),
+      ]
+        .sort((a, b) => (b.lastTime || 0) - (a.lastTime || 0))
+        .slice(0, 10)
+        .map((target) => ({ ...target, section: "recent", subtitle: target.tipo === "grupo" ? target.subtitle : "" }));
+
+      const recentKeys = new Set(recentCandidates.map((target) => target.key));
+
+      const nonRecentGroups = [...groupMap.values()]
+        .filter((target) => !recentKeys.has(target.key))
+        .sort((a, b) => (b.lastTime || b.createdTime || 0) - (a.lastTime || a.createdTime || 0))
+        .map((target) => ({ ...target, section: "groups" }));
+
+      const projectMap = new Map();
+      (Array.isArray(resProjectUsers.data) ? resProjectUsers.data : []).forEach((item) => {
+        const target = buildForwardTargetFromPrivate(item, "project");
+        if (
+          target.id &&
+          Number(target.id) !== Number(user.id) &&
+          !recentKeys.has(target.key)
+        ) {
+          upsertForwardTarget(projectMap, target);
+        }
+      });
+
+      const projectMembers = [...projectMap.values()].sort((a, b) =>
+        String(a.nombre || "").localeCompare(String(b.nombre || ""), "es", { sensitivity: "base" })
+      );
+
+      setForwardTargets([
+        ...recentCandidates,
+        ...nonRecentGroups,
+        ...projectMembers,
+      ]);
+    } catch (err) {
+      console.error("❌ Error cargando destinos para reenviar:", err);
+      setForwardTargets([]);
+    }
+  }, [user?.id]);
+
+  const openForwardModal = useCallback(() => {
+    if (!forwardSelectedMessages.length) return;
+    setShowForwardModal(true);
+    setForwardSelectedTargets([]);
+    setForwardSearch("");
+    loadForwardTargets();
+  }, [forwardSelectedMessages.length, loadForwardTargets]);
+
+  const toggleForwardTarget = useCallback((target) => {
+    if (!target?.key) return;
+    setForwardSelectedTargets((prev) => {
+      const exists = prev.some((item) => item.key === target.key);
+      if (exists) return prev.filter((item) => item.key !== target.key);
+      return [...prev, target];
+    });
+  }, []);
+
+  const filteredForwardSections = useMemo(() => {
+    const query = forwardSearch.trim().toLowerCase();
+    const matches = (target) =>
+      !query || `${target.nombre || ""} ${target.subtitle || ""}`.toLowerCase().includes(query);
+
+    const sectionOrder = [
+      { key: "recent", label: "Chats recientes" },
+      { key: "groups", label: "Grupos" },
+      { key: "project", label: "Miembros de Proyecto" },
+    ];
+
+    return sectionOrder
+      .map((section) => ({
+        ...section,
+        targets: forwardTargets.filter((target) => (target.section || "project") === section.key && matches(target)),
+      }))
+      .filter((section) => section.targets.length > 0);
+  }, [forwardTargets, forwardSearch]);
+
+  const sendForwardedMessages = useCallback(async () => {
+    if (!forwardSelectedMessages.length || !forwardSelectedTargets.length || isForwardingMessages) return;
+
+    setIsForwardingMessages(true);
+    try {
+      await axios.post("/api/mensajes/reenviar", {
+        usuarioId: user.id,
+        mensajes: forwardSelectedMessages.map(buildForwardPayload),
+        destinos: forwardSelectedTargets.map((target) => ({
+          tipo: target.tipo,
+          id: target.id,
+        })),
+      });
+
+      cancelForwardSelection();
+    } catch (err) {
+      console.error("❌ Error reenviando mensajes:", err);
+      alert("No se pudieron reenviar los mensajes. Inténtalo otra vez.");
+    } finally {
+      setIsForwardingMessages(false);
+    }
+  }, [
+    buildForwardPayload,
+    cancelForwardSelection,
+    forwardSelectedMessages,
+    forwardSelectedTargets,
+    isForwardingMessages,
+    user?.id,
+  ]);
+
+  useEffect(() => {
+    cancelForwardSelection();
+  }, [chat?.tipo, chat?.grupo_id, chat?.usuario_id]);
+
+  const renderForwardTargetAvatar = (target) => {
+    if (target.tipo === "grupo") {
+      return <GroupAvatar group={target} members={target.miembros} size={42} />;
+    }
+
+    if (target.url_imagen) {
+      return <img src={getAvatarUrl(target.url_imagen)} alt={target.nombre} />;
+    }
+
+    return (
+      <span style={{ backgroundColor: target.background || "#6c757d" }}>
+        {(target.nombre || "U").charAt(0).toUpperCase()}
+      </span>
+    );
+  };
+
   const renderPreviewLine = (message) => {
     const preview = getMessagePreview(message);
     const rawText = preview.kind === "text" ? (preview.rawText || preview.text) : preview.text;
@@ -2824,7 +3109,7 @@ const ChatBox = ({ chat, user, setChat, onVerPerfil }) => {
   };
 
   // Maneja CUALQUIER tipo de archivo seleccionado / arrastrado
-  const handleFilesSeleccionados = (fileList) => {
+  const handleFilesSeleccionados = (fileList, options = {}) => {
     const filesArray = Array.from(fileList || []);
     if (!filesArray.length) return;
 
@@ -2832,7 +3117,7 @@ const ChatBox = ({ chat, user, setChat, onVerPerfil }) => {
     const imageFiles = filesArray.filter((f) => f.type.startsWith("image/"));
 
     if (imageFiles.length) {
-      addImagesToPending(imageFiles);
+      addImagesToPending(imageFiles, options);
     }
 
     // 2) Otros archivos (Word, Excel, ZIP, EXE, etc.) → subir directo
@@ -2868,21 +3153,45 @@ const ChatBox = ({ chat, user, setChat, onVerPerfil }) => {
   };
 
    // 👇 centralizamos cómo añadimos imágenes a la “cola” tipo WhatsApp
-  const addImagesToPending = (fileList) => {
-    const imageFiles = Array.from(fileList).filter((f) =>
-      f.type.startsWith("image/")
-    );
+  const getPendingImageKey = (file) =>
+    `${file?.type || "image"}:${file?.size || 0}`;
+
+  const uniquePendingImageFiles = (files, options = {}) => {
+    const shouldDedupePaste = options?.source === "paste";
+    const seen = new Set();
+
+    return Array.from(files || []).filter((file) => {
+      if (!file?.type?.startsWith("image/")) return false;
+      if (!shouldDedupePaste) return true;
+
+      const key = getPendingImageKey(file);
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  };
+
+  const addImagesToPending = (fileList, options = {}) => {
+    const imageFiles = uniquePendingImageFiles(fileList, options);
     if (!imageFiles.length) return;
 
     const mapped = imageFiles.map((file) => ({
-      id: `${file.name}-${file.lastModified}-${Math.random()}`,
+      id: `${file.name}-${file.size}-${file.lastModified}-${Math.random()}`,
       file,
       preview: URL.createObjectURL(file),
     }));
 
     setPendingImages((prev) => {
+      if (options?.source === "paste") {
+        const existingKeys = new Set(prev.map((item) => getPendingImageKey(item.file)));
+        const freshMapped = mapped.filter((item) => !existingKeys.has(getPendingImageKey(item.file)));
+        if (!freshMapped.length) return prev;
+        setActiveImageIndex(prev.length);
+        return [...prev, ...freshMapped];
+      }
+
       const next = [...prev, ...mapped];
-      setActiveImageIndex(0);       // 👈 siempre empezamos por la primera
+      setActiveImageIndex(prev.length);
       return next;
     });
   };
@@ -3845,6 +4154,13 @@ const ChatBox = ({ chat, user, setChat, onVerPerfil }) => {
                         onMarkVisibleMessages={markCurrentChatAsRead}
                         onCancelUpload={cancelPendingUpload}
                         onRetryUpload={retryPendingUpload}
+                        onForward={startForwardSelection}
+                        onStartSelect={startForwardSelection}
+                        selectionMode={forwardSelectionMode}
+                        selectedMessages={forwardSelectedMessages}
+                        onToggleSelect={toggleForwardSelectedMessage}
+                        onCancelSelection={cancelForwardSelection}
+                        onOpenForwardModal={openForwardModal}
                       />
                     </div>
                   )}
@@ -3853,7 +4169,7 @@ const ChatBox = ({ chat, user, setChat, onVerPerfil }) => {
           </div>
           
           {/* Input del chat */}
-          <div className="chat-footer pb-3 pb-lg-7">
+          <div className={`chat-footer pb-3 pb-lg-7 ${forwardSelectionMode ? "d-none" : ""}`}>
             
             {/* Chat: Form */}
             <form
@@ -3991,7 +4307,7 @@ const ChatBox = ({ chat, user, setChat, onVerPerfil }) => {
                       <ChatInput
                         ref={inputRef}
                         onSend={(msg) => handleSendMessage(msg)}
-                        onPasteFiles={(files) => handleFilesSeleccionados(files)}   // 👈 AHORA
+                        onPasteFiles={(files, options) => handleFilesSeleccionados(files, options)}
                         onValueChange={setInputText}
                         mentionOptions={mentionOptions}
                         onReply={handleReplyMessage}
@@ -4686,6 +5002,92 @@ const ChatBox = ({ chat, user, setChat, onVerPerfil }) => {
             Suelta las imágenes o Archivos para adjuntarlas
           </div>
         </div>
+      )}
+
+      {showForwardModal && typeof document !== "undefined" && createPortal(
+        <div className="wa-forward-modal-backdrop" onClick={() => setShowForwardModal(false)}>
+          <div className="wa-forward-modal" onClick={(event) => event.stopPropagation()}>
+            <div className="wa-forward-modal-header">
+              <button
+                type="button"
+                className="wa-forward-modal-close"
+                onClick={() => setShowForwardModal(false)}
+                aria-label="Cerrar reenviar"
+              >
+                <i className="fa-solid fa-xmark" aria-hidden="true" />
+              </button>
+              <strong>Reenviar mensajes a</strong>
+              <i className="fa-solid fa-user-plus" aria-hidden="true" />
+            </div>
+
+            <div className="wa-forward-search">
+              <i className="fa-solid fa-magnifying-glass" aria-hidden="true" />
+              <input
+                type="text"
+                value={forwardSearch}
+                onChange={(event) => setForwardSearch(event.target.value)}
+                placeholder="Buscar un nombre o número"
+                autoFocus
+              />
+            </div>
+
+            <div className="wa-forward-targets">
+              {filteredForwardSections.length === 0 ? (
+                <div className="wa-forward-empty">No hay chats para mostrar</div>
+              ) : (
+                filteredForwardSections.map((section) => (
+                  <div className="wa-forward-section" key={section.key}>
+                    <div className="wa-forward-section-label">{section.label}</div>
+                    {section.targets.map((target) => {
+                      const selected = forwardSelectedTargets.some((item) => item.key === target.key);
+                      return (
+                        <button
+                          key={target.key}
+                          type="button"
+                          className={`wa-forward-target ${selected ? "selected" : ""}`}
+                          onClick={() => toggleForwardTarget(target)}
+                        >
+                          <span className={`wa-forward-check ${selected ? "checked" : ""}`}>
+                            {selected && <i className="fa-solid fa-check" aria-hidden="true" />}
+                          </span>
+                          <span className="wa-forward-avatar">
+                            {renderForwardTargetAvatar(target)}
+                          </span>
+                          <span className="wa-forward-target-text">
+                            <strong>{target.nombre}</strong>
+                            {target.subtitle && <small>{target.subtitle}</small>}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                ))
+              )}
+            </div>
+
+            <div className="wa-forward-modal-footer">
+              <div className="wa-forward-selected-strip">
+                {forwardSelectedTargets.map((target) => (
+                  <span key={target.key}>{target.nombre}</span>
+                ))}
+              </div>
+              <button
+                type="button"
+                className="wa-forward-submit"
+                disabled={!forwardSelectedTargets.length || isForwardingMessages}
+                onClick={sendForwardedMessages}
+                aria-label="Enviar reenviado"
+              >
+                {isForwardingMessages ? (
+                  <span className="spinner-border spinner-border-sm" aria-hidden="true" />
+                ) : (
+                  <i className="fa-solid fa-paper-plane" aria-hidden="true" />
+                )}
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
       )}
       
     </main>

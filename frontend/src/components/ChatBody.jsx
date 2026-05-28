@@ -174,8 +174,27 @@ const ChatBody = ({
   onMarkVisibleMessages,
   onCancelUpload,
   onRetryUpload,
+  onForward,
+  onStartSelect,
+  selectionMode = false,
+  selectedMessages = [],
+  onToggleSelect,
+  onCancelSelection,
+  onOpenForwardModal,
 }) => {
   const esGrupo = tipo === "grupo";
+
+  const getForwardSelectionKey = (message = {}) => {
+    const source = esGrupo ? "grupo" : "privado";
+    return `${source}-${message?.id}`;
+  };
+
+  const selectedKeySet = useMemo(
+    () => new Set((selectedMessages || []).map(getForwardSelectionKey)),
+    [selectedMessages, esGrupo]
+  );
+
+  const selectedCount = selectedMessages?.length || 0;
 
   const chatContainerRef = useRef(null);
   const messagesEndRef = useRef(null);
@@ -546,6 +565,11 @@ const ChatBody = ({
                     onReplyPreviewClick={onReplyPreviewClick}
                     onCancelUpload={onCancelUpload}
                     onRetryUpload={onRetryUpload}
+                    onForward={onForward}
+                    onStartSelect={onStartSelect}
+                    selectionMode={selectionMode}
+                    isSelected={selectedKeySet.has(getForwardSelectionKey(msg))}
+                    onToggleSelect={onToggleSelect}
                   />
                 );
               };
@@ -612,6 +636,32 @@ const ChatBody = ({
               <i />
             </span>
           </div>
+        </div>
+      )}
+
+      {selectionMode && (
+        <div className="wa-forward-selection-bar">
+          <button
+            type="button"
+            className="wa-forward-selection-close"
+            onClick={onCancelSelection}
+            aria-label="Cancelar selección"
+          >
+            <i className="fa-solid fa-xmark" aria-hidden="true" />
+          </button>
+          <span className="wa-forward-selection-count">
+            {selectedCount} {selectedCount === 1 ? "seleccionado" : "seleccionados"}
+          </span>
+          <button
+            type="button"
+            className="wa-forward-selection-send"
+            onClick={onOpenForwardModal}
+            disabled={selectedCount === 0}
+            aria-label="Reenviar mensajes seleccionados"
+            title="Reenviar"
+          >
+            <i className="fa-solid fa-share" aria-hidden="true" />
+          </button>
         </div>
       )}
 

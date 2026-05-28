@@ -160,6 +160,11 @@ const Message = ({
   onReplyPreviewClick,
   onCancelUpload,
   onRetryUpload,
+  onForward,
+  onStartSelect,
+  selectionMode = false,
+  isSelected = false,
+  onToggleSelect,
 }) => {
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [showReactions, setShowReactions] = useState(false);
@@ -303,6 +308,38 @@ const Message = ({
     tipo_archivo: mensajeData.tipo_archivo || "",
     nombre_archivo: mensajeData.nombre_archivo || "",
   });
+
+  const crearPayloadReenviar = () => ({
+    ...crearPayloadRespuesta(),
+    imagenes: Array.isArray(mensajeData.imagenes) ? mensajeData.imagenes : undefined,
+    lote_id: mensajeData.lote_id || mensajeData.loteId || null,
+    tamano: mensajeData.tamano || 0,
+    reenviado: 1,
+  });
+
+  const handleForward = (e) => {
+    e?.preventDefault?.();
+    e?.stopPropagation?.();
+
+    if (typeof onForward === "function" && !mensajeData.eliminado) {
+      onForward(crearPayloadReenviar());
+      setDropdownOpen(false);
+      setShowReactions(false);
+      setShowEmojiPickerReactions(false);
+    }
+  };
+
+  const handleStartSelect = (e) => {
+    e?.preventDefault?.();
+    e?.stopPropagation?.();
+
+    if (typeof onStartSelect === "function" && !mensajeData.eliminado) {
+      onStartSelect(crearPayloadReenviar());
+      setDropdownOpen(false);
+      setShowReactions(false);
+      setShowEmojiPickerReactions(false);
+    }
+  };
 
   const handleReply = (e) => {
     if (e) {
@@ -1427,11 +1464,26 @@ const Message = ({
   return (
     <div
       id={`mensaje-${id}`}
-      className={`message ${enviadoPorMi ? "message-out" : ""} ${mostrarAvatar ? "message-has-avatar" : "message-no-avatar"} ${agrupadoConAnterior ? "message-grouped-prev" : ""} ${agrupadoConSiguiente ? "message-grouped-next" : ""} ${hasOpenFloatingLayer ? "message-layer-active" : ""}`}
+      className={`message ${enviadoPorMi ? "message-out" : ""} ${mostrarAvatar ? "message-has-avatar" : "message-no-avatar"} ${agrupadoConAnterior ? "message-grouped-prev" : ""} ${agrupadoConSiguiente ? "message-grouped-next" : ""} ${hasOpenFloatingLayer ? "message-layer-active" : ""} ${selectionMode ? "message-selection-mode" : ""} ${isSelected ? "message-selected" : ""}`}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >
-      {!mensajeData.eliminado && typeof onReply === "function" && (
+      {selectionMode && !mensajeData.eliminado && (
+        <button
+          type="button"
+          className={`wa-message-select-check ${isSelected ? "checked" : ""}`}
+          onClick={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            onToggleSelect?.(crearPayloadReenviar());
+          }}
+          aria-label={isSelected ? "Quitar selección" : "Seleccionar mensaje"}
+        >
+          {isSelected && <i className="fa-solid fa-check" aria-hidden="true" />}
+        </button>
+      )}
+
+      {!selectionMode && !mensajeData.eliminado && typeof onReply === "function" && (
         <button
           type="button"
           className={`message-reply-shortcut ${enviadoPorMi ? "out" : "in"}`}
@@ -1496,7 +1548,12 @@ const Message = ({
         ref={messageRef}
         className="message-inner"
         style={{ position: "relative" }}
-        onDoubleClick={handleReply}
+        onDoubleClick={selectionMode ? undefined : handleReply}
+        onClick={(event) => {
+          if (!selectionMode || mensajeData.eliminado) return;
+          event.stopPropagation();
+          onToggleSelect?.(crearPayloadReenviar());
+        }}
       >
         <div className="message-body">
           <div className="message-content">
@@ -1514,6 +1571,12 @@ const Message = ({
                   style={senderTitleStyle}
                 >
                   {`${usuario?.nombre || ""} ${usuario?.apellido || ""}`}
+                </div>
+              )}
+              {Number(mensajeData.reenviado || mensajeData.forwarded || 0) === 1 && !mensajeData.eliminado && (
+                <div className="wa-forwarded-label">
+                  <i className="fa-solid fa-share" aria-hidden="true" />
+                  <span>Reenviado</span>
                 </div>
               )}
               {renderReplyPreview()}
@@ -1632,6 +1695,21 @@ const Message = ({
                       </a>
                     </li>
 
+                    {!mensajeData.eliminado && typeof onForward === "function" && (
+                      <li>
+                        <a
+                          className="dropdown-item d-flex align-items-center"
+                          href="#"
+                          onClick={handleForward}
+                        >
+                          <span className="me-auto">Reenviar</span>
+                          <div className="icon">
+                            <i className="fa-solid fa-share" aria-hidden="true" />
+                          </div>
+                        </a>
+                      </li>
+                    )}
+
                     {puedeEnviarPrivadoDesdeGrupo && (
                       <>
                         {typeof onReplyPrivado === "function" && (
@@ -1726,6 +1804,21 @@ const Message = ({
                         </div>
                       </a>
                     </li>
+
+                    {!mensajeData.eliminado && typeof onStartSelect === "function" && (
+                      <li>
+                        <a
+                          className="dropdown-item d-flex align-items-center"
+                          href="#"
+                          onClick={handleStartSelect}
+                        >
+                          <span className="me-auto">Seleccionar</span>
+                          <div className="icon">
+                            <i className="fa-regular fa-square-check" aria-hidden="true" />
+                          </div>
+                        </a>
+                      </li>
+                    )}
 
                     {tieneAudioSuelto && !mensajeData.eliminado && (
                       <li>
