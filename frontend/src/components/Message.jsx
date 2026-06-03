@@ -10,7 +10,13 @@ import { useTheme } from "../context/ThemeContext";
 import { logDev } from "../utils/logger";
 import { getMessagePreview, getReplyAuthorName } from "../utils/messagePreview";
 import { getProfileTitleStyle } from "../utils/profileColor";
-import { renderRichTextInline } from "../utils/richText.jsx";
+import {
+  decodeRichHtmlValue,
+  isRichHtmlValue,
+  renderRichTextInline,
+  sanitizeRichHtml,
+} from "../utils/richText.jsx";
+import ChatInput from "./ChatInput";
 
 const reactions = ["👍", "❤️", "😂", "😮", "😢", "🙏"];
 
@@ -73,6 +79,15 @@ const extractAudioWaveformFromBuffer = (audioBuffer, barCount = AUDIO_MESSAGE_WA
 
 const isRecordedVoiceNoteFile = (name = "") =>
   /^(audio|voice_note)_\d+\.(webm|ogg|m4a|mp3|wav|aac)$/i.test(String(name || ""));
+
+const normalizeRichTextColor = (color = "") => {
+  const value = String(color || "").trim();
+  if (/^#[0-9a-fA-F]{3}$/.test(value)) {
+    return `#${value[1]}${value[1]}${value[2]}${value[2]}${value[3]}${value[3]}`.toUpperCase();
+  }
+  if (/^#[0-9a-fA-F]{6}$/.test(value)) return value.toUpperCase();
+  return "";
+};
 
 const parseColorToRgb = (color) => {
   if (!color || typeof color !== "string") return null;
@@ -225,6 +240,7 @@ const Message = ({
 
   const [isEditing, setIsEditing] = useState(false);
   const [editText, setEditText] = useState(mensajeData.mensaje);
+  const editInputRef = useRef(null);
 
   const [estaFijado, setEstaFijado] = useState(mensajeData?.fijado || false);
 
@@ -418,7 +434,9 @@ const Message = ({
     if (!replyMessage) return null;
 
     const preview = getMessagePreview(replyMessage);
-    const rawPreviewText = preview.kind === "text" ? (preview.rawText || preview.text) : preview.text;
+    const rawPreviewText = preview.kind === "text"
+      ? (preview.rawText && !isRichHtmlValue(preview.rawText) ? preview.rawText : preview.text)
+      : preview.text;
     const previewText = truncatePreviewText(rawPreviewText, 150);
     const author = getReplyAuthorName(replyMessage, miUsuario?.id);
     const replyTitleStyle = getProfileTitleStyle(replyMessage, miUsuario, theme);
@@ -1083,6 +1101,7 @@ const Message = ({
   };
 
   const inlineFormatRules = [
+    { key: "color", open: "[color=", close: "[/color]", className: "wa-rich-color", color: true },
     { key: "bold", open: "**", close: "**", className: "wa-rich-bold" },
     { key: "underline", open: "__", close: "__", className: "wa-rich-underline" },
     { key: "strike2", open: "~~", close: "~~", className: "wa-rich-strike" },
@@ -1122,7 +1141,20 @@ const Message = ({
 
     let bestMatch = null;
 
-    inlineFormatRules.forEach((rule) => {
+    const colorRegex = /\[color=(#[0-9a-fA-F]{3,6})\]([\s\S]*?)\[\/color\]/;
+    const colorMatch = text.match(colorRegex);
+    if (colorMatch) {
+      bestMatch = {
+        rule: inlineFormatRules.find((rule) => rule.key === "color"),
+        openIndex: colorMatch.index,
+        closeIndex: colorMatch.index + colorMatch[0].length - "[/color]".length,
+        content: colorMatch[2],
+        color: normalizeRichTextColor(colorMatch[1]),
+        endIndex: colorMatch.index + colorMatch[0].length,
+      };
+    }
+
+    inlineFormatRules.filter((rule) => !rule.color).forEach((rule) => {
       const openIndex = text.indexOf(rule.open);
       if (openIndex === -1) return;
 
@@ -1132,7 +1164,7 @@ const Message = ({
       if (closeIndex === openIndex + rule.open.length) return;
 
       if (!bestMatch || openIndex < bestMatch.openIndex || (openIndex === bestMatch.openIndex && rule.open.length > bestMatch.rule.open.length)) {
-        bestMatch = { rule, openIndex, closeIndex };
+        bestMatch = { rule, openIndex, closeIndex, endIndex: closeIndex + rule.close.length };
       }
     });
 
@@ -1140,8 +1172,27 @@ const Message = ({
 
     const { rule, openIndex, closeIndex } = bestMatch;
     const before = text.slice(0, openIndex);
-    const content = text.slice(openIndex + rule.open.length, closeIndex);
-    const after = text.slice(closeIndex + rule.close.length);
+    const content = bestMatch.content ?? text.slice(openIndex + rule.open.length, closeIndex);
+    const after = text.slice(bestMatch.endIndex ?? (closeIndex + rule.close.length));
+
+    if (rule.key === "color") {
+      const color = normalizeRichTextColor(bestMatch.color);
+      const colorNode = color ? (
+        <span key={`${keyPrefix}-color-${openIndex}`} className="wa-rich-color" style={{ color }}>
+          {renderRichTextSegment(content, `${keyPrefix}-color-${openIndex}-inner`, depth + 1)}
+        </span>
+      ) : (
+        <React.Fragment key={`${keyPrefix}-color-${openIndex}`}>
+          {renderRichTextSegment(content, `${keyPrefix}-color-${openIndex}-inner`, depth + 1)}
+        </React.Fragment>
+      );
+
+      return [
+        ...renderRichTextSegment(before, `${keyPrefix}-before`, depth + 1),
+        colorNode,
+        ...renderRichTextSegment(after, `${keyPrefix}-after`, depth + 1),
+      ];
+    }
 
     return [
       ...renderRichTextSegment(before, `${keyPrefix}-before`, depth + 1),
@@ -1195,6 +1246,16 @@ const Message = ({
   };
 
   const renderFormattedMessageBlocks = (texto = "") => {
+    if (isRichHtmlValue(texto)) {
+      const safeHtml = sanitizeRichHtml(decodeRichHtmlValue(texto));
+      return (
+        <div
+          className="wa-rich-html-message"
+          dangerouslySetInnerHTML={{ __html: safeHtml }}
+        />
+      );
+    }
+
     const lines = String(texto || "").replace(/\r\n/g, "\n").split("\n");
     const blocks = [];
     let index = 0;
@@ -2981,184 +3042,94 @@ const Message = ({
         )}
 
         {/* Modal de editar */}
-        {isEditing && (
+        {isEditing && createPortal(
           <div
-            className="position-fixed top-0 start-0 w-100 h-100 d-flex align-items-center justify-content-center"
-            style={{ backgroundColor: "rgba(0,0,0,0.5)", zIndex: 4000 }}
+            className="wa-edit-modal-backdrop"
+            onMouseDown={(e) => {
+              if (e.target === e.currentTarget) {
+                setIsEditing(false);
+                setShowEmojiPickerEdit(false);
+              }
+            }}
           >
-            <div
-              className="bg-white rounded-4 shadow p-3 d-flex flex-column"
-              style={{ maxWidth: "500px", width: "100%" }}
-            >
-              <div className="d-flex align-items-center mb-3">
-                <button
-                  className="btn btn-link p-0 me-2"
-                  onClick={() => setIsEditing(false)}
-                >
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    width="24"
-                    height="24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    className="feather feather-x"
-                  >
-                    <line x1="18" y1="6" x2="6" y2="18" />
-                    <line x1="6" y1="6" x2="18" y2="18" />
-                  </svg>
-                </button>
-                <h6 className="m-0">Edita el mensaje</h6>
-              </div>
-
-              <div
-                className="p-2 mb-3"
-                style={{
-                  background: "#2787F5",
-                  borderRadius: "10px",
-                  maxWidth: "80%",
-                  alignSelf: "flex-end",
-                }}
-              >
-                <div style={{ color: "#ffffffff" }}>
-                  <span>{mensajeData.mensaje}</span>
-                </div>
-                <div
-                  className="d-flex justify-content-end align-items-center"
-                  style={{ fontSize: "0.5rem", color: "#ffffffff" }}
-                >
-                  {hora}{" "}
-                  <span className="me-2">
-                    {mensajeData.visto === 0 ? (
-                      <span className="svg15 double-check"></span>
-                    ) : (
-                      <span className="svg15 double-check-blue"></span>
-                    )}
-                  </span>
-                </div>
-              </div>
-
-              <div className="d-flex align-items-end gap-2 mt-2">
+            <div className="wa-edit-modal-card" onMouseDown={(e) => e.stopPropagation()}>
+              <div className="wa-edit-modal-header">
                 <button
                   type="button"
-                  className="btn btn-light p-2 d-flex align-items-center justify-content-center"
-                  onClick={() =>
-                    setShowEmojiPickerEdit(!showEmojiPickerEdit)
-                  }
+                  className="wa-edit-modal-close"
+                  aria-label="Cerrar edición"
+                  onClick={() => {
+                    setIsEditing(false);
+                    setShowEmojiPickerEdit(false);
+                  }}
                 >
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    width="22"
-                    height="22"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    className="feather feather-smile"
-                  >
-                    <circle cx="12" cy="12" r="10"></circle>
-                    <path d="M8 14s1.5 2 4 2 4-2 4-2"></path>
-                    <line x1="9" y1="9" x2="9.01" y2="9"></line>
-                    <line x1="15" y1="9" x2="15.01" y2="9"></line>
-                  </svg>
+                  <i className="fa-solid fa-xmark" aria-hidden="true" />
                 </button>
+                <div>
+                  <h6>Edita el mensaje</h6>
+                  <span>Actualiza el texto manteniendo estilos tipo WhatsApp</span>
+                </div>
+              </div>
 
-                {showEmojiPickerEdit && (
-                  <div
-                    ref={emojiPickerEditRef}
-                    style={{
-                      position: "absolute",
-                      bottom: "130px",
-                      left: "420px",
-                      zIndex: 9999,
-                    }}
-                  >
-                    <Picker
-                      data={data}
-                      onEmojiSelect={(emoji) =>
-                        setEditText((prev) => prev + emoji.native)
-                      }
-                      theme={emojiTheme}
-                      previewPosition="none"
-                      searchPosition="top"
-                      locale="es"
-                    />
+              <div className="wa-edit-modal-preview">
+                <div className="wa-edit-preview-bubble">
+                  <div className="wa-rich-message">
+                    {renderFormattedMessageBlocks(editText || mensajeData.mensaje || "")}
                   </div>
-                )}
+                  <div className="wa-edit-preview-time">
+                    {hora}
+                    <span className={mensajeData.visto === 0 ? "svg15 double-check" : "svg15 double-check-blue"}></span>
+                  </div>
+                </div>
+              </div>
 
-                <textarea
-                  className="form-control flex-grow-1"
-                  style={{
-                    resize: "none",
-                    minHeight: "40px",
-                    maxHeight: "100px",
-                    overflowY: "auto",
-                  }}
-                  rows="1"
-                  value={editText}
-                  onChange={(e) => {
-                    setEditText(e.target.value);
-                    e.target.style.height = "auto";
-                    e.target.style.height = `${Math.min(
-                      e.target.scrollHeight,
-                      100
-                    )}px`;
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && !e.shiftKey) {
-                      e.preventDefault();
-                      handleEditar(id, editText);
-                    }
-                  }}
-                />
+              <div className="wa-edit-input-row">
+                <button
+                  type="button"
+                  className="wa-edit-emoji-btn"
+                  aria-label="Elegir emoji"
+                  onClick={() => setShowEmojiPickerEdit((prev) => !prev)}
+                >
+                  <i className="fa-regular fa-face-smile" aria-hidden="true" />
+                </button>
+
+                <div className="wa-edit-rich-input-shell">
+                  <ChatInput
+                    ref={editInputRef}
+                    initialValue={editText || mensajeData.mensaje || ""}
+                    onValueChange={setEditText}
+                    onSend={(nextText) => handleEditar(id, nextText)}
+                    placeholder="Edita el mensaje"
+                    autoFocus
+                    variant="edit"
+                  />
+                </div>
 
                 <button
                   type="button"
-                  className="rounded-circle d-flex align-items-center justify-content-center"
-                  style={{
-                    width: "57px",
-                    height: "44px",
-                    padding: "0",
-                    borderRadius: "150%",
-                    backgroundColor: "#25D366",
-                    border: "none",
-                    transition:
-                      "background-color 0.2s ease-in-out, transform 0.15s",
-                    boxShadow: "0 2px 6px rgba(0,0,0,0.2)",
-                  }}
+                  className="wa-edit-submit-btn"
+                  aria-label="Guardar edición"
                   onClick={() => handleEditar(id, editText)}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.backgroundColor = "#20b955";
-                    e.currentTarget.style.transform = "scale(1.05)";
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.backgroundColor = "#25D366";
-                    e.currentTarget.style.transform = "scale(1)";
-                  }}
                 >
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    viewBox="0 0 24 24"
-                    style={{
-                      width: "50%",
-                      height: "50%",
-                    }}
-                    fill="none"
-                    stroke="white"
-                    strokeWidth="3"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  >
-                    <polyline points="20 6 9 17 4 12" />
-                  </svg>
+                  <i className="fa-solid fa-check" aria-hidden="true" />
                 </button>
               </div>
+
+              {showEmojiPickerEdit && (
+                <div ref={emojiPickerEditRef} className="wa-edit-emoji-popover">
+                  <Picker
+                    data={data}
+                    onEmojiSelect={(emoji) => editInputRef.current?.insertEmoji?.(emoji.native)}
+                    theme={emojiTheme}
+                    previewPosition="none"
+                    searchPosition="top"
+                    locale="es"
+                  />
+                </div>
+              )}
             </div>
-          </div>
+          </div>,
+          document.body
         )}
 
         {/* Modal historial de ediciones */}

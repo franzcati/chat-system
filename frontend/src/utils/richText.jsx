@@ -1,6 +1,7 @@
 import React from "react";
 
 const INLINE_RULES = [
+  { key: "color", open: "[color=", close: "[/color]", tag: "span", className: "wa-rich-color", color: true },
   { key: "bold", open: "**", close: "**", tag: "strong", className: "wa-rich-bold" },
   { key: "underline", open: "__", close: "__", tag: "span", className: "wa-rich-underline" },
   { key: "strike2", open: "~~", close: "~~", tag: "del", className: "wa-rich-strike" },
@@ -11,7 +12,223 @@ const INLINE_RULES = [
 
 const normalizeText = (value = "") => String(value ?? "");
 
+const normalizeRichTextColor = (color = "") => {
+  const value = String(color || "").trim();
+  if (/^#[0-9a-fA-F]{3}$/.test(value)) {
+    return `#${value[1]}${value[1]}${value[2]}${value[2]}${value[3]}${value[3]}`.toUpperCase();
+  }
+  if (/^#[0-9a-fA-F]{6}$/.test(value)) return value.toUpperCase();
+  return "";
+};
+
+export const RICH_HTML_PREFIX = "[rich-html]";
+
+export const isRichHtmlValue = (value = "") =>
+  String(value || "").startsWith(RICH_HTML_PREFIX);
+
+export const decodeRichHtmlValue = (value = "") => {
+  const raw = String(value || "");
+  if (!raw.startsWith(RICH_HTML_PREFIX)) return "";
+
+  try {
+    return decodeURIComponent(raw.slice(RICH_HTML_PREFIX.length));
+  } catch {
+    return raw.slice(RICH_HTML_PREFIX.length);
+  }
+};
+
+const ALLOWED_RICH_TAGS = new Set([
+  "div", "p", "br", "strong", "b", "em", "i", "u", "del", "s", "strike",
+  "code", "span", "ul", "ol", "li", "blockquote"
+]);
+
+const BLOCK_RICH_TAGS = new Set(["div", "p", "ul", "ol", "li", "blockquote"]);
+
+const escapeHtmlValue = (value = "") =>
+  String(value)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/\"/g, "&quot;");
+
+const extractColorFromStyleValue = (styleValue = "") => {
+  const style = String(styleValue || "");
+  const hexMatch = style.match(/(?:^|;)\s*color\s*:\s*(#[0-9a-fA-F]{3,6})/i);
+  if (hexMatch) return normalizeRichTextColor(hexMatch[1]);
+
+  const rgbMatch = style.match(/(?:^|;)\s*color\s*:\s*rgba?\((\d+)\s*,\s*(\d+)\s*,\s*(\d+)/i);
+  if (!rgbMatch) return "";
+
+  const toHex = (value) => Number(value).toString(16).padStart(2, "0");
+  return normalizeRichTextColor(`#${toHex(rgbMatch[1])}${toHex(rgbMatch[2])}${toHex(rgbMatch[3])}`);
+};
+
+const sanitizeRichNode = (node, doc) => {
+  if (!node) return doc.createDocumentFragment();
+
+  if (node.nodeType === Node.TEXT_NODE) {
+    return doc.createTextNode(node.nodeValue || "");
+  }
+
+  if (node.nodeType !== Node.ELEMENT_NODE) {
+    return doc.createDocumentFragment();
+  }
+
+  let tag = String(node.tagName || "").toLowerCase();
+  if (["script", "style", "iframe", "object", "embed", "img", "picture", "source", "video", "audio"].includes(tag)) {
+    return doc.createDocumentFragment();
+  }
+
+  if (tag === "font") tag = "span";
+  if (tag === "strike") tag = "s";
+  if (!ALLOWED_RICH_TAGS.has(tag)) {
+    const fragment = doc.createDocumentFragment();
+    Array.from(node.childNodes || []).forEach((child) => {
+      fragment.appendChild(sanitizeRichNode(child, doc));
+    });
+    return fragment;
+  }
+
+  const el = doc.createElement(tag);
+
+  if (tag === "strong" || tag === "b") el.className = "wa-rich-bold";
+  if (tag === "em" || tag === "i") el.className = "wa-rich-italic";
+  if (tag === "u") el.className = "wa-rich-underline";
+  if (tag === "del" || tag === "s") el.className = "wa-rich-strike";
+  if (tag === "code") el.className = "wa-rich-code";
+
+  if (tag === "ol") {
+    const start = Number(node.getAttribute("start"));
+    if (Number.isFinite(start) && start > 1) el.setAttribute("start", String(start));
+  }
+
+  if (tag === "span") {
+    const color = normalizeRichTextColor(
+      node.getAttribute("data-color") ||
+      node.getAttribute("color") ||
+      extractColorFromStyleValue(node.getAttribute("style") || "")
+    );
+
+    if (color) {
+      el.className = "wa-rich-color";
+      el.dataset.color = color;
+      el.style.color = color;
+    }
+  }
+
+  const styleValue = node.getAttribute("style") || "";
+  if (/font-weight\s*:\s*(bold|[6-9]00)/i.test(styleValue) && tag === "span") el.classList.add("wa-rich-bold");
+  if (/font-style\s*:\s*italic/i.test(styleValue) && tag === "span") el.classList.add("wa-rich-italic");
+  if (/text-decoration[^;]*underline/i.test(styleValue) && tag === "span") el.classList.add("wa-rich-underline");
+  if (/text-decoration[^;]*(line-through|strike)/i.test(styleValue) && tag === "span") el.classList.add("wa-rich-strike");
+
+  Array.from(node.childNodes || []).forEach((child) => {
+    el.appendChild(sanitizeRichNode(child, doc));
+  });
+
+  if (tag === "span" && !el.getAttribute("style") && !el.className) {
+    const fragment = doc.createDocumentFragment();
+    while (el.firstChild) fragment.appendChild(el.firstChild);
+    return fragment;
+  }
+
+  return el;
+};
+
+export const sanitizeRichHtml = (html = "") => {
+  const raw = String(html || "");
+  if (!raw.trim()) return "";
+
+  if (typeof document === "undefined") return escapeHtmlValue(raw);
+
+  const template = document.createElement("template");
+  template.innerHTML = raw;
+  const out = document.createElement("div");
+
+  Array.from(template.content.childNodes || []).forEach((node) => {
+    out.appendChild(sanitizeRichNode(node, document));
+  });
+
+  return out.innerHTML
+    .replace(/<div><br><\/div>$/i, "")
+    .replace(/(<div><br><\/div>){3,}/gi, "<div><br></div><div><br></div>");
+};
+
+export const encodeRichHtmlValue = (html = "") => {
+  const safeHtml = sanitizeRichHtml(html);
+  return safeHtml ? `${RICH_HTML_PREFIX}${encodeURIComponent(safeHtml)}` : "";
+};
+
+const appendRichPlainText = (node, output = []) => {
+  if (!node) return output;
+
+  if (node.nodeType === Node.TEXT_NODE) {
+    output.push(node.nodeValue || "");
+    return output;
+  }
+
+  if (node.nodeType !== Node.ELEMENT_NODE) return output;
+
+  const tag = String(node.tagName || "").toLowerCase();
+  if (tag === "br") {
+    output.push("\n");
+    return output;
+  }
+
+  if (tag === "li") {
+    Array.from(node.childNodes || []).forEach((child) => appendRichPlainText(child, output));
+    output.push("\n");
+    return output;
+  }
+
+  Array.from(node.childNodes || []).forEach((child) => appendRichPlainText(child, output));
+  if (BLOCK_RICH_TAGS.has(tag)) output.push("\n");
+  return output;
+};
+
+export const richHtmlToPlainText = (htmlOrValue = "") => {
+  const html = isRichHtmlValue(htmlOrValue) ? decodeRichHtmlValue(htmlOrValue) : String(htmlOrValue || "");
+  if (!html.trim()) return "";
+
+  if (typeof DOMParser === "undefined") {
+    return html.replace(/<br\s*\/?\s*>/gi, "\n").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+  }
+
+  const doc = new DOMParser().parseFromString(sanitizeRichHtml(html), "text/html");
+  return appendRichPlainText(doc.body, [])
+    .join("")
+    .replace(/\u00a0/g, " ")
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+};
+
+export const richHtmlHasFormatting = (html = "") => {
+  const raw = String(html || "");
+  if (!raw.trim() || typeof DOMParser === "undefined") return false;
+
+  try {
+    const doc = new DOMParser().parseFromString(raw, "text/html");
+    if (doc.querySelector("strong,b,em,i,u,del,s,strike,code,ul,ol,blockquote,span[data-color],span[style*='color'],font[color]")) {
+      return true;
+    }
+
+    return Array.from(doc.querySelectorAll("span,div,p")).some((el) => {
+      const style = el.getAttribute("style") || "";
+      return /font-weight\s*:\s*(bold|[6-9]00)/i.test(style) ||
+        /font-style\s*:\s*italic/i.test(style) ||
+        /text-decoration[^;]*(underline|line-through|strike)/i.test(style) ||
+        /(?:^|;)\s*color\s*:/i.test(style);
+    });
+  } catch {
+    return false;
+  }
+};
+
+
 export const stripRichTextSyntax = (value = "") => {
+  if (isRichHtmlValue(value)) return richHtmlToPlainText(value).replace(/\s+/g, " ").trim();
+
   let text = normalizeText(value).replace(/\r\n/g, "\n");
 
   // Primero limpiamos marcadores de bloque que WhatsApp no muestra en previews.
@@ -24,6 +241,7 @@ export const stripRichTextSyntax = (value = "") => {
   do {
     previous = text;
     text = text
+      .replace(/\[color=#[0-9a-fA-F]{3,6}\]([\s\S]*?)\[\/color\]/g, "$1")
       .replace(/\*\*([^*\n][\s\S]*?[^*\n]|[^*\n])\*\*/g, "$1")
       .replace(/__([^_\n][\s\S]*?[^_\n]|[^_\n])__/g, "$1")
       .replace(/~~([^~\n][\s\S]*?[^~\n]|[^~\n])~~/g, "$1")
@@ -40,6 +258,10 @@ const renderFormattedNode = (rule, content, key, depth, renderPlainText) => {
     ? content
     : renderRichTextInline(content, `${key}-inner`, depth + 1, renderPlainText);
 
+  if (rule.key === "color") {
+    const color = normalizeRichTextColor(rule.currentColor);
+    return color ? <span key={key} className={rule.className} style={{ color }}>{children}</span> : <React.Fragment key={key}>{children}</React.Fragment>;
+  }
   if (rule.tag === "strong") return <strong key={key} className={rule.className}>{children}</strong>;
   if (rule.tag === "em") return <em key={key} className={rule.className}>{children}</em>;
   if (rule.tag === "del") return <del key={key} className={rule.className}>{children}</del>;
@@ -59,7 +281,18 @@ export const renderRichTextInline = (
 
   let bestMatch = null;
 
-  INLINE_RULES.forEach((rule) => {
+  const colorMatch = text.match(/\[color=(#[0-9a-fA-F]{3,6})\]([\s\S]*?)\[\/color\]/);
+  if (colorMatch) {
+    bestMatch = {
+      rule: { ...INLINE_RULES.find((rule) => rule.key === "color"), currentColor: colorMatch[1] },
+      openIndex: colorMatch.index,
+      closeIndex: colorMatch.index + colorMatch[0].length - "[/color]".length,
+      content: colorMatch[2],
+      endIndex: colorMatch.index + colorMatch[0].length,
+    };
+  }
+
+  INLINE_RULES.filter((rule) => !rule.color).forEach((rule) => {
     const openIndex = text.indexOf(rule.open);
     if (openIndex === -1) return;
 
@@ -72,7 +305,7 @@ export const renderRichTextInline = (
       openIndex < bestMatch.openIndex ||
       (openIndex === bestMatch.openIndex && rule.open.length > bestMatch.rule.open.length)
     ) {
-      bestMatch = { rule, openIndex, closeIndex };
+      bestMatch = { rule, openIndex, closeIndex, endIndex: closeIndex + rule.close.length };
     }
   });
 
@@ -80,8 +313,8 @@ export const renderRichTextInline = (
 
   const { rule, openIndex, closeIndex } = bestMatch;
   const before = text.slice(0, openIndex);
-  const content = text.slice(openIndex + rule.open.length, closeIndex);
-  const after = text.slice(closeIndex + rule.close.length);
+  const content = bestMatch.content ?? text.slice(openIndex + rule.open.length, closeIndex);
+  const after = text.slice(bestMatch.endIndex ?? (closeIndex + rule.close.length));
 
   return [
     ...renderRichTextInline(before, `${keyPrefix}-before`, depth + 1, renderPlainText),
@@ -90,4 +323,4 @@ export const renderRichTextInline = (
   ];
 };
 
-export const hasRichTextSyntax = (value = "") => stripRichTextSyntax(value) !== normalizeText(value).replace(/\s+/g, " ").trim();
+export const hasRichTextSyntax = (value = "") => isRichHtmlValue(value) || stripRichTextSyntax(value) !== normalizeText(value).replace(/\s+/g, " ").trim();

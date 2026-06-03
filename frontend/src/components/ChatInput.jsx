@@ -8,6 +8,13 @@ import React, {
 } from "react";
 import "../css/emoji.css";
 import { logDev } from "../utils/logger";
+import {
+  decodeRichHtmlValue,
+  encodeRichHtmlValue,
+  isRichHtmlValue,
+  richHtmlHasFormatting,
+  sanitizeRichHtml,
+} from "../utils/richText.jsx";
 
 const normalizeMentionText = (text = "") =>
   String(text)
@@ -41,14 +48,61 @@ const getMentionMatch = (text, caretPosition) => {
 
 const IMAGE_PLACEHOLDER_LINE = /^(imagen|image|foto|archivo)[-_ ]?\d+$/i;
 
-const cleanPastedText = (text = "") =>
+const normalizeNewlines = (text = "") =>
   String(text || "")
     .replace(/\r\n/g, "\n")
+    .replace(/\r/g, "\n")
+    .replace(/\u00a0/g, " ");
+
+const cleanPastedText = (text = "") =>
+  normalizeNewlines(text)
     .split("\n")
     .map((line) => line.trimEnd())
     .filter((line) => !IMAGE_PLACEHOLDER_LINE.test(line.trim()))
     .join("\n")
     .replace(/^\n+|\n+$/g, "");
+
+const isBlockLikeElement = (tagName = "") =>
+  [
+    "ADDRESS", "ARTICLE", "ASIDE", "BLOCKQUOTE", "BR", "DD", "DIV",
+    "DL", "DT", "FIELDSET", "FIGCAPTION", "FIGURE", "FOOTER", "FORM",
+    "H1", "H2", "H3", "H4", "H5", "H6", "HEADER", "HR", "LI",
+    "MAIN", "NAV", "OL", "P", "PRE", "SECTION", "TABLE", "TBODY",
+    "TD", "TFOOT", "TH", "THEAD", "TR", "UL",
+  ].includes(String(tagName || "").toUpperCase());
+
+const htmlNodeToClipboardText = (node) => {
+  if (!node) return "";
+
+  if (node.nodeType === Node.TEXT_NODE) {
+    return node.nodeValue || "";
+  }
+
+  if (node.nodeType !== Node.ELEMENT_NODE) return "";
+
+  const tag = node.tagName.toUpperCase();
+  if (["IMG", "PICTURE", "SOURCE", "STYLE", "SCRIPT", "NOSCRIPT"].includes(tag)) {
+    return "";
+  }
+
+  if (tag === "BR") return "\n";
+
+  const childrenText = Array.from(node.childNodes || [])
+    .map((child) => htmlNodeToClipboardText(child))
+    .join("");
+
+  if (tag === "LI") return `- ${childrenText.trim()}\n`;
+  if (tag === "TD" || tag === "TH") return `${childrenText.trim()}\t`;
+  if (tag === "TR") return `${childrenText.replace(/[\t ]+$/g, "")}\n`;
+  if (tag === "PRE") return `${childrenText}\n`;
+
+  if (isBlockLikeElement(tag)) {
+    const value = childrenText.replace(/\n{3,}/g, "\n\n");
+    return value.endsWith("\n") ? value : `${value}\n`;
+  }
+
+  return childrenText;
+};
 
 const getTextFromHtmlWithoutImages = (html = "") => {
   if (!html || typeof DOMParser === "undefined") return "";
@@ -56,11 +110,85 @@ const getTextFromHtmlWithoutImages = (html = "") => {
   try {
     const doc = new DOMParser().parseFromString(html, "text/html");
     doc.querySelectorAll("img, picture, source").forEach((node) => node.remove());
-    return cleanPastedText(doc.body?.innerText || doc.body?.textContent || "");
+    const structuredText = htmlNodeToClipboardText(doc.body || doc);
+    return cleanPastedText(structuredText || doc.body?.innerText || doc.body?.textContent || "");
   } catch (err) {
     logDev("No se pudo limpiar el HTML pegado:", err);
     return "";
   }
+};
+
+const htmlNodeToMarkdownText = (node) => {
+  if (!node) return "";
+  if (node.nodeType === Node.TEXT_NODE) return node.nodeValue || "";
+  if (node.nodeType !== Node.ELEMENT_NODE) return "";
+
+  const tag = node.tagName.toUpperCase();
+  if (["IMG", "PICTURE", "SOURCE", "STYLE", "SCRIPT", "NOSCRIPT"].includes(tag)) return "";
+  if (tag === "BR") return "\n";
+
+  const children = Array.from(node.childNodes || []).map((child) => htmlNodeToMarkdownText(child)).join("");
+  const color = normalizeTextColor(node.getAttribute("data-color") || extractColorFromStyle(node.getAttribute("style") || ""));
+
+  let formatted = children;
+  if (tag === "STRONG" || tag === "B" || node.classList?.contains("wa-rich-bold")) formatted = wrapInlineMarkdown("**", "**", formatted);
+  else if (tag === "EM" || tag === "I" || node.classList?.contains("wa-rich-italic")) formatted = wrapInlineMarkdown("_", "_", formatted);
+  else if (tag === "U" || node.classList?.contains("wa-rich-underline") || /text-decoration[^;]*underline/i.test(node.getAttribute("style") || "")) formatted = wrapInlineMarkdown("__", "__", formatted);
+  else if (tag === "DEL" || tag === "S" || tag === "STRIKE" || node.classList?.contains("wa-rich-strike")) formatted = wrapInlineMarkdown("~", "~", formatted);
+  else if (tag === "CODE" || node.classList?.contains("wa-rich-code")) formatted = wrapInlineMarkdown("`", "`", formatted);
+  else if (color) formatted = wrapInlineMarkdown(`[color=${color}]`, "[/color]", formatted);
+
+  if (tag === "LI") return `- ${cleanPastedText(formatted)}\n`;
+  if (tag === "TD" || tag === "TH") return `${cleanPastedText(formatted)}\t`;
+  if (tag === "TR") return `${formatted.replace(/[\t ]+$/g, "")}\n`;
+  if (tag === "PRE") return `${formatted}\n`;
+
+  if (isBlockLikeElement(tag)) {
+    const value = formatted.replace(/\n{3,}/g, "\n\n");
+    return value.endsWith("\n") ? value : `${value}\n`;
+  }
+
+  return formatted;
+};
+
+const getMarkdownTextFromHtmlWithoutImages = (html = "") => {
+  if (!html || typeof DOMParser === "undefined") return "";
+
+  try {
+    const doc = new DOMParser().parseFromString(html, "text/html");
+    doc.querySelectorAll("img, picture, source").forEach((node) => node.remove());
+    return cleanPastedText(htmlNodeToMarkdownText(doc.body || doc));
+  } catch (err) {
+    logDev("No se pudo convertir HTML pegado a texto con formato:", err);
+    return "";
+  }
+};
+
+const countTextLines = (text = "") =>
+  cleanPastedText(text)
+    .split("\n")
+    .filter((line) => line.trim().length > 0).length;
+
+const chooseBestPastedText = (htmlText = "", plainText = "") => {
+  const cleanHtmlText = cleanPastedText(htmlText);
+  const cleanPlainText = cleanPastedText(plainText);
+
+  if (!cleanHtmlText) return cleanPlainText;
+  if (!cleanPlainText) return cleanHtmlText;
+
+  const htmlLineCount = countTextLines(cleanHtmlText);
+  const plainLineCount = countTextLines(cleanPlainText);
+
+  // Cuando se copia texto de WhatsApp, bancos, tablas o mensajes con saltos de
+  // línea, algunos navegadores entregan un text/html donde todo queda pegado en
+  // una sola línea. En ese caso usamos text/plain, que suele conservar el orden.
+  if (plainLineCount >= 2 && plainLineCount > htmlLineCount) return cleanPlainText;
+
+  const htmlHasTabsOrBreaks = /[\t\n]/.test(cleanHtmlText);
+  const plainHasTabsOrBreaks = /[\t\n]/.test(cleanPlainText);
+  if (plainHasTabsOrBreaks && !htmlHasTabsOrBreaks) return cleanPlainText;
+
+  return cleanHtmlText;
 };
 
 const extractImageSourcesFromHtml = (html = "") => {
@@ -155,6 +283,7 @@ const FORMAT_ACTIONS = [
   { key: "ordered", label: "1.", iconClass: "fa-solid fa-list-ol", title: "Lista numerada" },
   { key: "bullet", label: "•", iconClass: "fa-solid fa-list-ul", title: "Lista con viñetas" },
   { key: "quote", label: "Quote", iconClass: "fa-solid fa-quote-right", title: "Cita" },
+  { key: "color", label: "A", iconClass: "fa-solid fa-palette", title: "Color de texto" },
 ];
 
 const INLINE_MARKDOWN_RULES = [
@@ -173,12 +302,68 @@ const escapeHtml = (value = "") =>
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;");
 
+const TEXT_COLOR_OPTIONS = [
+  "#111b21",
+  "#ffffff",
+  "#2787F5",
+  "#00a884",
+  "#ff6b6b",
+  "#ff9f1a",
+  "#ffd43b",
+  "#845ef7",
+  "#f06595",
+  "#12b886",
+];
+
+const normalizeTextColor = (color = "") => {
+  const value = String(color || "").trim();
+  if (/^#[0-9a-fA-F]{3}$/.test(value)) {
+    return `#${value[1]}${value[1]}${value[2]}${value[2]}${value[3]}${value[3]}`.toUpperCase();
+  }
+  if (/^#[0-9a-fA-F]{6}$/.test(value)) return value.toUpperCase();
+  return "";
+};
+
+const extractColorFromStyle = (styleValue = "") => {
+  const style = String(styleValue || "");
+  const hexMatch = style.match(/color\s*:\s*(#[0-9a-fA-F]{3,6})/i);
+  if (hexMatch) return normalizeTextColor(hexMatch[1]);
+
+  const rgbMatch = style.match(/color\s*:\s*rgba?\((\d+)\s*,\s*(\d+)\s*,\s*(\d+)/i);
+  if (!rgbMatch) return "";
+
+  const [, r, g, b] = rgbMatch;
+  const toHex = (value) => Number(value).toString(16).padStart(2, "0");
+  return `#${toHex(r)}${toHex(g)}${toHex(b)}`.toUpperCase();
+};
+
+const wrapInlineMarkdown = (open, close, content = "") => {
+  const normalized = String(content || "").replace(/\r\n/g, "\n");
+  if (!normalized.includes("\n")) return `${open}${normalized}${close}`;
+
+  return normalized
+    .split("\n")
+    .map((line) => (line ? `${open}${line}${close}` : ""))
+    .join("\n");
+};
+
 const inlineMarkdownToHtml = (value = "", depth = 0) => {
   const text = String(value || "");
   if (!text) return "";
   if (depth > 8) return escapeHtml(text);
 
+  const colorMatch = text.match(/\[color=(#[0-9a-fA-F]{3,6})\]([\s\S]*?)\[\/color\]/);
   let bestMatch = null;
+
+  if (colorMatch) {
+    bestMatch = {
+      rule: { key: "color", open: colorMatch[0].slice(0, colorMatch[0].indexOf("]") + 1), close: "[/color]", tag: "span", className: "wa-rich-color", color: normalizeTextColor(colorMatch[1]) },
+      openIndex: colorMatch.index,
+      closeIndex: colorMatch.index + colorMatch[0].length - "[/color]".length,
+      content: colorMatch[2],
+    };
+  }
+
   INLINE_MARKDOWN_RULES.forEach((rule) => {
     const openIndex = text.indexOf(rule.open);
     if (openIndex === -1) return;
@@ -193,13 +378,19 @@ const inlineMarkdownToHtml = (value = "", depth = 0) => {
 
   const { rule, openIndex, closeIndex } = bestMatch;
   const before = inlineMarkdownToHtml(text.slice(0, openIndex), depth + 1);
-  const content = text.slice(openIndex + rule.open.length, closeIndex);
-  const after = inlineMarkdownToHtml(text.slice(closeIndex + rule.close.length), depth + 1);
+  const content = bestMatch.content ?? text.slice(openIndex + rule.open.length, closeIndex);
+  const afterStart = rule.key === "color" ? closeIndex + rule.close.length : closeIndex + rule.close.length;
+  const after = inlineMarkdownToHtml(text.slice(afterStart), depth + 1);
   const inner = rule.raw ? escapeHtml(content) : inlineMarkdownToHtml(content, depth + 1);
 
-  return `${before}<${rule.tag} class="${rule.className}">${inner}</${rule.tag}>${after}`;
-};
+  if (rule.key === "color") {
+    const color = normalizeTextColor(rule.color);
+    if (!color) return `${before}${inner}${after}`;
+    return `${before}<span class="wa-rich-color" data-color="${color}" style="color:${color}">${inner}</span>${after}`;
+  }
 
+  return `${before}<${rule.tag} class="${rule.className}">${inner}</${rule.tag}>${after}`;
+}
 const markdownToEditorHtml = (markdown = "") => {
   const lines = String(markdown || "").replace(/\r\n/g, "\n").split("\n");
   if (lines.length === 1 && !lines[0]) return "";
@@ -284,11 +475,16 @@ const nodeToMarkdown = (node) => {
   const tag = node.tagName.toLowerCase();
 
   if (tag === "br") return "\n";
-  if (tag === "strong" || tag === "b") return `**${getChildrenMarkdown(node)}**`;
-  if (tag === "em" || tag === "i") return `_${getChildrenMarkdown(node)}_`;
-  if (tag === "u") return `__${getChildrenMarkdown(node)}__`;
-  if (tag === "del" || tag === "s" || tag === "strike") return `~${getChildrenMarkdown(node)}~`;
-  if (tag === "code") return `\`${getChildrenMarkdown(node)}\``;
+  if (tag === "strong" || tag === "b") return wrapInlineMarkdown("**", "**", getChildrenMarkdown(node));
+  if (tag === "em" || tag === "i") return wrapInlineMarkdown("_", "_", getChildrenMarkdown(node));
+  if (tag === "u") return wrapInlineMarkdown("__", "__", getChildrenMarkdown(node));
+  if (tag === "del" || tag === "s" || tag === "strike") return wrapInlineMarkdown("~", "~", getChildrenMarkdown(node));
+  if (tag === "code") return wrapInlineMarkdown("`", "`", getChildrenMarkdown(node));
+  if (tag === "span") {
+    const color = normalizeTextColor(node.getAttribute("data-color") || extractColorFromStyle(node.getAttribute("style") || ""));
+    const content = getChildrenMarkdown(node);
+    if (color) return wrapInlineMarkdown(`[color=${color}]`, "[/color]", content);
+  }
   if (tag === "ul") {
     return Array.from(node.children || [])
       .filter((child) => child.tagName?.toLowerCase() === "li")
@@ -320,6 +516,45 @@ const getEditorPlainText = (editor) =>
   String(editor?.innerText || "")
     .replace(/\u00a0/g, " ")
     .replace(/\n$/g, "");
+
+const editorHasRichFormatting = (editor) => {
+  if (!editor) return false;
+
+  if (
+    editor.querySelector(
+      "strong,b,em,i,u,del,s,strike,code,ul,ol,blockquote,span[data-color],span[style*='color'],.wa-rich-color,.wa-rich-bold,.wa-rich-italic,.wa-rich-underline,.wa-rich-strike,.wa-rich-code"
+    )
+  ) {
+    return true;
+  }
+
+  return Array.from(editor.querySelectorAll("span,div,p")).some((node) => {
+    const style = node.getAttribute("style") || "";
+    return /font-weight\s*:\s*(bold|[6-9]00)/i.test(style) ||
+      /font-style\s*:\s*italic/i.test(style) ||
+      /text-decoration[^;]*(underline|line-through|strike)/i.test(style) ||
+      /(?:^|;)\s*color\s*:/i.test(style);
+  });
+};
+
+const editorToMessageValue = (editor) => {
+  if (!editor) return "";
+
+  const plainText = getEditorPlainText(editor)
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .replace(/^\n+|\n+$/g, "");
+
+  if (!editorHasRichFormatting(editor)) return plainText;
+
+  const safeHtml = sanitizeRichHtml(editor.innerHTML);
+  return encodeRichHtmlValue(safeHtml) || plainText;
+};
+
+const clipboardHtmlShouldKeepRichFormatting = (html = "") => {
+  if (!html || typeof DOMParser === "undefined") return false;
+  return richHtmlHasFormatting(html);
+};
 
 const isSelectionInside = (root) => {
   const selection = window.getSelection?.();
@@ -398,19 +633,98 @@ const insertPlainTextAtSelection = (text = "") => {
   document.execCommand("insertText", false, text);
 };
 
-const ChatInput = forwardRef(({ onSend, onPasteFiles, onValueChange, mentionOptions = [] }, ref) => {
-  const [value, setValue] = useState("");
+const insertMarkdownAtSelection = (markdown = "") => {
+  const selection = window.getSelection?.();
+  if (!selection || selection.rangeCount === 0) {
+    document.execCommand("insertHTML", false, markdownToEditorHtml(markdown));
+    return;
+  }
+
+  const range = selection.getRangeAt(0);
+  range.deleteContents();
+
+  const holder = document.createElement("div");
+  holder.innerHTML = markdownToEditorHtml(markdown);
+  const fragment = document.createDocumentFragment();
+  let lastNode = null;
+
+  while (holder.firstChild) {
+    lastNode = holder.firstChild;
+    fragment.appendChild(lastNode);
+  }
+
+  range.insertNode(fragment);
+
+  if (lastNode) {
+    const nextRange = document.createRange();
+    nextRange.setStartAfter(lastNode);
+    nextRange.collapse(true);
+    selection.removeAllRanges();
+    selection.addRange(nextRange);
+  }
+};
+
+const insertRichHtmlAtSelection = (html = "") => {
+  const safeHtml = sanitizeRichHtml(html);
+  if (!safeHtml) return;
+
+  const selection = window.getSelection?.();
+  if (!selection || selection.rangeCount === 0) {
+    document.execCommand("insertHTML", false, safeHtml);
+    return;
+  }
+
+  const range = selection.getRangeAt(0);
+  range.deleteContents();
+
+  const holder = document.createElement("div");
+  holder.innerHTML = safeHtml;
+  const fragment = document.createDocumentFragment();
+  let lastNode = null;
+
+  while (holder.firstChild) {
+    lastNode = holder.firstChild;
+    fragment.appendChild(lastNode);
+  }
+
+  range.insertNode(fragment);
+
+  if (lastNode) {
+    const nextRange = document.createRange();
+    nextRange.setStartAfter(lastNode);
+    nextRange.collapse(true);
+    selection.removeAllRanges();
+    selection.addRange(nextRange);
+  }
+};
+
+const ChatInput = forwardRef(({
+  onSend,
+  onPasteFiles,
+  onValueChange,
+  mentionOptions = [],
+  initialValue = "",
+  placeholder = "Escribe un mensaje... Usa @ para mencionar",
+  autoFocus = false,
+  variant = "default",
+}, ref) => {
+  const [value, setValue] = useState(initialValue || "");
   const [mentionMatch, setMentionMatch] = useState(null);
   const [activeMentionIndex, setActiveMentionIndex] = useState(0);
   const [showFormatToolbar, setShowFormatToolbar] = useState(false);
   const [activeFormats, setActiveFormats] = useState(() => new Set());
+  const [activeColor, setActiveColor] = useState("");
+  const [showColorPicker, setShowColorPicker] = useState(false);
   const editorRef = useRef(null);
+  const colorInputRef = useRef(null);
+  const savedSelectionRangeRef = useRef(null);
   const blurTimerRef = useRef(null);
+  const lastInitialValueRef = useRef(undefined);
 
   const syncValueFromEditor = () => {
     const editor = editorRef.current;
     if (!editor) return "";
-    const nextValue = editorToMarkdown(editor);
+    const nextValue = editorToMessageValue(editor);
     setValue(nextValue);
     if (typeof onValueChange === "function") onValueChange(nextValue);
     return nextValue;
@@ -419,7 +733,9 @@ const ChatInput = forwardRef(({ onSend, onPasteFiles, onValueChange, mentionOpti
   const setEditorHtmlFromValue = (nextValue = "") => {
     const editor = editorRef.current;
     if (!editor) return;
-    editor.innerHTML = markdownToEditorHtml(nextValue);
+    editor.innerHTML = isRichHtmlValue(nextValue)
+      ? sanitizeRichHtml(decodeRichHtmlValue(nextValue))
+      : markdownToEditorHtml(nextValue);
   };
 
   const isNodeInsideTag = (node, tagNames = []) => {
@@ -434,6 +750,28 @@ const ChatInput = forwardRef(({ onSend, onPasteFiles, onValueChange, mentionOpti
     }
 
     return false;
+  };
+
+  const getNearestColorNode = (node) => {
+    const editor = editorRef.current;
+    if (!node || !editor) return null;
+    let current = node.nodeType === Node.ELEMENT_NODE ? node : node.parentElement;
+
+    while (current && current !== editor) {
+      if (current.tagName === "SPAN" && (current.dataset?.color || extractColorFromStyle(current.getAttribute("style") || ""))) {
+        return current;
+      }
+      current = current.parentElement;
+    }
+
+    return null;
+  };
+
+  const getSelectionColor = () => {
+    const selection = window.getSelection?.();
+    if (!selection || selection.rangeCount === 0) return "";
+    const node = getNearestColorNode(selection.anchorNode) || getNearestColorNode(selection.focusNode) || getNearestColorNode(selection.getRangeAt(0).commonAncestorContainer);
+    return normalizeTextColor(node?.dataset?.color || extractColorFromStyle(node?.getAttribute?.("style") || ""));
   };
 
   const getSelectionActiveFormats = () => {
@@ -468,8 +806,33 @@ const ChatInput = forwardRef(({ onSend, onPasteFiles, onValueChange, mentionOpti
     if (inside(["OL"])) formats.add("ordered");
     if (inside(["UL"])) formats.add("bullet");
     if (inside(["BLOCKQUOTE"])) formats.add("quote");
+    const colorNode = getNearestColorNode(anchor) || getNearestColorNode(focus) || getNearestColorNode(common);
+    if (colorNode) formats.add("color");
 
     return formats;
+  };
+
+  const saveCurrentSelectionRange = () => {
+    const editor = editorRef.current;
+    const selection = window.getSelection?.();
+    if (!editor || !selection || selection.rangeCount === 0 || !isSelectionInside(editor)) return;
+    savedSelectionRangeRef.current = selection.getRangeAt(0).cloneRange();
+  };
+
+  const restoreSavedSelectionRange = () => {
+    const editor = editorRef.current;
+    const selection = window.getSelection?.();
+    const range = savedSelectionRangeRef.current;
+    if (!editor || !selection || !range) return false;
+
+    try {
+      selection.removeAllRanges();
+      selection.addRange(range);
+      editor.focus();
+      return true;
+    } catch {
+      return false;
+    }
   };
 
   const updateFormatToolbarVisibility = () => {
@@ -484,6 +847,9 @@ const ChatInput = forwardRef(({ onSend, onPasteFiles, onValueChange, mentionOpti
     const hasSelection = selectedText.trim().length > 0;
     setShowFormatToolbar(hasSelection);
     setActiveFormats(hasSelection ? getSelectionActiveFormats() : new Set());
+    setActiveColor(hasSelection ? getSelectionColor() : "");
+    if (hasSelection) saveCurrentSelectionRange();
+    if (!hasSelection) setShowColorPicker(false);
   };
 
   const updateFormatToolbarVisibilitySoon = () => {
@@ -552,6 +918,8 @@ const ChatInput = forwardRef(({ onSend, onPasteFiles, onValueChange, mentionOpti
     if (typeof onValueChange === "function") onValueChange("");
     closeMentionMenu();
     setShowFormatToolbar(false);
+    setShowColorPicker(false);
+    setActiveColor("");
     setEditorHtmlFromValue("");
   };
 
@@ -630,6 +998,51 @@ const ChatInput = forwardRef(({ onSend, onPasteFiles, onValueChange, mentionOpti
     }
   };
 
+  const unwrapNearestColor = () => {
+    const selection = window.getSelection?.();
+    const editor = editorRef.current;
+    if (!selection || selection.rangeCount === 0 || !editor || !isSelectionInside(editor)) return false;
+
+    const colorNode = getNearestColorNode(selection.anchorNode) || getNearestColorNode(selection.focusNode);
+    if (!colorNode) return false;
+
+    const parent = colorNode.parentNode;
+    const fragment = document.createDocumentFragment();
+    while (colorNode.firstChild) fragment.appendChild(colorNode.firstChild);
+    parent.replaceChild(fragment, colorNode);
+    return true;
+  };
+
+  const wrapSelectionWithColor = (color) => {
+    const normalizedColor = normalizeTextColor(color);
+    const selection = window.getSelection?.();
+    const editor = editorRef.current;
+    if (!normalizedColor || !selection || selection.rangeCount === 0 || !editor || !isSelectionInside(editor)) return;
+
+    const range = selection.getRangeAt(0);
+    if (range.collapsed) return;
+
+    if (activeColor === normalizedColor && unwrapNearestColor()) return;
+
+    const wrapper = document.createElement("span");
+    wrapper.className = "wa-rich-color";
+    wrapper.dataset.color = normalizedColor;
+    wrapper.style.color = normalizedColor;
+
+    try {
+      range.surroundContents(wrapper);
+    } catch {
+      const content = range.extractContents();
+      wrapper.appendChild(content);
+      range.insertNode(wrapper);
+    }
+
+    selection.removeAllRanges();
+    const nextRange = document.createRange();
+    nextRange.selectNodeContents(wrapper);
+    selection.addRange(nextRange);
+  };
+
   const replaceSelectionWithBlock = (actionKey) => {
     const selection = window.getSelection?.();
     const editor = editorRef.current;
@@ -691,6 +1104,19 @@ const ChatInput = forwardRef(({ onSend, onPasteFiles, onValueChange, mentionOpti
 
     const currentFormats = getSelectionActiveFormats();
 
+    if (actionKey === "color") {
+      saveCurrentSelectionRange();
+      setShowColorPicker(false);
+      requestAnimationFrame(() => {
+        const picker = colorInputRef.current;
+        if (picker) {
+          picker.value = activeColor || "#2787F5";
+          picker.click();
+        }
+      });
+      return;
+    }
+
     if (actionKey === "bold") document.execCommand("bold", false);
     else if (actionKey === "italic") document.execCommand("italic", false);
     else if (actionKey === "underline") document.execCommand("underline", false);
@@ -717,6 +1143,22 @@ const ChatInput = forwardRef(({ onSend, onPasteFiles, onValueChange, mentionOpti
     });
   };
 
+  const applyColor = (color) => {
+    const editor = editorRef.current;
+    if (!editor) return;
+    restoreSavedSelectionRange();
+    editor.focus();
+    wrapSelectionWithColor(color);
+    setShowColorPicker(false);
+    setActiveColor(normalizeTextColor(color));
+    syncValueFromEditor();
+
+    requestAnimationFrame(() => {
+      updateMentionMenu();
+      updateFormatToolbarVisibility();
+    });
+  };
+
   useEffect(() => {
     if (activeMentionIndex >= mentionSuggestions.length) {
       setActiveMentionIndex(0);
@@ -725,10 +1167,26 @@ const ChatInput = forwardRef(({ onSend, onPasteFiles, onValueChange, mentionOpti
 
   useEffect(() => () => clearTimeout(blurTimerRef.current), []);
 
+  useEffect(() => {
+    const normalizedInitialValue = initialValue || "";
+    if (lastInitialValueRef.current === normalizedInitialValue) return;
+    lastInitialValueRef.current = normalizedInitialValue;
+    setValue(normalizedInitialValue);
+    setEditorHtmlFromValue(normalizedInitialValue);
+    if (typeof onValueChange === "function") onValueChange(normalizedInitialValue);
+    if (autoFocus) requestAnimationFrame(() => editorRef.current?.focus());
+  }, [initialValue, autoFocus]);
+
   useImperativeHandle(ref, () => ({
     reset: clearInput,
     send: sendCurrentValue,
     focus: () => editorRef.current?.focus(),
+    setValue: (nextValue = "") => {
+      setValue(nextValue);
+      setEditorHtmlFromValue(nextValue);
+      if (typeof onValueChange === "function") onValueChange(nextValue);
+    },
+    applyFormat,
     insertEmoji: (emoji) => {
       if (!editorRef.current) return;
       editorRef.current.focus();
@@ -811,6 +1269,7 @@ const ChatInput = forwardRef(({ onSend, onPasteFiles, onValueChange, mentionOpti
   const handleBlur = () => {
     blurTimerRef.current = setTimeout(() => {
       setShowFormatToolbar(false);
+      setShowColorPicker(false);
       closeMentionMenu();
     }, 180);
   };
@@ -820,7 +1279,21 @@ const ChatInput = forwardRef(({ onSend, onPasteFiles, onValueChange, mentionOpti
     if (!cleanText || !editorRef.current) return;
 
     editorRef.current.focus();
-    insertPlainTextAtSelection(cleanText);
+    insertMarkdownAtSelection(cleanText);
+    syncValueFromEditor();
+
+    requestAnimationFrame(() => {
+      updateMentionMenu();
+      updateFormatToolbarVisibility();
+    });
+  };
+
+  const insertPastedRichHtml = (htmlToInsert) => {
+    const safeHtml = sanitizeRichHtml(htmlToInsert);
+    if (!safeHtml || !editorRef.current) return;
+
+    editorRef.current.focus();
+    insertRichHtmlAtSelection(safeHtml);
     syncValueFromEditor();
 
     requestAnimationFrame(() => {
@@ -836,7 +1309,8 @@ const ChatInput = forwardRef(({ onSend, onPasteFiles, onValueChange, mentionOpti
     const html = cd.getData("text/html") || "";
     const plainText = cd.getData("text/plain") || "";
     const htmlText = getTextFromHtmlWithoutImages(html);
-    const pastedText = htmlText || cleanPastedText(plainText);
+    const htmlMarkdownText = getMarkdownTextFromHtmlWithoutImages(html);
+    const pastedText = chooseBestPastedText(htmlMarkdownText || htmlText, plainText);
 
     const filesFromFiles = Array.from(cd.files || []).filter((f) =>
       f.type.startsWith("image/")
@@ -851,8 +1325,14 @@ const ChatInput = forwardRef(({ onSend, onPasteFiles, onValueChange, mentionOpti
 
     const htmlImageSources = extractImageSourcesFromHtml(html);
     const hasClipboardImages = filesFromFiles.length || filesFromItems.length || htmlImageSources.length;
+    const shouldKeepRichHtml = !hasClipboardImages && clipboardHtmlShouldKeepRichFormatting(html);
 
     e.preventDefault();
+
+    if (shouldKeepRichHtml) {
+      insertPastedRichHtml(html);
+      return;
+    }
 
     if (hasClipboardImages && typeof onPasteFiles === "function") {
       const imageFiles = [...filesFromFiles, ...filesFromItems];
@@ -887,7 +1367,7 @@ const ChatInput = forwardRef(({ onSend, onPasteFiles, onValueChange, mentionOpti
   };
 
   return (
-    <div className="mention-input-wrapper wa-rich-input-wrapper">
+    <div className={`mention-input-wrapper wa-rich-input-wrapper wa-rich-input-${variant}`}>
       {mentionSuggestions.length > 0 && mentionMatch && (
         <div className="mention-suggestions" role="listbox">
           {mentionSuggestions.map((option, index) => {
@@ -937,15 +1417,44 @@ const ChatInput = forwardRef(({ onSend, onPasteFiles, onValueChange, mentionOpti
               aria-pressed={activeFormats.has(action.key)}
               onClick={() => applyFormat(action.key)}
             >
-              {action.iconClass ? (
+              {action.key === "color" && activeColor ? (
+                <span className="wa-format-color-swatch" style={{ backgroundColor: activeColor }} />
+              ) : action.iconClass ? (
                 <i className={action.iconClass} aria-hidden="true" />
               ) : (
                 <span>{action.label}</span>
               )}
             </button>
           ))}
+          {false && showColorPicker && (
+            <div className="wa-format-color-popover" onMouseDown={(e) => e.preventDefault()}>
+              <div className="wa-format-color-title">Color del texto</div>
+              <div className="wa-format-color-grid">
+                {TEXT_COLOR_OPTIONS.map((color) => (
+                  <button
+                    key={color}
+                    type="button"
+                    className={`wa-format-color-dot ${activeColor === color ? "active" : ""}`}
+                    style={{ backgroundColor: color }}
+                    aria-label={`Color ${color}`}
+                    onClick={() => applyColor(color)}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
+
+      <input
+        ref={colorInputRef}
+        type="color"
+        className="wa-native-color-input"
+        tabIndex={-1}
+        aria-hidden="true"
+        defaultValue={activeColor || "#2787F5"}
+        onChange={(event) => applyColor(event.target.value)}
+      />
 
       <div
         ref={editorRef}
@@ -953,7 +1462,7 @@ const ChatInput = forwardRef(({ onSend, onPasteFiles, onValueChange, mentionOpti
         contentEditable
         role="textbox"
         aria-multiline="true"
-        data-placeholder="Escribe un mensaje... Usa @ para mencionar"
+        data-placeholder={placeholder}
         suppressContentEditableWarning
         onInput={handleInput}
         onKeyDown={handleKeyDown}
