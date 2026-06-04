@@ -14,6 +14,7 @@ import {
   decodeRichHtmlValue,
   isRichHtmlValue,
   renderRichTextInline,
+  richHtmlHasFormatting,
   sanitizeRichHtml,
 } from "../utils/richText.jsx";
 import ChatInput from "./ChatInput";
@@ -22,6 +23,157 @@ const reactions = ["👍", "❤️", "😂", "😮", "😢", "🙏"];
 
 const AUDIO_MESSAGE_WAVE_BAR_COUNT = 44;
 const AUDIO_MESSAGE_WAVE_BAR_WIDTH = 3;
+
+const COPY_BLOCK_TAGS = new Set([
+  "address", "article", "aside", "blockquote", "br", "dd", "div",
+  "dl", "dt", "fieldset", "figcaption", "figure", "footer", "form",
+  "h1", "h2", "h3", "h4", "h5", "h6", "header", "hr", "li",
+  "main", "nav", "ol", "p", "pre", "section", "table", "tbody",
+  "td", "tfoot", "th", "thead", "tr", "ul",
+]);
+
+const COPY_BLOCK_CLASSES = new Set([
+  "wa-rich-line",
+  "wa-rich-empty-line",
+  "wa-rich-quote-line",
+]);
+
+const isCopyBlockElement = (node, tag = "") => {
+  if (!node || node.nodeType !== Node.ELEMENT_NODE) return false;
+  if (COPY_BLOCK_TAGS.has(String(tag || node.tagName || "").toLowerCase())) return true;
+  return Array.from(COPY_BLOCK_CLASSES).some((className) => node.classList?.contains(className));
+};
+
+const normalizeClipboardText = (value = "") =>
+  String(value || "")
+    .replace(/\r\n/g, "\n")
+    .replace(/\r/g, "\n")
+    .replace(/\u00a0/g, " ")
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .replace(/^\n+|\n+$/g, "");
+
+const nodeToClipboardText = (node) => {
+  if (!node) return "";
+  if (node.nodeType === Node.TEXT_NODE) return node.nodeValue || "";
+  if (node.nodeType !== Node.ELEMENT_NODE && node.nodeType !== Node.DOCUMENT_FRAGMENT_NODE) return "";
+
+  const tag = String(node.tagName || "").toLowerCase();
+  if (["img", "picture", "source", "style", "script", "noscript", "button", "svg", "path"].includes(tag)) return "";
+  if (tag === "br") return "\n";
+  if (node.classList?.contains("wa-rich-empty-line")) return "\n";
+
+  const children = Array.from(node.childNodes || [])
+    .map((child) => nodeToClipboardText(child))
+    .join("");
+
+  if (tag === "li") return `- ${children.trim()}\n`;
+  if (tag === "td" || tag === "th") return `${children.trim()}\t`;
+  if (tag === "tr") return `${children.replace(/[\t ]+$/g, "")}\n`;
+  if (tag === "pre") return `${children}\n`;
+
+  if (isCopyBlockElement(node, tag)) {
+    const value = children.replace(/\n{3,}/g, "\n\n");
+    return value.endsWith("\n") ? value : `${value}\n`;
+  }
+
+  return children;
+};
+
+const normalizeClipboardColor = (color = "") => {
+  const value = String(color || "").trim();
+  if (/^#[0-9a-fA-F]{3}$/.test(value)) {
+    return `#${value[1]}${value[1]}${value[2]}${value[2]}${value[3]}${value[3]}`.toUpperCase();
+  }
+  if (/^#[0-9a-fA-F]{6}$/.test(value)) return value.toUpperCase();
+  return "";
+};
+
+const extractClipboardColorFromStyle = (styleValue = "") => {
+  const style = String(styleValue || "");
+  const hexMatch = style.match(/(?:^|;)\s*color\s*:\s*(#[0-9a-fA-F]{3,6})/i);
+  if (hexMatch) return normalizeClipboardColor(hexMatch[1]);
+
+  const rgbMatch = style.match(/(?:^|;)\s*color\s*:\s*rgba?\((\d+)\s*,\s*(\d+)\s*,\s*(\d+)/i);
+  if (!rgbMatch) return "";
+
+  const toHex = (value) => Number(value).toString(16).padStart(2, "0");
+  return normalizeClipboardColor(`#${toHex(rgbMatch[1])}${toHex(rgbMatch[2])}${toHex(rgbMatch[3])}`);
+};
+
+const isAdaptiveClipboardColor = (color = "") => {
+  const normalized = normalizeClipboardColor(color);
+  if (!normalized) return false;
+  if (["#000000", "#FFFFFF", "#111B21", "#202C33", "#E9EDEF", "#AEBAC1", "#D1D7DB"].includes(normalized)) return true;
+
+  const match = normalized.match(/^#([0-9A-F]{2})([0-9A-F]{2})([0-9A-F]{2})$/);
+  if (!match) return false;
+
+  const r = parseInt(match[1], 16);
+  const g = parseInt(match[2], 16);
+  const b = parseInt(match[3], 16);
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  return max - min <= 10 && (max <= 42 || min >= 222);
+};
+
+
+const replaceNodeTag = (node, doc, tagName) => {
+  const replacement = doc.createElement(tagName);
+  Array.from(node.attributes || []).forEach((attr) => {
+    if (attr.name !== "class") replacement.setAttribute(attr.name, attr.value);
+  });
+  while (node.firstChild) replacement.appendChild(node.firstChild);
+  node.parentNode?.replaceChild(replacement, node);
+  return replacement;
+};
+
+const normalizeCopiedRichLineHtml = (html = "") => {
+  if (!html || typeof DOMParser === "undefined") return html;
+
+  const doc = new DOMParser().parseFromString(String(html || ""), "text/html");
+
+  doc.querySelectorAll(".wa-rich-empty-line").forEach((node) => {
+    const div = doc.createElement("div");
+    div.appendChild(doc.createElement("br"));
+    node.parentNode?.replaceChild(div, node);
+  });
+
+  doc.querySelectorAll(".wa-rich-line, .wa-rich-quote-line").forEach((node) => {
+    replaceNodeTag(node, doc, "div");
+  });
+
+  doc.querySelectorAll(".wa-rich-line-content").forEach((node) => {
+    const fragment = doc.createDocumentFragment();
+    while (node.firstChild) fragment.appendChild(node.firstChild);
+    node.parentNode?.replaceChild(fragment, node);
+  });
+
+  return doc.body.innerHTML;
+};
+
+const removeAdaptiveClipboardColors = (html = "") => {
+  if (!html || typeof DOMParser === "undefined") return html;
+
+  const doc = new DOMParser().parseFromString(String(html || ""), "text/html");
+  doc.querySelectorAll("[style*='color'], [data-color], font[color]").forEach((node) => {
+    const color = normalizeClipboardColor(
+      node.getAttribute("data-color") ||
+      node.getAttribute("color") ||
+      extractClipboardColorFromStyle(node.getAttribute("style") || "")
+    );
+
+    if (!isAdaptiveClipboardColor(color)) return;
+
+    node.style?.removeProperty("color");
+    node.removeAttribute("data-color");
+    node.removeAttribute("color");
+    node.classList?.remove("wa-rich-color");
+    if (!String(node.getAttribute("style") || "").trim()) node.removeAttribute("style");
+  });
+
+  return doc.body.innerHTML;
+};
 
 const clampAudioWaveLevel = (value) => Math.max(0, Math.min(1, Number(value) || 0));
 
@@ -233,6 +385,36 @@ const Message = ({
   const isMine = esGrupo
     ? mensaje.usuario_id === miUsuario?.id
     : mensaje.usuario_envia_id === miUsuario?.id;
+
+
+  const handleMessageCopy = (event) => {
+    const root = messageRef.current;
+    const selection = window.getSelection?.();
+    if (!root || !selection || selection.rangeCount === 0 || selection.isCollapsed) return;
+
+    const range = selection.getRangeAt(0);
+    if (!root.contains(range.commonAncestorContainer)) return;
+
+    try {
+      const holder = document.createElement("div");
+      holder.appendChild(range.cloneContents());
+
+      const plainText = normalizeClipboardText(nodeToClipboardText(holder) || selection.toString());
+      const normalizedHtml = normalizeCopiedRichLineHtml(holder.innerHTML);
+      const cleanedHtml = sanitizeRichHtml(removeAdaptiveClipboardColors(normalizedHtml));
+
+      if (!plainText) return;
+
+      event.preventDefault();
+      event.clipboardData.setData("text/plain", plainText);
+
+      if (cleanedHtml && richHtmlHasFormatting(cleanedHtml)) {
+        event.clipboardData.setData("text/html", cleanedHtml);
+      }
+    } catch (err) {
+      logDev("No se pudo normalizar el texto copiado del mensaje:", err);
+    }
+  };
 
   // 👉 Normalizamos mensaje
   const mensajeData =
@@ -1110,6 +1292,36 @@ const Message = ({
     { key: "strike", open: "~", close: "~", className: "wa-rich-strike" },
   ];
 
+  const findBalancedMessageColorToken = (value = "") => {
+    const source = String(value || "");
+    const openRegex = /\[color=(#[0-9a-fA-F]{3,6})\]/g;
+    const firstOpen = openRegex.exec(source);
+    if (!firstOpen) return null;
+
+    let depth = 1;
+    const tokenRegex = /\[color=#[0-9a-fA-F]{3,6}\]|\[\/color\]/g;
+    tokenRegex.lastIndex = firstOpen.index + firstOpen[0].length;
+
+    let match;
+    while ((match = tokenRegex.exec(source))) {
+      if (match[0].startsWith("[color=")) depth += 1;
+      else depth -= 1;
+
+      if (depth === 0) {
+        return {
+          color: normalizeRichTextColor(firstOpen[1]),
+          openIndex: firstOpen.index,
+          openLength: firstOpen[0].length,
+          closeIndex: match.index,
+          endIndex: match.index + match[0].length,
+          content: source.slice(firstOpen.index + firstOpen[0].length, match.index),
+        };
+      }
+    }
+
+    return null;
+  };
+
   const renderFormattedNode = (rule, content, key, depth) => {
     const children = rule.raw
       ? content
@@ -1141,16 +1353,15 @@ const Message = ({
 
     let bestMatch = null;
 
-    const colorRegex = /\[color=(#[0-9a-fA-F]{3,6})\]([\s\S]*?)\[\/color\]/;
-    const colorMatch = text.match(colorRegex);
-    if (colorMatch) {
+    const colorToken = findBalancedMessageColorToken(text);
+    if (colorToken) {
       bestMatch = {
         rule: inlineFormatRules.find((rule) => rule.key === "color"),
-        openIndex: colorMatch.index,
-        closeIndex: colorMatch.index + colorMatch[0].length - "[/color]".length,
-        content: colorMatch[2],
-        color: normalizeRichTextColor(colorMatch[1]),
-        endIndex: colorMatch.index + colorMatch[0].length,
+        openIndex: colorToken.openIndex,
+        closeIndex: colorToken.closeIndex,
+        content: colorToken.content,
+        color: colorToken.color,
+        endIndex: colorToken.endIndex,
       };
     }
 
@@ -1610,6 +1821,7 @@ const Message = ({
         className="message-inner"
         style={{ position: "relative" }}
         onDoubleClick={selectionMode ? undefined : handleReply}
+        onCopy={handleMessageCopy}
         onClick={(event) => {
           if (!selectionMode || mensajeData.eliminado) return;
           event.stopPropagation();

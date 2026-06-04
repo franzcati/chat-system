@@ -21,6 +21,35 @@ const normalizeRichTextColor = (color = "") => {
   return "";
 };
 
+const ADAPTIVE_RICH_TEXT_COLORS = new Set([
+  "#000000",
+  "#FFFFFF",
+  "#111B21",
+  "#202C33",
+  "#E9EDEF",
+  "#AEBAC1",
+  "#D1D7DB",
+]);
+
+const isAdaptiveRichTextColor = (color = "") => {
+  const normalized = normalizeRichTextColor(color);
+  if (!normalized) return false;
+  if (ADAPTIVE_RICH_TEXT_COLORS.has(normalized)) return true;
+
+  const match = normalized.match(/^#([0-9A-F]{2})([0-9A-F]{2})([0-9A-F]{2})$/);
+  if (!match) return false;
+
+  const r = parseInt(match[1], 16);
+  const g = parseInt(match[2], 16);
+  const b = parseInt(match[3], 16);
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+
+  // Blanco, negro y grises casi puros son colores del tema, no colores
+  // elegidos por el usuario. No deben quedar fijos al copiar/pegar.
+  return max - min <= 10 && (max <= 42 || min >= 222);
+};
+
 export const RICH_HTML_PREFIX = "[rich-html]";
 
 export const isRichHtmlValue = (value = "") =>
@@ -109,7 +138,7 @@ const sanitizeRichNode = (node, doc) => {
       extractColorFromStyleValue(node.getAttribute("style") || "")
     );
 
-    if (color) {
+    if (color && !isAdaptiveRichTextColor(color)) {
       el.className = "wa-rich-color";
       el.dataset.color = color;
       el.style.color = color;
@@ -209,7 +238,18 @@ export const richHtmlHasFormatting = (html = "") => {
 
   try {
     const doc = new DOMParser().parseFromString(raw, "text/html");
-    if (doc.querySelector("strong,b,em,i,u,del,s,strike,code,ul,ol,blockquote,span[data-color],span[style*='color'],font[color]")) {
+    if (doc.querySelector("strong,b,em,i,u,del,s,strike,code,ul,ol,blockquote")) {
+      return true;
+    }
+
+    if (Array.from(doc.querySelectorAll("span[data-color],span[style*='color'],font[color]")).some((el) => {
+      const color = normalizeRichTextColor(
+        el.getAttribute("data-color") ||
+        el.getAttribute("color") ||
+        extractColorFromStyleValue(el.getAttribute("style") || "")
+      );
+      return color && !isAdaptiveRichTextColor(color);
+    })) {
       return true;
     }
 
@@ -217,14 +257,28 @@ export const richHtmlHasFormatting = (html = "") => {
       const style = el.getAttribute("style") || "";
       return /font-weight\s*:\s*(bold|[6-9]00)/i.test(style) ||
         /font-style\s*:\s*italic/i.test(style) ||
-        /text-decoration[^;]*(underline|line-through|strike)/i.test(style) ||
-        /(?:^|;)\s*color\s*:/i.test(style);
+        /text-decoration[^;]*(underline|line-through|strike)/i.test(style);
     });
   } catch {
     return false;
   }
 };
 
+
+const stripColorSyntaxOnce = (value = "") => {
+  const source = String(value || "");
+  const tokenRegex = /\[color=#[0-9a-fA-F]{3,6}\]|\[\/color\]/g;
+  let output = "";
+  let lastIndex = 0;
+  let match;
+
+  while ((match = tokenRegex.exec(source))) {
+    output += source.slice(lastIndex, match.index);
+    lastIndex = match.index + match[0].length;
+  }
+
+  return output + source.slice(lastIndex);
+};
 
 export const stripRichTextSyntax = (value = "") => {
   if (isRichHtmlValue(value)) return richHtmlToPlainText(value).replace(/\s+/g, " ").trim();
@@ -240,8 +294,7 @@ export const stripRichTextSyntax = (value = "") => {
   let previous;
   do {
     previous = text;
-    text = text
-      .replace(/\[color=#[0-9a-fA-F]{3,6}\]([\s\S]*?)\[\/color\]/g, "$1")
+    text = stripColorSyntaxOnce(text)
       .replace(/\*\*([^*\n][\s\S]*?[^*\n]|[^*\n])\*\*/g, "$1")
       .replace(/__([^_\n][\s\S]*?[^_\n]|[^_\n])__/g, "$1")
       .replace(/~~([^~\n][\s\S]*?[^~\n]|[^~\n])~~/g, "$1")
@@ -260,13 +313,43 @@ const renderFormattedNode = (rule, content, key, depth, renderPlainText) => {
 
   if (rule.key === "color") {
     const color = normalizeRichTextColor(rule.currentColor);
-    return color ? <span key={key} className={rule.className} style={{ color }}>{children}</span> : <React.Fragment key={key}>{children}</React.Fragment>;
+    return color && !isAdaptiveRichTextColor(color) ? <span key={key} className={rule.className} style={{ color }}>{children}</span> : <React.Fragment key={key}>{children}</React.Fragment>;
   }
   if (rule.tag === "strong") return <strong key={key} className={rule.className}>{children}</strong>;
   if (rule.tag === "em") return <em key={key} className={rule.className}>{children}</em>;
   if (rule.tag === "del") return <del key={key} className={rule.className}>{children}</del>;
   if (rule.tag === "code") return <code key={key} className={rule.className}>{children}</code>;
   return <span key={key} className={rule.className}>{children}</span>;
+};
+
+const findBalancedRichColorToken = (text = "") => {
+  const source = String(text || "");
+  const openRegex = /\[color=(#[0-9a-fA-F]{3,6})\]/g;
+  const firstOpen = openRegex.exec(source);
+  if (!firstOpen) return null;
+
+  let depth = 1;
+  const tokenRegex = /\[color=#[0-9a-fA-F]{3,6}\]|\[\/color\]/g;
+  tokenRegex.lastIndex = firstOpen.index + firstOpen[0].length;
+
+  let match;
+  while ((match = tokenRegex.exec(source))) {
+    if (match[0].startsWith("[color=")) depth += 1;
+    else depth -= 1;
+
+    if (depth === 0) {
+      return {
+        color: normalizeRichTextColor(firstOpen[1]),
+        openIndex: firstOpen.index,
+        openLength: firstOpen[0].length,
+        closeIndex: match.index,
+        endIndex: match.index + match[0].length,
+        content: source.slice(firstOpen.index + firstOpen[0].length, match.index),
+      };
+    }
+  }
+
+  return null;
 };
 
 export const renderRichTextInline = (
@@ -277,18 +360,18 @@ export const renderRichTextInline = (
 ) => {
   const text = normalizeText(value);
   if (!text) return [];
-  if (depth > 8) return [renderPlainText(text, `${keyPrefix}-plain`)];
+  if (depth > 12) return [renderPlainText(text, `${keyPrefix}-plain`)];
 
   let bestMatch = null;
 
-  const colorMatch = text.match(/\[color=(#[0-9a-fA-F]{3,6})\]([\s\S]*?)\[\/color\]/);
-  if (colorMatch) {
+  const colorToken = findBalancedRichColorToken(text);
+  if (colorToken) {
     bestMatch = {
-      rule: { ...INLINE_RULES.find((rule) => rule.key === "color"), currentColor: colorMatch[1] },
-      openIndex: colorMatch.index,
-      closeIndex: colorMatch.index + colorMatch[0].length - "[/color]".length,
-      content: colorMatch[2],
-      endIndex: colorMatch.index + colorMatch[0].length,
+      rule: { ...INLINE_RULES.find((rule) => rule.key === "color"), currentColor: colorToken.color },
+      openIndex: colorToken.openIndex,
+      closeIndex: colorToken.closeIndex,
+      content: colorToken.content,
+      endIndex: colorToken.endIndex,
     };
   }
 

@@ -62,14 +62,28 @@ const cleanPastedText = (text = "") =>
     .join("\n")
     .replace(/^\n+|\n+$/g, "");
 
-const isBlockLikeElement = (tagName = "") =>
-  [
-    "ADDRESS", "ARTICLE", "ASIDE", "BLOCKQUOTE", "BR", "DD", "DIV",
-    "DL", "DT", "FIELDSET", "FIGCAPTION", "FIGURE", "FOOTER", "FORM",
-    "H1", "H2", "H3", "H4", "H5", "H6", "HEADER", "HR", "LI",
-    "MAIN", "NAV", "OL", "P", "PRE", "SECTION", "TABLE", "TBODY",
-    "TD", "TFOOT", "TH", "THEAD", "TR", "UL",
-  ].includes(String(tagName || "").toUpperCase());
+const BLOCK_LIKE_CLASSES = new Set([
+  "wa-rich-line",
+  "wa-rich-empty-line",
+  "wa-rich-quote-line",
+]);
+
+const isBlockLikeElement = (tagName = "", node = null) => {
+  if (
+    [
+      "ADDRESS", "ARTICLE", "ASIDE", "BLOCKQUOTE", "BR", "DD", "DIV",
+      "DL", "DT", "FIELDSET", "FIGCAPTION", "FIGURE", "FOOTER", "FORM",
+      "H1", "H2", "H3", "H4", "H5", "H6", "HEADER", "HR", "LI",
+      "MAIN", "NAV", "OL", "P", "PRE", "SECTION", "TABLE", "TBODY",
+      "TD", "TFOOT", "TH", "THEAD", "TR", "UL",
+    ].includes(String(tagName || "").toUpperCase())
+  ) {
+    return true;
+  }
+
+  if (!node || node.nodeType !== Node.ELEMENT_NODE) return false;
+  return Array.from(BLOCK_LIKE_CLASSES).some((className) => node.classList?.contains(className));
+};
 
 const htmlNodeToClipboardText = (node) => {
   if (!node) return "";
@@ -86,6 +100,7 @@ const htmlNodeToClipboardText = (node) => {
   }
 
   if (tag === "BR") return "\n";
+  if (node.classList?.contains("wa-rich-empty-line")) return "\n";
 
   const childrenText = Array.from(node.childNodes || [])
     .map((child) => htmlNodeToClipboardText(child))
@@ -96,7 +111,7 @@ const htmlNodeToClipboardText = (node) => {
   if (tag === "TR") return `${childrenText.replace(/[\t ]+$/g, "")}\n`;
   if (tag === "PRE") return `${childrenText}\n`;
 
-  if (isBlockLikeElement(tag)) {
+  if (isBlockLikeElement(tag, node)) {
     const value = childrenText.replace(/\n{3,}/g, "\n\n");
     return value.endsWith("\n") ? value : `${value}\n`;
   }
@@ -126,6 +141,7 @@ const htmlNodeToMarkdownText = (node) => {
   const tag = node.tagName.toUpperCase();
   if (["IMG", "PICTURE", "SOURCE", "STYLE", "SCRIPT", "NOSCRIPT"].includes(tag)) return "";
   if (tag === "BR") return "\n";
+  if (node.classList?.contains("wa-rich-empty-line")) return "\n";
 
   const children = Array.from(node.childNodes || []).map((child) => htmlNodeToMarkdownText(child)).join("");
   const color = normalizeTextColor(node.getAttribute("data-color") || extractColorFromStyle(node.getAttribute("style") || ""));
@@ -136,14 +152,14 @@ const htmlNodeToMarkdownText = (node) => {
   else if (tag === "U" || node.classList?.contains("wa-rich-underline") || /text-decoration[^;]*underline/i.test(node.getAttribute("style") || "")) formatted = wrapInlineMarkdown("__", "__", formatted);
   else if (tag === "DEL" || tag === "S" || tag === "STRIKE" || node.classList?.contains("wa-rich-strike")) formatted = wrapInlineMarkdown("~", "~", formatted);
   else if (tag === "CODE" || node.classList?.contains("wa-rich-code")) formatted = wrapInlineMarkdown("`", "`", formatted);
-  else if (color) formatted = wrapInlineMarkdown(`[color=${color}]`, "[/color]", formatted);
+  else if (color && !isAdaptiveTextColor(color)) formatted = wrapInlineMarkdown(`[color=${color}]`, "[/color]", formatted);
 
   if (tag === "LI") return `- ${cleanPastedText(formatted)}\n`;
   if (tag === "TD" || tag === "TH") return `${cleanPastedText(formatted)}\t`;
   if (tag === "TR") return `${formatted.replace(/[\t ]+$/g, "")}\n`;
   if (tag === "PRE") return `${formatted}\n`;
 
-  if (isBlockLikeElement(tag)) {
+  if (isBlockLikeElement(tag, node)) {
     const value = formatted.replace(/\n{3,}/g, "\n\n");
     return value.endsWith("\n") ? value : `${value}\n`;
   }
@@ -161,6 +177,88 @@ const getMarkdownTextFromHtmlWithoutImages = (html = "") => {
   } catch (err) {
     logDev("No se pudo convertir HTML pegado a texto con formato:", err);
     return "";
+  }
+};
+
+
+const normalizeClipboardRichLineHtml = (html = "") => {
+  if (!html || typeof DOMParser === "undefined") return html;
+
+  const doc = new DOMParser().parseFromString(String(html || ""), "text/html");
+
+  doc.querySelectorAll(".wa-rich-empty-line").forEach((node) => {
+    const div = doc.createElement("div");
+    div.appendChild(doc.createElement("br"));
+    node.parentNode?.replaceChild(div, node);
+  });
+
+  doc.querySelectorAll(".wa-rich-line, .wa-rich-quote-line").forEach((node) => {
+    const div = doc.createElement("div");
+    Array.from(node.attributes || []).forEach((attr) => {
+      if (attr.name !== "class") div.setAttribute(attr.name, attr.value);
+    });
+    while (node.firstChild) div.appendChild(node.firstChild);
+    node.parentNode?.replaceChild(div, node);
+  });
+
+  doc.querySelectorAll(".wa-rich-line-content").forEach((node) => {
+    const fragment = doc.createDocumentFragment();
+    while (node.firstChild) fragment.appendChild(node.firstChild);
+    node.parentNode?.replaceChild(fragment, node);
+  });
+
+  return doc.body.innerHTML;
+};
+
+const unwrapNodeKeepingChildren = (node, doc) => {
+  const parent = node?.parentNode;
+  if (!parent) return;
+
+  const fragment = doc.createDocumentFragment();
+  while (node.firstChild) fragment.appendChild(node.firstChild);
+  parent.replaceChild(fragment, node);
+};
+
+const stripAdaptiveTextColorsFromHtml = (html = "") => {
+  if (!html || typeof DOMParser === "undefined") return sanitizeRichHtml(html);
+
+  try {
+    const normalizedHtml = normalizeClipboardRichLineHtml(html);
+    const doc = new DOMParser().parseFromString(String(normalizedHtml || ""), "text/html");
+
+    doc.querySelectorAll("[style*='color'], [data-color], font[color]").forEach((node) => {
+      const color = normalizeTextColor(
+        node.getAttribute("data-color") ||
+        node.getAttribute("color") ||
+        extractColorFromStyle(node.getAttribute("style") || "")
+      );
+
+      if (!isAdaptiveTextColor(color)) return;
+
+      node.style?.removeProperty("color");
+      node.removeAttribute("data-color");
+      node.removeAttribute("color");
+      node.classList?.remove("wa-rich-color");
+
+      if (!String(node.getAttribute("style") || "").trim()) node.removeAttribute("style");
+    });
+
+    const safeHtml = sanitizeRichHtml(doc.body.innerHTML);
+    const cleanDoc = new DOMParser().parseFromString(safeHtml, "text/html");
+
+    cleanDoc.querySelectorAll("span").forEach((node) => {
+      const hasAttrs = Array.from(node.attributes || []).some((attr) => {
+        if (attr.name === "class" && !attr.value.trim()) return false;
+        if (attr.name === "style" && !attr.value.trim()) return false;
+        return true;
+      });
+      if (!hasAttrs) unwrapNodeKeepingChildren(node, cleanDoc);
+    });
+
+    return cleanDoc.body.innerHTML;
+  } catch (err) {
+    logDev("No se pudieron limpiar colores adaptativos del HTML pegado:", err);
+    return sanitizeRichHtml(html);
   }
 };
 
@@ -303,16 +401,14 @@ const escapeHtml = (value = "") =>
     .replace(/"/g, "&quot;");
 
 const TEXT_COLOR_OPTIONS = [
-  "#111b21",
-  "#ffffff",
   "#2787F5",
-  "#00a884",
-  "#ff6b6b",
-  "#ff9f1a",
-  "#ffd43b",
-  "#845ef7",
-  "#f06595",
-  "#12b886",
+  "#00A884",
+  "#FF6B6B",
+  "#FF9F1A",
+  "#FFD43B",
+  "#845EF7",
+  "#F06595",
+  "#12B886",
 ];
 
 const normalizeTextColor = (color = "") => {
@@ -322,6 +418,35 @@ const normalizeTextColor = (color = "") => {
   }
   if (/^#[0-9a-fA-F]{6}$/.test(value)) return value.toUpperCase();
   return "";
+};
+
+const ADAPTIVE_TEXT_COLORS = new Set([
+  "#000000",
+  "#FFFFFF",
+  "#111B21",
+  "#202C33",
+  "#E9EDEF",
+  "#AEBAC1",
+]);
+
+const isAdaptiveTextColor = (color = "") => {
+  const normalized = normalizeTextColor(color);
+  if (!normalized) return false;
+  if (ADAPTIVE_TEXT_COLORS.has(normalized)) return true;
+
+  const match = normalized.match(/^#([0-9A-F]{2})([0-9A-F]{2})([0-9A-F]{2})$/);
+  if (!match) return false;
+
+  const [, rHex, gHex, bHex] = match;
+  const r = parseInt(rHex, 16);
+  const g = parseInt(gHex, 16);
+  const b = parseInt(bHex, 16);
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+
+  // Negro/blanco/grises muy cercanos al color base deben seguir el tema
+  // claro/oscuro. No se guardan como formato real de color al pegar/copiar.
+  return max - min <= 8 && (max <= 36 || min >= 232);
 };
 
 const extractColorFromStyle = (styleValue = "") => {
@@ -347,20 +472,52 @@ const wrapInlineMarkdown = (open, close, content = "") => {
     .join("\n");
 };
 
+const findBalancedColorToken = (text = "") => {
+  const source = String(text || "");
+  const openRegex = /\[color=(#[0-9a-fA-F]{3,6})\]/g;
+  const firstOpen = openRegex.exec(source);
+  if (!firstOpen) return null;
+
+  let depth = 1;
+  let cursor = firstOpen.index + firstOpen[0].length;
+  const tokenRegex = /\[color=#[0-9a-fA-F]{3,6}\]|\[\/color\]/g;
+  tokenRegex.lastIndex = cursor;
+
+  let match;
+  while ((match = tokenRegex.exec(source))) {
+    if (match[0].startsWith("[color=")) depth += 1;
+    else depth -= 1;
+
+    if (depth === 0) {
+      return {
+        color: normalizeTextColor(firstOpen[1]),
+        openIndex: firstOpen.index,
+        openLength: firstOpen[0].length,
+        closeIndex: match.index,
+        endIndex: match.index + match[0].length,
+        content: source.slice(firstOpen.index + firstOpen[0].length, match.index),
+      };
+    }
+  }
+
+  return null;
+};
+
 const inlineMarkdownToHtml = (value = "", depth = 0) => {
   const text = String(value || "");
   if (!text) return "";
-  if (depth > 8) return escapeHtml(text);
+  if (depth > 12) return escapeHtml(text);
 
-  const colorMatch = text.match(/\[color=(#[0-9a-fA-F]{3,6})\]([\s\S]*?)\[\/color\]/);
+  const colorToken = findBalancedColorToken(text);
   let bestMatch = null;
 
-  if (colorMatch) {
+  if (colorToken) {
     bestMatch = {
-      rule: { key: "color", open: colorMatch[0].slice(0, colorMatch[0].indexOf("]") + 1), close: "[/color]", tag: "span", className: "wa-rich-color", color: normalizeTextColor(colorMatch[1]) },
-      openIndex: colorMatch.index,
-      closeIndex: colorMatch.index + colorMatch[0].length - "[/color]".length,
-      content: colorMatch[2],
+      rule: { key: "color", open: text.slice(colorToken.openIndex, colorToken.openIndex + colorToken.openLength), close: "[/color]", tag: "span", className: "wa-rich-color", color: colorToken.color },
+      openIndex: colorToken.openIndex,
+      closeIndex: colorToken.closeIndex,
+      content: colorToken.content,
+      endIndex: colorToken.endIndex,
     };
   }
 
@@ -370,7 +527,7 @@ const inlineMarkdownToHtml = (value = "", depth = 0) => {
     const closeIndex = text.indexOf(rule.close, openIndex + rule.open.length);
     if (closeIndex === -1 || closeIndex === openIndex + rule.open.length) return;
     if (!bestMatch || openIndex < bestMatch.openIndex || (openIndex === bestMatch.openIndex && rule.open.length > bestMatch.rule.open.length)) {
-      bestMatch = { rule, openIndex, closeIndex };
+      bestMatch = { rule, openIndex, closeIndex, endIndex: closeIndex + rule.close.length };
     }
   });
 
@@ -379,18 +536,17 @@ const inlineMarkdownToHtml = (value = "", depth = 0) => {
   const { rule, openIndex, closeIndex } = bestMatch;
   const before = inlineMarkdownToHtml(text.slice(0, openIndex), depth + 1);
   const content = bestMatch.content ?? text.slice(openIndex + rule.open.length, closeIndex);
-  const afterStart = rule.key === "color" ? closeIndex + rule.close.length : closeIndex + rule.close.length;
-  const after = inlineMarkdownToHtml(text.slice(afterStart), depth + 1);
+  const after = inlineMarkdownToHtml(text.slice(bestMatch.endIndex ?? (closeIndex + rule.close.length)), depth + 1);
   const inner = rule.raw ? escapeHtml(content) : inlineMarkdownToHtml(content, depth + 1);
 
   if (rule.key === "color") {
     const color = normalizeTextColor(rule.color);
-    if (!color) return `${before}${inner}${after}`;
+    if (!color || isAdaptiveTextColor(color)) return `${before}${inner}${after}`;
     return `${before}<span class="wa-rich-color" data-color="${color}" style="color:${color}">${inner}</span>${after}`;
   }
 
   return `${before}<${rule.tag} class="${rule.className}">${inner}</${rule.tag}>${after}`;
-}
+};
 const markdownToEditorHtml = (markdown = "") => {
   const lines = String(markdown || "").replace(/\r\n/g, "\n").split("\n");
   if (lines.length === 1 && !lines[0]) return "";
@@ -547,8 +703,15 @@ const editorToMessageValue = (editor) => {
 
   if (!editorHasRichFormatting(editor)) return plainText;
 
-  const safeHtml = sanitizeRichHtml(editor.innerHTML);
-  return encodeRichHtmlValue(safeHtml) || plainText;
+  // Guardamos el mensaje rico como texto con marcadores propios en lugar de
+  // guardar el HTML crudo del contentEditable. Los navegadores suelen dejar
+  // estructuras como <b><i>Hola<div>como</div></i></b> después de mezclar
+  // saltos de línea, negrita, cursiva, subrayado y tachado; al enviarlas como
+  // HTML esos bloques internos pueden terminar renderizándose en una sola línea.
+  // La serialización a markdown conserva los saltos visuales y los estilos por
+  // línea, y el render del mensaje ya interpreta esos marcadores.
+  const markdown = editorToMarkdown(editor);
+  return markdown || plainText;
 };
 
 const clipboardHtmlShouldKeepRichFormatting = (html = "") => {
@@ -716,7 +879,6 @@ const ChatInput = forwardRef(({
   const [activeColor, setActiveColor] = useState("");
   const [showColorPicker, setShowColorPicker] = useState(false);
   const editorRef = useRef(null);
-  const colorInputRef = useRef(null);
   const savedSelectionRangeRef = useRef(null);
   const blurTimerRef = useRef(null);
   const lastInitialValueRef = useRef(undefined);
@@ -998,18 +1160,74 @@ const ChatInput = forwardRef(({
     }
   };
 
+  const unwrapColorElementsInside = (root) => {
+    if (!root) return;
+
+    const colorNodes = root.querySelectorAll?.(".wa-rich-color, span[data-color], span[style*='color']") || [];
+    Array.from(colorNodes).forEach((colorNode) => {
+      colorNode.style?.removeProperty("color");
+      colorNode.removeAttribute("data-color");
+      colorNode.classList?.remove("wa-rich-color");
+
+      if (colorNode.tagName === "SPAN" && !colorNode.getAttribute("style") && !colorNode.className) {
+        const parent = colorNode.parentNode;
+        if (!parent) return;
+        const fragment = document.createDocumentFragment();
+        while (colorNode.firstChild) fragment.appendChild(colorNode.firstChild);
+        parent.replaceChild(fragment, colorNode);
+      }
+    });
+  };
+
+  const unwrapSingleColorNode = (colorNode) => {
+    if (!colorNode?.parentNode) return false;
+    const parent = colorNode.parentNode;
+    const fragment = document.createDocumentFragment();
+    while (colorNode.firstChild) fragment.appendChild(colorNode.firstChild);
+    parent.replaceChild(fragment, colorNode);
+    return true;
+  };
+
   const unwrapNearestColor = () => {
     const selection = window.getSelection?.();
     const editor = editorRef.current;
     if (!selection || selection.rangeCount === 0 || !editor || !isSelectionInside(editor)) return false;
 
     const colorNode = getNearestColorNode(selection.anchorNode) || getNearestColorNode(selection.focusNode);
-    if (!colorNode) return false;
+    return unwrapSingleColorNode(colorNode);
+  };
 
-    const parent = colorNode.parentNode;
-    const fragment = document.createDocumentFragment();
-    while (colorNode.firstChild) fragment.appendChild(colorNode.firstChild);
-    parent.replaceChild(fragment, colorNode);
+  const resetSelectionColor = () => {
+    const selection = window.getSelection?.();
+    const editor = editorRef.current;
+    if (!selection || selection.rangeCount === 0 || !editor || !isSelectionInside(editor)) return false;
+
+    const range = selection.getRangeAt(0);
+    if (range.collapsed) return unwrapNearestColor();
+
+    const fragment = range.extractContents();
+    const holder = document.createElement("div");
+    holder.appendChild(fragment);
+    unwrapColorElementsInside(holder);
+
+    const cleaned = document.createDocumentFragment();
+    let lastNode = null;
+    while (holder.firstChild) {
+      lastNode = holder.firstChild;
+      cleaned.appendChild(lastNode);
+    }
+
+    range.insertNode(cleaned);
+
+    if (lastNode) {
+      const nextRange = document.createRange();
+      nextRange.setStartAfter(lastNode);
+      nextRange.collapse(true);
+      selection.removeAllRanges();
+      selection.addRange(nextRange);
+    }
+
+    unwrapColorElementsInside(editor);
     return true;
   };
 
@@ -1030,10 +1248,18 @@ const ChatInput = forwardRef(({
     wrapper.style.color = normalizedColor;
 
     try {
-      range.surroundContents(wrapper);
+      const content = range.extractContents();
+      const holder = document.createElement("div");
+      holder.appendChild(content);
+      unwrapColorElementsInside(holder);
+      while (holder.firstChild) wrapper.appendChild(holder.firstChild);
+      range.insertNode(wrapper);
     } catch {
       const content = range.extractContents();
-      wrapper.appendChild(content);
+      const holder = document.createElement("div");
+      holder.appendChild(content);
+      unwrapColorElementsInside(holder);
+      while (holder.firstChild) wrapper.appendChild(holder.firstChild);
       range.insertNode(wrapper);
     }
 
@@ -1106,14 +1332,7 @@ const ChatInput = forwardRef(({
 
     if (actionKey === "color") {
       saveCurrentSelectionRange();
-      setShowColorPicker(false);
-      requestAnimationFrame(() => {
-        const picker = colorInputRef.current;
-        if (picker) {
-          picker.value = activeColor || "#2787F5";
-          picker.click();
-        }
-      });
+      setShowColorPicker((prev) => !prev);
       return;
     }
 
@@ -1148,9 +1367,17 @@ const ChatInput = forwardRef(({
     if (!editor) return;
     restoreSavedSelectionRange();
     editor.focus();
-    wrapSelectionWithColor(color);
+
+    const normalizedColor = normalizeTextColor(color);
+    if (normalizedColor) {
+      wrapSelectionWithColor(normalizedColor);
+      setActiveColor(normalizedColor);
+    } else {
+      resetSelectionColor();
+      setActiveColor("");
+    }
+
     setShowColorPicker(false);
-    setActiveColor(normalizeTextColor(color));
     syncValueFromEditor();
 
     requestAnimationFrame(() => {
@@ -1289,7 +1516,7 @@ const ChatInput = forwardRef(({
   };
 
   const insertPastedRichHtml = (htmlToInsert) => {
-    const safeHtml = sanitizeRichHtml(htmlToInsert);
+    const safeHtml = stripAdaptiveTextColorsFromHtml(htmlToInsert);
     if (!safeHtml || !editorRef.current) return;
 
     editorRef.current.focus();
@@ -1325,12 +1552,16 @@ const ChatInput = forwardRef(({
 
     const htmlImageSources = extractImageSourcesFromHtml(html);
     const hasClipboardImages = filesFromFiles.length || filesFromItems.length || htmlImageSources.length;
-    const shouldKeepRichHtml = !hasClipboardImages && clipboardHtmlShouldKeepRichFormatting(html);
+    const plainLineCount = countTextLines(plainText);
+    const htmlLineCount = countTextLines(htmlMarkdownText || htmlText);
+    const shouldPreferPlainLineBreaks = plainLineCount >= 2 && (plainLineCount > htmlLineCount || htmlLineCount <= 1);
+    const htmlWithoutAdaptiveColors = stripAdaptiveTextColorsFromHtml(html);
+    const shouldKeepRichHtml = !hasClipboardImages && !shouldPreferPlainLineBreaks && clipboardHtmlShouldKeepRichFormatting(htmlWithoutAdaptiveColors);
 
     e.preventDefault();
 
     if (shouldKeepRichHtml) {
-      insertPastedRichHtml(html);
+      insertPastedRichHtml(htmlWithoutAdaptiveColors);
       return;
     }
 
@@ -1426,10 +1657,17 @@ const ChatInput = forwardRef(({
               )}
             </button>
           ))}
-          {false && showColorPicker && (
+          {showColorPicker && (
             <div className="wa-format-color-popover" onMouseDown={(e) => e.preventDefault()}>
               <div className="wa-format-color-title">Color del texto</div>
               <div className="wa-format-color-grid">
+                <button
+                  type="button"
+                  className={`wa-format-color-dot wa-format-color-reset ${!activeColor ? "active" : ""}`}
+                  aria-label="Restablecer color del texto"
+                  title="Restablecer color"
+                  onClick={() => applyColor("")}
+                />
                 {TEXT_COLOR_OPTIONS.map((color) => (
                   <button
                     key={color}
@@ -1446,15 +1684,6 @@ const ChatInput = forwardRef(({
         </div>
       )}
 
-      <input
-        ref={colorInputRef}
-        type="color"
-        className="wa-native-color-input"
-        tabIndex={-1}
-        aria-hidden="true"
-        defaultValue={activeColor || "#2787F5"}
-        onChange={(event) => applyColor(event.target.value)}
-      />
 
       <div
         ref={editorRef}
