@@ -8684,3 +8684,17 @@ body.dark .wa-rich-input-edit .wa-rich-editor,
   font-weight: inherit;
 }
 
+
+/* Mantener colores reales dentro del editor, especialmente en modo oscuro.
+   Algunas reglas globales del input usan -webkit-text-fill-color para el tema;
+   si se hereda, Chrome pinta los spans coloreados como blanco/gris aunque el
+   style color exista. currentColor respeta el color real del span. */
+.wa-rich-editor .wa-rich-color,
+.wa-rich-editor .wa-rich-color * {
+  -webkit-text-fill-color: currentColor !important;
+}
+
+.wa-rich-html-message .wa-rich-color,
+.wa-rich-html-message .wa-rich-color * {
+  -webkit-text-fill-color: currentColor !important;
+}

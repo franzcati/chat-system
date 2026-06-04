@@ -143,16 +143,25 @@ const htmlNodeToMarkdownText = (node) => {
   if (tag === "BR") return "\n";
   if (node.classList?.contains("wa-rich-empty-line")) return "\n";
 
+  const styleValue = node.getAttribute("style") || "";
   const children = Array.from(node.childNodes || []).map((child) => htmlNodeToMarkdownText(child)).join("");
-  const color = normalizeTextColor(node.getAttribute("data-color") || extractColorFromStyle(node.getAttribute("style") || ""));
+  const color = normalizeTextColor(
+    node.getAttribute("data-color") ||
+    node.getAttribute("color") ||
+    extractColorFromStyle(styleValue)
+  );
 
   let formatted = children;
-  if (tag === "STRONG" || tag === "B" || node.classList?.contains("wa-rich-bold")) formatted = wrapInlineMarkdown("**", "**", formatted);
-  else if (tag === "EM" || tag === "I" || node.classList?.contains("wa-rich-italic")) formatted = wrapInlineMarkdown("_", "_", formatted);
-  else if (tag === "U" || node.classList?.contains("wa-rich-underline") || /text-decoration[^;]*underline/i.test(node.getAttribute("style") || "")) formatted = wrapInlineMarkdown("__", "__", formatted);
-  else if (tag === "DEL" || tag === "S" || tag === "STRIKE" || node.classList?.contains("wa-rich-strike")) formatted = wrapInlineMarkdown("~", "~", formatted);
-  else if (tag === "CODE" || node.classList?.contains("wa-rich-code")) formatted = wrapInlineMarkdown("`", "`", formatted);
-  else if (color && !isAdaptiveTextColor(color)) formatted = wrapInlineMarkdown(`[color=${color}]`, "[/color]", formatted);
+
+  // No usar else-if: al copiar desde mensajes o desde el navegador un mismo
+  // nodo puede traer color + negrita + cursiva. Si solo aplicamos el primer
+  // formato, el color se pierde o queda aplicado solo en una parte.
+  if (tag === "CODE" || node.classList?.contains("wa-rich-code")) formatted = wrapInlineMarkdown("`", "`", formatted);
+  if (tag === "DEL" || tag === "S" || tag === "STRIKE" || node.classList?.contains("wa-rich-strike") || /text-decoration[^;]*(line-through|strike)/i.test(styleValue)) formatted = wrapInlineMarkdown("~", "~", formatted);
+  if (tag === "U" || node.classList?.contains("wa-rich-underline") || /text-decoration[^;]*underline/i.test(styleValue)) formatted = wrapInlineMarkdown("__", "__", formatted);
+  if (tag === "EM" || tag === "I" || node.classList?.contains("wa-rich-italic") || /font-style\s*:\s*italic/i.test(styleValue)) formatted = wrapInlineMarkdown("_", "_", formatted);
+  if (tag === "STRONG" || tag === "B" || node.classList?.contains("wa-rich-bold") || /font-weight\s*:\s*(bold|[6-9]00)/i.test(styleValue)) formatted = wrapInlineMarkdown("**", "**", formatted);
+  if (color && !isAdaptiveTextColor(color)) formatted = wrapInlineMarkdown(`[color=${color}]`, "[/color]", formatted);
 
   if (tag === "LI") return `- ${cleanPastedText(formatted)}\n`;
   if (tag === "TD" || tag === "TH") return `${cleanPastedText(formatted)}\t`;
@@ -631,15 +640,24 @@ const nodeToMarkdown = (node) => {
   const tag = node.tagName.toLowerCase();
 
   if (tag === "br") return "\n";
-  if (tag === "strong" || tag === "b") return wrapInlineMarkdown("**", "**", getChildrenMarkdown(node));
-  if (tag === "em" || tag === "i") return wrapInlineMarkdown("_", "_", getChildrenMarkdown(node));
-  if (tag === "u") return wrapInlineMarkdown("__", "__", getChildrenMarkdown(node));
-  if (tag === "del" || tag === "s" || tag === "strike") return wrapInlineMarkdown("~", "~", getChildrenMarkdown(node));
-  if (tag === "code") return wrapInlineMarkdown("`", "`", getChildrenMarkdown(node));
-  if (tag === "span") {
-    const color = normalizeTextColor(node.getAttribute("data-color") || extractColorFromStyle(node.getAttribute("style") || ""));
-    const content = getChildrenMarkdown(node);
-    if (color) return wrapInlineMarkdown(`[color=${color}]`, "[/color]", content);
+  const styleValue = node.getAttribute("style") || "";
+  const color = normalizeTextColor(
+    node.getAttribute("data-color") ||
+    node.getAttribute("color") ||
+    extractColorFromStyle(styleValue)
+  );
+
+  let inlineContent = getChildrenMarkdown(node);
+
+  if (tag === "code" || node.classList?.contains("wa-rich-code")) inlineContent = wrapInlineMarkdown("`", "`", inlineContent);
+  if (tag === "del" || tag === "s" || tag === "strike" || node.classList?.contains("wa-rich-strike") || /text-decoration[^;]*(line-through|strike)/i.test(styleValue)) inlineContent = wrapInlineMarkdown("~", "~", inlineContent);
+  if (tag === "u" || node.classList?.contains("wa-rich-underline") || /text-decoration[^;]*underline/i.test(styleValue)) inlineContent = wrapInlineMarkdown("__", "__", inlineContent);
+  if (tag === "em" || tag === "i" || node.classList?.contains("wa-rich-italic") || /font-style\s*:\s*italic/i.test(styleValue)) inlineContent = wrapInlineMarkdown("_", "_", inlineContent);
+  if (tag === "strong" || tag === "b" || node.classList?.contains("wa-rich-bold") || /font-weight\s*:\s*(bold|[6-9]00)/i.test(styleValue)) inlineContent = wrapInlineMarkdown("**", "**", inlineContent);
+  if (color && !isAdaptiveTextColor(color)) inlineContent = wrapInlineMarkdown(`[color=${color}]`, "[/color]", inlineContent);
+
+  if (["span", "strong", "b", "em", "i", "u", "del", "s", "strike", "code"].includes(tag)) {
+    return inlineContent;
   }
   if (tag === "ul") {
     return Array.from(node.children || [])
