@@ -131,21 +131,19 @@ const sanitizeRichNode = (node, doc) => {
     if (Number.isFinite(start) && start > 1) el.setAttribute("start", String(start));
   }
 
-  if (tag === "span") {
-    const color = normalizeRichTextColor(
-      node.getAttribute("data-color") ||
-      node.getAttribute("color") ||
-      extractColorFromStyleValue(node.getAttribute("style") || "")
-    );
+  const styleValue = node.getAttribute("style") || "";
+  const color = normalizeRichTextColor(
+    node.getAttribute("data-color") ||
+    node.getAttribute("color") ||
+    extractColorFromStyleValue(styleValue)
+  );
 
-    if (color && !isAdaptiveRichTextColor(color)) {
-      el.className = "wa-rich-color";
-      el.dataset.color = color;
-      el.style.color = color;
-    }
+  if (color && !isAdaptiveRichTextColor(color)) {
+    el.classList.add("wa-rich-color");
+    el.dataset.color = color;
+    el.style.color = color;
   }
 
-  const styleValue = node.getAttribute("style") || "";
   if (/font-weight\s*:\s*(bold|[6-9]00)/i.test(styleValue) && tag === "span") el.classList.add("wa-rich-bold");
   if (/font-style\s*:\s*italic/i.test(styleValue) && tag === "span") el.classList.add("wa-rich-italic");
   if (/text-decoration[^;]*underline/i.test(styleValue) && tag === "span") el.classList.add("wa-rich-underline");
@@ -242,7 +240,7 @@ export const richHtmlHasFormatting = (html = "") => {
       return true;
     }
 
-    if (Array.from(doc.querySelectorAll("span[data-color],span[style*='color'],font[color]")).some((el) => {
+    if (Array.from(doc.querySelectorAll("[data-color],[style*='color'],font[color]")).some((el) => {
       const color = normalizeRichTextColor(
         el.getAttribute("data-color") ||
         el.getAttribute("color") ||
