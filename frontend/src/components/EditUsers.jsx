@@ -1,13 +1,75 @@
-import { useState, useEffect } from "react";
+import { useEffect, useMemo, useState } from "react";
 import TablaUsuarios from "./TablaUsuarios";
 import FormEditarUsuario from "./FormEditarUsuario";
 import "bootstrap-icons/font/bootstrap-icons.css";
+import "../css/UsersManagement.css";
 
-const EditUsers = ({ usuarioLogueado }) => {
+const getProjectName = (project) => {
+  if (!project) return "";
+  return String(project.nombre || project.name || project.titulo || project.proyecto || "").trim();
+};
+
+const getUserProjects = (user) => {
+  const detailed = Array.isArray(user?.proyectos_detallados)
+    ? user.proyectos_detallados
+    : [];
+
+  if (detailed.length) {
+    return detailed.map(getProjectName).filter(Boolean);
+  }
+
+  if (Array.isArray(user?.proyectos)) {
+    return user.proyectos.map(getProjectName).filter(Boolean);
+  }
+
+  if (typeof user?.proyectos === "string") {
+    return user.proyectos
+      .split(",")
+      .map((project) => project.trim())
+      .filter(Boolean);
+  }
+
+  return [];
+};
+
+const isAdminUser = (user) => {
+  const roleText = String(user?.rol_nombre || user?.rol || "").toLowerCase();
+
+  if (roleText) {
+    return (
+      roleText.includes("admin") ||
+      roleText.includes("super") ||
+      roleText.includes("owner") ||
+      roleText.includes("moder")
+    );
+  }
+
+  if (user?.rol_id !== undefined && user?.rol_id !== null) {
+    return Number(user.rol_id) !== 4;
+  }
+
+  return false;
+};
+
+const getCreationDate = (user) => {
+  const value =
+    user?.fecha_creacion ||
+    user?.fecha_registro ||
+    user?.created_at ||
+    user?.createdAt ||
+    user?.creado_en ||
+    user?.created;
+
+  if (!value) return null;
+
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
+};
+
+const EditUsers = ({ usuarioLogueado, proyectos = [] }) => {
   const [usuarios, setUsuarios] = useState([]);
   const [editando, setEditando] = useState(null);
-  const [busqueda, setBusqueda] = useState("");
-  const [usuariosOriginal, setUsuariosOriginal] = useState([]);
+  const [, setUsuariosOriginal] = useState([]);
 
   useEffect(() => {
     obtenerUsuarios();
@@ -17,106 +79,207 @@ const EditUsers = ({ usuarioLogueado }) => {
     try {
       const res = await fetch("/api/usuarios");
       const data = await res.json();
-      setUsuarios(data);
-      setUsuariosOriginal(data);
+      const usuariosSeguro = Array.isArray(data) ? data : [];
+
+      setUsuarios(usuariosSeguro);
+      setUsuariosOriginal(usuariosSeguro);
     } catch (err) {
       console.error("❌ Error cargando usuarios:", err);
+      setUsuarios([]);
+      setUsuariosOriginal([]);
     }
   };
 
-  const filtrarBusqueda = (text) => {
-    setBusqueda(text);
-    if (text.trim() === "") return setUsuarios(usuariosOriginal);
-
-    const filtrados = usuariosOriginal.filter((u) =>
-      (u.nombre + " " + u.apellido + " " + u.usuario)
-        .toLowerCase()
-        .includes(text.toLowerCase())
-    );
-
-    setUsuarios(filtrados);
+  const abrirNuevoUsuario = () => {
+    setEditando({
+      id: null,
+      nombre: "",
+      apellido: "",
+      usuario: "",
+      proyectos: [],
+    });
   };
 
+  const estadisticas = useMemo(() => {
+    const usuariosSeguros = Array.isArray(usuarios) ? usuarios : [];
+    const proyectosUnicos = new Set();
+
+    if (Array.isArray(proyectos)) {
+      proyectos.forEach((project) => {
+        const nombre = getProjectName(project);
+        if (nombre) proyectosUnicos.add(nombre.toLowerCase());
+      });
+    }
+
+    usuariosSeguros.forEach((user) => {
+      getUserProjects(user).forEach((project) => {
+        if (project) proyectosUnicos.add(project.toLowerCase());
+      });
+    });
+
+    const now = new Date();
+    const sevenDaysAgo = new Date(now);
+    sevenDaysAgo.setDate(now.getDate() - 7);
+
+    const nuevos = usuariosSeguros.filter((user) => {
+      const date = getCreationDate(user);
+      return date ? date >= sevenDaysAgo && date <= now : false;
+    }).length;
+
+    return {
+      activos: usuariosSeguros.length,
+      administradores: usuariosSeguros.filter(isAdminUser).length,
+      proyectos: proyectosUnicos.size,
+      nuevos,
+    };
+  }, [usuarios, proyectos]);
+
   return (
-    <div className="p-6 flex flex-col items-center">
+    <main className="qc-users-page">
+      <div className="qc-users-bg-decor" aria-hidden="true">
+        <span className="qc-users-orb qc-users-orb-one" />
+        <span className="qc-users-orb qc-users-orb-two" />
+        <span className="qc-users-chat-line qc-users-chat-line-one" />
+        <span className="qc-users-chat-line qc-users-chat-line-two" />
+        <i className="bi bi-chat-dots qc-users-floating-icon qc-users-floating-icon-one" />
+        <i className="bi bi-chat-left-text qc-users-floating-icon qc-users-floating-icon-two" />
+      </div>
 
-      {/* TÍTULO */}
-      <h1 className="text-center mt-5 mb-5 text-3xl font-bold">
-        Gestión de Usuarios
-      </h1>
+      <header className="qc-users-topbar">
+        <div>
+          <h1 className="qc-users-title">Gestión de usuarios</h1>
+          <p className="qc-users-subtitle">
+            Administra los miembros de tu organización y sus accesos.
+          </p>
+        </div>
 
-      <div className="bg-white p-6 rounded-2xl shadow-lg w-full max-w-6xl">
+        <button
+          type="button"
+          className="qc-users-new-btn"
+          onClick={abrirNuevoUsuario}
+          title="Registrar nuevo usuario"
+        >
+          <i className="bi bi-plus-lg" aria-hidden="true" />
+          <span>Nuevo usuario</span>
+        </button>
+      </header>
 
-        {/* ENCABEZADO SUPERIOR – estilo Bootstrap */}
-        <h1 className="text-center text-2xl font-semibold mb-4 relative">
+      <section className="qc-users-panel">
+        <div className="qc-users-panel-hero">
+          <div className="qc-users-hero-main">
+            <span className="qc-users-hero-icon">
+              <i className="bi bi-people" aria-hidden="true" />
+            </span>
 
-          {/* BOTÓN AGREGAR USUARIO */}
-          <span className="absolute left-0 top-0">
-            <button
-              className="btn btn-success text-white p-3 rounded-circle text-xl"
-              title="Registrar nuevo usuario"
-              onClick={() =>
-                setEditando({
-                  id: null,
-                  nombre: "",
-                  apellido: "",
-                  usuario: "",
-                  proyectos: [],
-                })
-              }
-            >
-              <i className="bi bi-person-plus"></i>
-            </button>
-          </span>
+            <div>
+              <div className="qc-users-hero-heading">
+                <h2>Lista de usuarios</h2>
+                <span className="qc-users-count-pill">
+                  {usuarios.length} usuarios
+                </span>
+              </div>
+              <p>Administra y supervisa los usuarios registrados.</p>
+            </div>
+          </div>
 
-          {/* TÍTULO PRINCIPAL */}
-          Lista de usuarios ({usuarios.length})
+          <i className="bi bi-people-fill qc-users-hero-watermark" aria-hidden="true" />
+        </div>
 
-          {/* EXPORTAR CSV */}
-          <span className="absolute right-0 top-0">
-            <a
-              href="/api/usuarios/exportar"
-              className="btn btn-success p-3 rounded-circle"
-              title="Exportar a CSV"
-            >
-              <i className="bi bi-filetype-csv"></i>
-            </a>
-          </span>
-
-          <hr className="mt-6" />
-        </h1>
-
-        {/* TABLA */}
         {!editando && (
-          <TablaUsuarios
-            usuarios={usuarios}
-            setEditando={setEditando}
-            eliminarUsuario={(id) => {
-              if (confirm("¿Seguro deseas eliminar este usuario?")) {
-                fetch(`/api/usuarios/${id}`, { method: "DELETE" })
-                  .then(() => obtenerUsuarios());
-              }
-            }}
-          />
+          <>
+            <div className="qc-users-stats" aria-label="Resumen de usuarios">
+              <article className="qc-users-stat-card">
+                <span className="qc-users-stat-icon qc-users-stat-icon-blue">
+                  <i className="bi bi-people" aria-hidden="true" />
+                </span>
+                <div>
+                  <strong>{estadisticas.activos}</strong>
+                  <span>Activos</span>
+                  <small>Usuarios activos</small>
+                </div>
+              </article>
+
+              <article className="qc-users-stat-card">
+                <span className="qc-users-stat-icon qc-users-stat-icon-violet">
+                  <i className="bi bi-shield-check" aria-hidden="true" />
+                </span>
+                <div>
+                  <strong>{estadisticas.administradores}</strong>
+                  <span>Administradores</span>
+                  <small>Con permisos elevados</small>
+                </div>
+              </article>
+
+              <article className="qc-users-stat-card">
+                <span className="qc-users-stat-icon qc-users-stat-icon-cyan">
+                  <i className="bi bi-folder2-open" aria-hidden="true" />
+                </span>
+                <div>
+                  <strong>{estadisticas.proyectos}</strong>
+                  <span>Proyectos</span>
+                  <small>En total</small>
+                </div>
+              </article>
+
+              <article className="qc-users-stat-card">
+                <span className="qc-users-stat-icon qc-users-stat-icon-pink">
+                  <i className="bi bi-person-plus" aria-hidden="true" />
+                </span>
+                <div>
+                  <strong>{estadisticas.nuevos}</strong>
+                  <span>Nuevos</span>
+                  <small>Últimos 7 días</small>
+                </div>
+              </article>
+            </div>
+
+            <TablaUsuarios
+              usuarios={usuarios}
+              setEditando={setEditando}
+              eliminarUsuario={(id) => {
+                if (confirm("¿Seguro deseas eliminar este usuario?")) {
+                  fetch(`/api/usuarios/${id}`, { method: "DELETE" }).then(() =>
+                    obtenerUsuarios()
+                  );
+                }
+              }}
+            />
+          </>
         )}
 
-        {/* FORMULARIO DE EDICIÓN */}
         {editando && (
-          <div className="mt-5 p-4 bg-gray-100 shadow rounded">
-            <h3 className="text-xl font-bold mb-3">
-              {editando.id ? "Editar usuario" : "Registrar usuario"}
-            </h3>
+          <div className="qc-users-edit-card">
+            <div className="qc-users-edit-head">
+              <div>
+                <span className="qc-users-edit-kicker">
+                  {editando.id ? "Edición" : "Nuevo registro"}
+                </span>
+                <h3>{editando.id ? "Editar usuario" : "Registrar usuario"}</h3>
+                <p>
+                  Mantén actualizados los datos, permisos y proyectos asignados.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                className="qc-page-btn qc-page-btn-soft"
+                onClick={() => setEditando(null)}
+              >
+                <i className="bi bi-arrow-left" aria-hidden="true" />
+                Volver a la lista
+              </button>
+            </div>
 
             <FormEditarUsuario
-                editando={editando}
-                setEditando={setEditando}
-                obtenerUsuarios={obtenerUsuarios}
-                rolUsuarioActual={usuarioLogueado.rol_id}
+              editando={editando}
+              setEditando={setEditando}
+              obtenerUsuarios={obtenerUsuarios}
+              rolUsuarioActual={usuarioLogueado?.rol_id}
             />
           </div>
         )}
-      </div>
-    </div>
+      </section>
+    </main>
   );
 };
 

@@ -1,275 +1,487 @@
-import { useState, useMemo, useEffect } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { getAvatarUrl } from "../utils/url";
 import "bootstrap-icons/font/bootstrap-icons.css";
 
-export default function TablaUsuarios({ usuarios, setEditando, eliminarUsuario }) {
+const normalizeText = (value) => String(value || "").toLowerCase().trim();
 
+const titleCase = (value) => {
+  const text = String(value || "").trim();
+  if (!text) return "";
+
+  return text
+    .toLowerCase()
+    .split(" ")
+    .filter(Boolean)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ");
+};
+
+const getProjectName = (project) => {
+  if (!project) return "";
+  return String(project.nombre || project.name || project.titulo || project.proyecto || "").trim();
+};
+
+const getProjectNames = (user) => {
+  const detailed = Array.isArray(user?.proyectos_detallados)
+    ? user.proyectos_detallados
+    : [];
+
+  let projects = [];
+
+  if (detailed.length) {
+    projects = detailed.map(getProjectName).filter(Boolean);
+  } else if (Array.isArray(user?.proyectos)) {
+    projects = user.proyectos.map(getProjectName).filter(Boolean);
+  } else if (typeof user?.proyectos === "string") {
+    projects = user.proyectos
+      .split(",")
+      .map((project) => project.trim())
+      .filter(Boolean);
+  }
+
+  return [...new Set(projects)];
+};
+
+const getRoleLabel = (user) => {
+  const rawRole = String(user?.rol_nombre || user?.rol || user?.nombre_rol || "").trim();
+
+  if (rawRole) return titleCase(rawRole);
+
+  if (user?.rol_id !== undefined && user?.rol_id !== null) {
+    return Number(user.rol_id) === 4 ? "Usuario" : "Administrador";
+  }
+
+  return "Usuario";
+};
+
+const isAdminRole = (roleLabel) => {
+  const role = normalizeText(roleLabel);
+  return (
+    role.includes("admin") ||
+    role.includes("super") ||
+    role.includes("owner") ||
+    role.includes("moder")
+  );
+};
+
+const getStatusInfo = (user) => {
+  const rawValue =
+    user?.estado_presencia_actual ||
+    user?.estado_presencia ||
+    user?.presencia ||
+    user?.estado ||
+    user?.status ||
+    user?.activo;
+
+  if (typeof rawValue === "boolean") {
+    return rawValue
+      ? { label: "Activo", tone: "active" }
+      : { label: "Inactivo", tone: "muted" };
+  }
+
+  const normalized = normalizeText(rawValue);
+
+  if (!normalized || normalized === "aprobado" || normalized === "activo" || normalized === "online") {
+    return { label: "Activo", tone: "active" };
+  }
+
+  if (normalized.includes("inactivo") || normalized.includes("idle")) {
+    return { label: "Inactivo", tone: "warning" };
+  }
+
+  if (normalized.includes("molestar") || normalized.includes("dnd")) {
+    return { label: "No molestar", tone: "danger" };
+  }
+
+  if (normalized.includes("desconect") || normalized.includes("offline")) {
+    return { label: "Desconectado", tone: "muted" };
+  }
+
+  return { label: titleCase(rawValue), tone: "active" };
+};
+
+export default function TablaUsuarios({ usuarios, setEditando, eliminarUsuario }) {
   const [busqueda, setBusqueda] = useState("");
   const [filtroProyecto, setFiltroProyecto] = useState("");
   const [proyectosActivos, setProyectosActivos] = useState([]);
-
-  // 🔹 PAGINACIÓN
   const [paginaActual, setPaginaActual] = useState(1);
-  const [registrosPorPagina, setRegistrosPorPagina] = useState(7); // ⬅️ selector dinámico
+  const [registrosPorPagina, setRegistrosPorPagina] = useState(10);
 
   useEffect(() => {
     fetch("/api/proyecto")
       .then((res) => res.json())
-      .then((data) => setProyectosActivos(data));
+      .then((data) => setProyectosActivos(Array.isArray(data) ? data : []))
+      .catch((err) => {
+        console.error("❌ Error cargando proyectos:", err);
+        setProyectosActivos([]);
+      });
   }, []);
 
-  // 🔎 FILTROS
-  const usuariosFiltrados = useMemo(() => {
-    const filtrados = usuarios.filter((u) => {
-      const matchBusqueda =
-        (u.nombre + " " + u.apellido + " " + u.usuario)
-          .toLowerCase()
-          .includes(busqueda.toLowerCase());
+  const opcionesProyecto = useMemo(() => {
+    const names = new Set();
 
-      const matchProyecto =
-        !filtroProyecto ||
-        u.proyectos_detallados.some((p) => p.nombre === filtroProyecto);
+    proyectosActivos.forEach((project) => {
+      const name = getProjectName(project);
+      if (name) names.add(name);
+    });
+
+    usuarios.forEach((user) => {
+      getProjectNames(user).forEach((name) => names.add(name));
+    });
+
+    return Array.from(names).sort((a, b) => a.localeCompare(b));
+  }, [proyectosActivos, usuarios]);
+
+  const usuariosFiltrados = useMemo(() => {
+    const search = normalizeText(busqueda);
+
+    return usuarios.filter((user) => {
+      const projectNames = getProjectNames(user);
+      const roleLabel = getRoleLabel(user);
+      const searchable = normalizeText(
+        [
+          user?.nombre,
+          user?.apellido,
+          user?.usuario,
+          user?.correo,
+          roleLabel,
+          projectNames.join(" "),
+        ].join(" ")
+      );
+
+      const matchBusqueda = !search || searchable.includes(search);
+      const matchProyecto = !filtroProyecto || projectNames.includes(filtroProyecto);
 
       return matchBusqueda && matchProyecto;
     });
-
-    setPaginaActual(1); // Reinicia la paginación al filtrar
-    return filtrados;
   }, [busqueda, filtroProyecto, usuarios]);
 
-  // 🔢 Cálculo de paginación
-  const totalPaginas = Math.ceil(usuariosFiltrados.length / registrosPorPagina);
-  const indiceInicio = (paginaActual - 1) * registrosPorPagina;
+  useEffect(() => {
+    setPaginaActual(1);
+  }, [busqueda, filtroProyecto, registrosPorPagina, usuarios]);
 
+  const totalPaginas = Math.max(
+    1,
+    Math.ceil(usuariosFiltrados.length / registrosPorPagina)
+  );
+  const paginaSegura = Math.min(paginaActual, totalPaginas);
+  const indiceInicio = (paginaSegura - 1) * registrosPorPagina;
   const usuariosPaginados = usuariosFiltrados.slice(
     indiceInicio,
     indiceInicio + registrosPorPagina
   );
+  const primerRegistro = usuariosFiltrados.length ? indiceInicio + 1 : 0;
+  const ultimoRegistro = usuariosFiltrados.length
+    ? indiceInicio + usuariosPaginados.length
+    : 0;
 
-  // 🔹 Generador estilo DataTables
   const generarPaginas = () => {
     const paginas = [];
+
     if (totalPaginas <= 5) {
-      for (let i = 1; i <= totalPaginas; i++) paginas.push(i);
-    } else {
-      paginas.push(1);
-
-      if (paginaActual > 3) paginas.push("...");
-
-      let inicio = Math.max(2, paginaActual - 1);
-      let fin = Math.min(totalPaginas - 1, paginaActual + 1);
-
-      for (let i = inicio; i <= fin; i++) paginas.push(i);
-
-      if (paginaActual < totalPaginas - 2) paginas.push("...");
-
-      paginas.push(totalPaginas);
+      for (let page = 1; page <= totalPaginas; page += 1) paginas.push(page);
+      return paginas;
     }
+
+    paginas.push(1);
+
+    if (paginaSegura > 3) paginas.push("...");
+
+    const inicio = Math.max(2, paginaSegura - 1);
+    const fin = Math.min(totalPaginas - 1, paginaSegura + 1);
+
+    for (let page = inicio; page <= fin; page += 1) paginas.push(page);
+
+    if (paginaSegura < totalPaginas - 2) paginas.push("...");
+
+    paginas.push(totalPaginas);
     return paginas;
   };
 
+  const goToPage = (page) => {
+    setPaginaActual(Math.min(Math.max(page, 1), totalPaginas));
+  };
+
   return (
-    <div className="border rounded-xl overflow-hidden shadow-lg">
-
-      {/* ======================== */}
-      {/*     BARRA SUPERIOR       */}
-      {/* ======================== */}
-      <div className="flex items-center justify-between bg-gray-100 px-4 py-3 gap-5">
-
-        {/* IZQUIERDA: Buscador */}
-        <div className="flex items-center gap-3">
+    <div className="qc-users-table-shell">
+      <div className="qc-users-toolbar">
+        <label className="qc-users-search" htmlFor="qc-users-search-input">
+          <i className="bi bi-search" aria-hidden="true" />
           <input
+            id="qc-users-search-input"
             type="text"
-            placeholder="Buscar..."
-            className="form-control w-72"
+            placeholder="Buscar usuario..."
             value={busqueda}
             onChange={(e) => setBusqueda(e.target.value)}
           />
-        </div>
+        </label>
 
-        {/* DERECHA: Filtro de proyecto + select registros */}
-        <div className="flex items-center gap-4">
-
-          {/* FILTRO PROYECTO */}
-          <select
-            className="form-select w-60"
-            value={filtroProyecto}
-            onChange={(e) => setFiltroProyecto(e.target.value)}
-          >
-            <option value="">Todos los proyectos</option>
-            {proyectosActivos.map((p) => (
-              <option key={p.id} value={p.nombre}>
-                {p.nombre}
-              </option>
-            ))}
-          </select>
-
-          {/* 🔥 SELECTOR DE MOSTRAR X REGISTROS */}
-          <div className="flex items-center gap-2">
-            <span className="text-sm text-gray-600">Mostrar:</span>
+        <div className="qc-users-toolbar-actions">
+          <label className="qc-users-select-wrap">
+            <span className="visually-hidden">Filtrar por proyecto</span>
             <select
-              className="form-select w-20"
+              className="qc-users-select"
+              value={filtroProyecto}
+              onChange={(e) => setFiltroProyecto(e.target.value)}
+            >
+              <option value="">Todos los proyectos</option>
+              {opcionesProyecto.map((projectName) => (
+                <option key={projectName} value={projectName}>
+                  {projectName}
+                </option>
+              ))}
+            </select>
+            <i className="bi bi-chevron-down" aria-hidden="true" />
+          </label>
+
+          <label className="qc-users-select-wrap qc-users-select-wrap-small">
+            <span className="qc-users-select-label">Mostrar</span>
+            <select
+              className="qc-users-select"
               value={registrosPorPagina}
-              onChange={(e) => {
-                setRegistrosPorPagina(Number(e.target.value));
-                setPaginaActual(1);
-              }}
+              onChange={(e) => setRegistrosPorPagina(Number(e.target.value))}
             >
               <option value="7">7</option>
               <option value="10">10</option>
               <option value="20">20</option>
             </select>
-          </div>
+            <i className="bi bi-chevron-down" aria-hidden="true" />
+          </label>
 
+          <a
+            href="/api/usuarios/exportar"
+            className="qc-users-export-btn"
+            title="Exportar CSV"
+          >
+            <i className="bi bi-download" aria-hidden="true" />
+          </a>
         </div>
       </div>
 
-      {/* ======================== */}
-      {/*          TABLA           */}
-      {/* ======================== */}
-      <table className="table table-hover align-middle mb-0">
-        <thead className="table-light">
-          <tr>
-            <th className="text-center" style={{ width: "60px" }}>#</th>
-            <th>Avatar</th>
-            <th>Nombre</th>
-            <th>Usuario</th>
-            <th>Proyectos</th>
-            <th className="text-center" style={{ width: "150px" }}>Acciones</th>
-          </tr>
-        </thead>
+      <div className="qc-users-table-wrap">
+        <table className="qc-users-table">
+          <thead>
+            <tr>
+              <th className="qc-users-col-index">#</th>
+              <th>Avatar</th>
+              <th>
+                <span className="qc-users-th-sort">
+                  Nombre <i className="bi bi-chevron-expand" aria-hidden="true" />
+                </span>
+              </th>
+              <th>Usuario</th>
+              <th>
+                <span className="qc-users-th-sort">
+                  Rol <i className="bi bi-record-circle" aria-hidden="true" />
+                </span>
+              </th>
+              <th>Proyectos</th>
+              <th>
+                <span className="qc-users-th-sort">
+                  Estado <i className="bi bi-chevron-expand" aria-hidden="true" />
+                </span>
+              </th>
+              <th className="qc-users-col-actions">Acciones</th>
+            </tr>
+          </thead>
 
-        <tbody>
-          {usuariosPaginados.map((u, index) => {
-            const inicial = u.nombre?.charAt(0)?.toUpperCase() || "?";
+          <tbody>
+            {usuariosPaginados.length ? (
+              usuariosPaginados.map((user, index) => {
+                const initial =
+                  user?.nombre?.charAt(0)?.toUpperCase() ||
+                  user?.usuario?.charAt(0)?.toUpperCase() ||
+                  "?";
+                const fullName = `${user?.nombre || ""} ${user?.apellido || ""}`.trim();
+                const projectNames = getProjectNames(user);
+                const visibleProjects = projectNames.slice(0, 2);
+                const hiddenProjects = Math.max(projectNames.length - visibleProjects.length, 0);
+                const roleLabel = getRoleLabel(user);
+                const adminRole = isAdminRole(roleLabel);
+                const statusInfo = getStatusInfo(user);
 
-            return (
-              <tr key={u.id}>
+                return (
+                  <tr key={user.id || `${user.usuario}-${index}`}>
+                    <td className="qc-users-col-index">
+                      {indiceInicio + index + 1}
+                    </td>
 
-                {/* # */}
-                <td className="text-center fw-bold">
-                  {indiceInicio + index + 1}
+                    <td>
+                      {user?.url_imagen ? (
+                        <img
+                          src={getAvatarUrl(user.url_imagen)}
+                          alt={fullName || user?.usuario || "Usuario"}
+                          className="qc-users-avatar qc-users-avatar-img"
+                        />
+                      ) : (
+                        <span
+                          className="qc-users-avatar qc-users-avatar-fallback"
+                          style={{ background: user?.background || undefined }}
+                        >
+                          {initial}
+                        </span>
+                      )}
+                    </td>
+
+                    <td>
+                      <strong className="qc-users-name">
+                        {fullName || "Sin nombre"}
+                      </strong>
+                    </td>
+
+                    <td>
+                      <span className="qc-users-email">
+                        {user?.usuario || user?.correo || "—"}
+                      </span>
+                    </td>
+
+                    <td>
+                      <span
+                        className={`qc-role-badge ${
+                          adminRole ? "qc-role-badge-admin" : "qc-role-badge-user"
+                        }`}
+                      >
+                        <i
+                          className={adminRole ? "bi bi-shield-check" : "bi bi-person"}
+                          aria-hidden="true"
+                        />
+                        {roleLabel}
+                      </span>
+                    </td>
+
+                    <td>
+                      <div className="qc-project-list">
+                        {visibleProjects.length ? (
+                          <>
+                            {visibleProjects.map((projectName) => (
+                              <span className="qc-project-chip" key={projectName}>
+                                {projectName}
+                              </span>
+                            ))}
+                            {hiddenProjects > 0 && (
+                              <span className="qc-project-chip qc-project-chip-more">
+                                +{hiddenProjects}
+                              </span>
+                            )}
+                          </>
+                        ) : (
+                          <span className="qc-users-empty">Sin proyectos</span>
+                        )}
+                      </div>
+                    </td>
+
+                    <td>
+                      <span className={`qc-status-pill qc-status-pill-${statusInfo.tone}`}>
+                        <span aria-hidden="true" />
+                        {statusInfo.label}
+                      </span>
+                    </td>
+
+                    <td>
+                      <div className="qc-users-actions">
+                        <button
+                          type="button"
+                          className="qc-action-btn qc-action-btn-edit"
+                          onClick={() => setEditando(user)}
+                          title="Editar usuario"
+                        >
+                          <i className="bi bi-pencil-square" aria-hidden="true" />
+                        </button>
+
+                        <button
+                          type="button"
+                          className="qc-action-btn qc-action-btn-delete"
+                          onClick={() => eliminarUsuario(user.id)}
+                          title="Eliminar usuario"
+                        >
+                          <i className="bi bi-trash" aria-hidden="true" />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })
+            ) : (
+              <tr>
+                <td colSpan="8">
+                  <div className="qc-users-empty-state">
+                    <i className="bi bi-search" aria-hidden="true" />
+                    <strong>No se encontraron usuarios</strong>
+                    <span>Prueba con otra búsqueda o cambia el filtro de proyecto.</span>
+                  </div>
                 </td>
-
-                <td>
-                  {u.url_imagen ? (
-                    <img
-                      src={getAvatarUrl(u.url_imagen)}
-                      className="rounded-circle"
-                      style={{
-                        width: "48px",
-                        height: "48px",
-                        objectFit: "cover",
-                        border: "2px solid #ddd",
-                      }}
-                    />
-                  ) : (
-                    <div
-                      className="rounded-circle d-flex justify-content-center align-items-center text-white shadow"
-                      style={{
-                        width: "48px",
-                        height: "48px",
-                        background: u.background || "#3b82f6",
-                        fontSize: "20px",
-                        fontWeight: "bold",
-                      }}
-                    >
-                      {inicial}
-                    </div>
-                  )}
-                </td>
-
-                <td className="fw-semibold">{u.nombre} {u.apellido}</td>
-                <td>{u.usuario}</td>
-
-                <td>
-                  {u.proyectos_detallados.map((p) => p.nombre).join(", ") || "—"}
-                </td>
-
-                <td className="text-center">
-                  <button
-                    className="btn btn-warning btn-sm me-2"
-                    onClick={() => setEditando(u)}
-                  >
-                    <i className="bi bi-pencil-square"></i>
-                  </button>
-
-                  <button
-                    className="btn btn-danger btn-sm"
-                    onClick={() => eliminarUsuario(u.id)}
-                  >
-                    <i className="bi bi-trash"></i>
-                  </button>
-                </td>
-
               </tr>
-            );
-          })}
-        </tbody>
-      </table>
+            )}
+          </tbody>
+        </table>
+      </div>
 
-      {/* ======================== */}
-      {/*      PIE + PAGINACIÓN    */}
-      {/* ======================== */}
-      <div className="bg-light p-3 text-secondary small flex justify-between items-center">
-
+      <div className="qc-users-table-footer">
         <span>
-          Mostrando {usuariosPaginados.length} de {usuariosFiltrados.length} registros
+          Mostrando {primerRegistro} a {ultimoRegistro} de {usuariosFiltrados.length} registros
         </span>
 
-        <div className="flex items-center gap-2">
-
+        <nav className="qc-pagination" aria-label="Paginación de usuarios">
           <button
-            className="btn btn-outline-secondary btn-sm"
-            disabled={paginaActual === 1}
-            onClick={() => setPaginaActual(1)}
+            type="button"
+            className="qc-page-btn"
+            disabled={paginaSegura === 1}
+            onClick={() => goToPage(1)}
           >
+            <i className="bi bi-chevron-left" aria-hidden="true" />
             Primero
           </button>
 
           <button
-            className="btn btn-outline-secondary btn-sm"
-            disabled={paginaActual === 1}
-            onClick={() => setPaginaActual(paginaActual - 1)}
+            type="button"
+            className="qc-page-btn"
+            disabled={paginaSegura === 1}
+            onClick={() => goToPage(paginaSegura - 1)}
           >
+            <i className="bi bi-chevron-left" aria-hidden="true" />
             Anterior
           </button>
 
-          {generarPaginas().map((p, i) =>
-            p === "..." ? (
-              <span key={i}>...</span>
+          {generarPaginas().map((page, index) =>
+            page === "..." ? (
+              <span className="qc-page-ellipsis" key={`ellipsis-${index}`}>
+                ...
+              </span>
             ) : (
               <button
-                key={i}
-                className={`btn btn-sm ${
-                  paginaActual === p ? "btn-primary" : "btn-outline-secondary"
+                type="button"
+                key={page}
+                className={`qc-page-btn qc-page-btn-number ${
+                  paginaSegura === page ? "is-active" : ""
                 }`}
-                onClick={() => setPaginaActual(p)}
+                onClick={() => goToPage(page)}
               >
-                {p}
+                {page}
               </button>
             )
           )}
 
           <button
-            className="btn btn-outline-secondary btn-sm"
-            disabled={paginaActual === totalPaginas}
-            onClick={() => setPaginaActual(paginaActual + 1)}
+            type="button"
+            className="qc-page-btn"
+            disabled={paginaSegura === totalPaginas}
+            onClick={() => goToPage(paginaSegura + 1)}
           >
             Siguiente
+            <i className="bi bi-chevron-right" aria-hidden="true" />
           </button>
 
           <button
-            className="btn btn-outline-secondary btn-sm"
-            disabled={paginaActual === totalPaginas}
-            onClick={() => setPaginaActual(totalPaginas)}
+            type="button"
+            className="qc-page-btn"
+            disabled={paginaSegura === totalPaginas}
+            onClick={() => goToPage(totalPaginas)}
           >
             Último
+            <i className="bi bi-chevron-right" aria-hidden="true" />
           </button>
-
-        </div>
+        </nav>
       </div>
-
     </div>
   );
 }
