@@ -1,16 +1,16 @@
 import { useEffect, useState } from "react";
-import { UserPlus, Edit3, Users, MessageSquare, Sun, Moon, Settings } from 'feather-icons-react';
+import { UserPlus, Edit3, Users, MessageSquare, Sun, Moon, Settings } from "feather-icons-react";
 import { logDev } from "../utils/logger";
 import SidebarProfilePanel from "../components/SidebarProfilePanel";
 import { getAvatarUrl } from "../utils/url";
-import { useTheme } from "../context/ThemeContext.jsx"; // ✅
+import { useTheme } from "../context/ThemeContext.jsx";
 import socket from "../socket";
 
 const Sidebar = ({ usuario, active, setActive, onUsuarioUpdate }) => {
   const [showModal, setShowModal] = useState(false);
+  const [sidebarExpanded, setSidebarExpanded] = useState(false);
   const { isDark, toggleTheme } = useTheme();
   const [estadosUsuarios, setEstadosUsuarios] = useState({});
-
 
   useEffect(() => {
     const handleEstados = (estados = {}) => {
@@ -19,7 +19,7 @@ const Sidebar = ({ usuario, active, setActive, onUsuarioUpdate }) => {
 
     socket.on("actualizarUsuarios", handleEstados);
     fetch("/api/usuarios/estados/presencia")
-      .then((res) => res.ok ? res.json() : {})
+      .then((res) => (res.ok ? res.json() : {}))
       .then((data) => setEstadosUsuarios(data || {}))
       .catch(() => {});
 
@@ -33,7 +33,11 @@ const Sidebar = ({ usuario, active, setActive, onUsuarioUpdate }) => {
     const rawStatus = estado?.estado || usuario?.estado_presencia_actual || "desconectado";
     const dispositivo = estado?.dispositivo || "desktop";
     const meta = {
-      online: { label: dispositivo === "mobile" ? "En línea desde teléfono" : "En línea desde PC", className: "online", iconClass: dispositivo === "mobile" ? "fa-solid fa-mobile-screen-button" : "fa-solid fa-desktop" },
+      online: {
+        label: dispositivo === "mobile" ? "En línea desde teléfono" : "En línea desde PC",
+        className: "online",
+        iconClass: dispositivo === "mobile" ? "fa-solid fa-mobile-screen-button" : "fa-solid fa-desktop",
+      },
       inactivo: { label: "Inactivo", className: "idle", iconClass: "fa-solid fa-moon" },
       no_molestar: { label: "No molestar", className: "dnd", iconClass: "fa-solid fa-minus" },
       desconectado: { label: "Sin conexión", className: "offline", iconClass: "fa-regular fa-circle" },
@@ -56,15 +60,26 @@ const Sidebar = ({ usuario, active, setActive, onUsuarioUpdate }) => {
   const canCrearProyectos = usuario?.rol_permisos?.includes("crear_proyectos");
 
   const icons = [
-    ...(canCrearUsuarios ? [{ id: "add-user", label: "Añadir usuarios", icon: <UserPlus /> }] : []),
+    { id: "chat", label: "Mensajes", icon: <MessageSquare /> },
     ...(canEditarUsuarios ? [{ id: "edit-user", label: "Usuarios", icon: <Users /> }] : []),
-    ...(canCrearGrupo ? [{ id: "edit", label: "Crear grupo", icon: <Edit3 /> }] : []),
-    { id: "chat", label: "Chats", icon: <MessageSquare />, badge: null },
+    ...(canCrearUsuarios ? [{ id: "add-user", label: "Nuevo usuario", icon: <UserPlus /> }] : []),
+    ...(canCrearGrupo ? [{ id: "edit", label: "Proyectos", icon: <Edit3 /> }] : []),
     { id: "theme", label: isDark ? "Modo claro" : "Modo oscuro", icon: isDark ? <Sun /> : <Moon /> },
     { id: "settings", label: "Configuración", icon: <Settings /> },
   ];
 
   const getInitial = (correo) => correo?.charAt(0).toUpperCase();
+
+  const getUserDisplayName = () => {
+    const fullName = `${usuario?.nombre || ""} ${usuario?.apellido || ""}`.trim();
+    return fullName || usuario?.correo || "Usuario";
+  };
+
+  const getUserRoleLabel = () => {
+    if (usuario?.rol_nombre) return usuario.rol_nombre;
+    if (usuario?.rol) return usuario.rol;
+    return canCrearUsuarios || canEditarUsuarios || canCrearGrupo || canCrearProyectos ? "Administrador" : "Usuario";
+  };
 
   const handleLogout = () => {
     logDev("Sesión cerrada");
@@ -72,14 +87,31 @@ const Sidebar = ({ usuario, active, setActive, onUsuarioUpdate }) => {
   };
 
   return (
-    <div className="wa-app-rail">
+    <div className={`wa-app-rail ${sidebarExpanded ? "is-expanded" : "is-collapsed"}`}>
+      <button
+        type="button"
+        className="wa-rail-toggle"
+        onClick={() => setSidebarExpanded((prev) => !prev)}
+        aria-label={sidebarExpanded ? "Contraer menú" : "Expandir menú"}
+        aria-expanded={sidebarExpanded}
+      >
+        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+          {sidebarExpanded ? <path d="M15 6l-6 6 6 6" /> : <path d="M9 6l6 6-6 6" />}
+        </svg>
+      </button>
+
       {/* Logo */}
-      <button type="button" className="wa-rail-logo" title="Chat" onClick={() => setActive("chat")}>
-        <img src="/logo2.png" alt="Logo" />
+      <button type="button" className="wa-rail-logo" title="Quick Chat" onClick={() => setActive("chat")}>
+        <span className="wa-rail-logo-mark">
+          <img src="/logo-quick-chat.png" alt="Logo Quick Chat" />
+        </span>
+        <span className="wa-rail-logo-text">
+          Quick<span>Chat</span>
+        </span>
       </button>
 
       {/* Íconos */}
-      <div className="wa-rail-nav">
+      <div className="wa-rail-nav" aria-label="Navegación principal">
         {icons.map(({ id, icon, badge, label }) => {
           const isThemeBtn = id === "theme";
           const isActive = !isThemeBtn && active === id;
@@ -102,35 +134,45 @@ const Sidebar = ({ usuario, active, setActive, onUsuarioUpdate }) => {
                 {icon}
                 {badge && <span className="wa-rail-badge">{badge}</span>}
               </span>
+              <span className="wa-rail-label">{label}</span>
             </button>
           );
         })}
+      </div>
+
+      <div className="wa-rail-spacer" />
+
+      <div className="wa-rail-support-card" aria-hidden={!sidebarExpanded}>
+        <span className="wa-rail-support-icon">
+          <i className="fa-solid fa-bolt" aria-hidden="true" />
+        </span>
+        <strong>Conecta rápido y seguro</strong>
+        <p>Administra tu equipo y proyectos de forma eficiente.</p>
       </div>
 
       {/* Avatar */}
       <button type="button" className="wa-rail-profile" onClick={() => setShowModal(true)} title="Perfil">
         <span className="wa-presence-wrapper wa-rail-profile-presence">
           {usuario?.url_imagen ? (
-            <img
-              src={getAvatarUrl(usuario.url_imagen)}
-              alt="User"
-              className="rounded-circle border border-warning"
-              style={{ width: "40px", height: "40px", objectFit: "cover" }}
-            />
+            <img src={getAvatarUrl(usuario.url_imagen)} alt="User" className="wa-rail-avatar-img" />
           ) : (
-            <div
-              className="rounded-circle d-flex align-items-center justify-content-center text-white fw-bold"
+            <span
+              className="wa-rail-avatar-fallback"
               style={{
-                width: "40px",
-                height: "40px",
                 backgroundColor: usuario?.background,
-                fontSize: "18px",
               }}
             >
               {getInitial(usuario?.correo || "U")}
-            </div>
+            </span>
           )}
           {renderRailPresence()}
+        </span>
+        <span className="wa-rail-profile-info">
+          <strong>{getUserDisplayName()}</strong>
+          <small>{getUserRoleLabel()}</small>
+        </span>
+        <span className="wa-rail-profile-chevron" aria-hidden="true">
+          <i className="fa-solid fa-chevron-down" />
         </span>
       </button>
 
@@ -140,6 +182,7 @@ const Sidebar = ({ usuario, active, setActive, onUsuarioUpdate }) => {
         onClose={() => setShowModal(false)}
         onLogout={handleLogout}
         onUsuarioUpdate={onUsuarioUpdate}
+        sidebarExpanded={sidebarExpanded}
       />
     </div>
   );

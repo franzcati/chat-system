@@ -12487,3 +12487,849 @@ body > #root > .flex.h-screen > .wa-app-rail {
   -webkit-font-smoothing: antialiased !important;
   -moz-osx-font-smoothing: grayscale !important;
 }
+
+/* =========================================================
+   Quick Chat Sidebar colapsable premium
+   - Extiende las clases existentes sin romper la lógica actual
+   ========================================================= */
+.wa-app-rail {
+  --rail-collapsed-width: 76px;
+  --rail-expanded-width: 280px;
+  --rail-current-width: var(--rail-collapsed-width);
+  --rail-bg: rgba(255, 255, 255, 0.86);
+  --rail-border: rgba(15, 23, 42, 0.08);
+  --rail-text: #0f1b3d;
+  --rail-muted: #607095;
+  --rail-icon: #6f86b5;
+  --rail-hover-bg: rgba(14, 165, 255, 0.10);
+  --rail-active: linear-gradient(135deg, #0ea5ff 0%, #2563ff 54%, #7c3cff 100%);
+  --rail-active-shadow: 0 14px 30px rgba(37, 99, 255, 0.28);
+  --rail-soft-shadow: 0 20px 50px rgba(15, 23, 42, 0.10);
+  --rail-profile-left: 82px;
+  position: relative !important;
+  isolation: isolate !important;
+  flex: 0 0 var(--rail-current-width) !important;
+  width: var(--rail-current-width) !important;
+  min-width: var(--rail-current-width) !important;
+  max-width: var(--rail-current-width) !important;
+  height: 100vh !important;
+  padding: 14px 10px !important;
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  overflow: visible !important;
+  border-right: 1px solid var(--rail-border) !important;
+  background:
+    radial-gradient(circle at 26% 8%, rgba(14, 165, 255, 0.12), transparent 28%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.95), rgba(248, 250, 255, 0.82)),
+    var(--rail-bg) !important;
+  color: var(--rail-text) !important;
+  box-shadow: var(--rail-soft-shadow) !important;
+  backdrop-filter: blur(22px) saturate(1.25) !important;
+  -webkit-backdrop-filter: blur(22px) saturate(1.25) !important;
+  transition:
+    width 0.28s cubic-bezier(0.22, 1, 0.36, 1),
+    min-width 0.28s cubic-bezier(0.22, 1, 0.36, 1),
+    max-width 0.28s cubic-bezier(0.22, 1, 0.36, 1),
+    flex-basis 0.28s cubic-bezier(0.22, 1, 0.36, 1),
+    padding 0.28s cubic-bezier(0.22, 1, 0.36, 1),
+    background-color 0.22s ease,
+    border-color 0.22s ease,
+    box-shadow 0.22s ease !important;
+  z-index: 120 !important;
+}
+
+.wa-app-rail.is-collapsed {
+  --rail-current-width: var(--rail-collapsed-width);
+  --rail-profile-left: 82px;
+  align-items: center !important;
+}
+
+.wa-app-rail.is-expanded {
+  --rail-current-width: var(--rail-expanded-width);
+  --rail-profile-left: 292px;
+  align-items: stretch !important;
+  padding: 24px 18px 18px !important;
+}
+
+#root > .flex.h-screen > .wa-app-rail.is-collapsed,
+body > #root > .flex.h-screen > .wa-app-rail.is-collapsed {
+  flex: 0 0 var(--rail-collapsed-width) !important;
+  width: var(--rail-collapsed-width) !important;
+  min-width: var(--rail-collapsed-width) !important;
+  max-width: var(--rail-collapsed-width) !important;
+}
+
+#root > .flex.h-screen > .wa-app-rail.is-expanded,
+body > #root > .flex.h-screen > .wa-app-rail.is-expanded {
+  flex: 0 0 var(--rail-expanded-width) !important;
+  width: var(--rail-expanded-width) !important;
+  min-width: var(--rail-expanded-width) !important;
+  max-width: var(--rail-expanded-width) !important;
+}
+
+.wa-rail-toggle {
+  position: absolute !important;
+  top: 32px !important;
+  right: -18px !important;
+  width: 38px !important;
+  height: 38px !important;
+  border: 1px solid rgba(255, 255, 255, 0.32) !important;
+  border-radius: 999px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  padding: 0 !important;
+  color: #ffffff !important;
+  background: linear-gradient(135deg, #0ea5ff 0%, #2563ff 48%, #7c3cff 100%) !important;
+  box-shadow: 0 14px 30px rgba(37, 99, 255, 0.36), 0 0 0 6px rgba(37, 99, 255, 0.08) !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+  transform: translateX(-6px) scale(0.96) !important;
+  transition: opacity 0.18s ease, transform 0.18s ease, box-shadow 0.18s ease !important;
+  cursor: pointer !important;
+  z-index: 4 !important;
+}
+
+.wa-rail-toggle svg {
+  width: 20px !important;
+  height: 20px !important;
+  fill: none !important;
+  stroke: currentColor !important;
+  stroke-width: 2.7 !important;
+  stroke-linecap: round !important;
+  stroke-linejoin: round !important;
+}
+
+.wa-app-rail:hover .wa-rail-toggle,
+.wa-app-rail:focus-within .wa-rail-toggle {
+  opacity: 1 !important;
+  pointer-events: auto !important;
+  transform: translateX(0) scale(1) !important;
+}
+
+.wa-rail-toggle:hover,
+.wa-rail-toggle:focus-visible {
+  box-shadow: 0 18px 36px rgba(37, 99, 255, 0.48), 0 0 0 7px rgba(124, 60, 255, 0.12) !important;
+  transform: translateX(0) scale(1.04) !important;
+}
+
+.wa-rail-logo,
+.wa-rail-profile,
+.wa-rail-item {
+  appearance: none !important;
+  -webkit-appearance: none !important;
+  border: 0 !important;
+  outline: 0 !important;
+  text-decoration: none !important;
+}
+
+.wa-rail-logo {
+  width: 52px !important;
+  min-height: 52px !important;
+  height: 52px !important;
+  flex: 0 0 52px !important;
+  margin: 0 0 26px !important;
+  padding: 0 !important;
+  border-radius: 18px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 12px !important;
+  color: var(--rail-text) !important;
+  background: rgba(255, 255, 255, 0.62) !important;
+  box-shadow: inset 0 0 0 1px rgba(15, 23, 42, 0.04), 0 12px 30px rgba(15, 23, 42, 0.08) !important;
+  transition: width 0.28s cubic-bezier(0.22, 1, 0.36, 1), background 0.18s ease, transform 0.18s ease, box-shadow 0.18s ease !important;
+}
+
+.wa-app-rail.is-expanded .wa-rail-logo {
+  width: 100% !important;
+  justify-content: flex-start !important;
+  padding: 0 12px !important;
+  margin-bottom: 30px !important;
+}
+
+.wa-rail-logo:hover {
+  background: rgba(255, 255, 255, 0.78) !important;
+  transform: translateY(-1px) !important;
+  box-shadow: inset 0 0 0 1px rgba(14, 165, 255, 0.16), 0 16px 36px rgba(37, 99, 255, 0.14) !important;
+}
+
+.wa-rail-logo-mark {
+  width: 42px !important;
+  height: 42px !important;
+  flex: 0 0 42px !important;
+  border-radius: 16px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  background: linear-gradient(135deg, rgba(14, 165, 255, 0.13), rgba(124, 60, 255, 0.10)) !important;
+}
+
+.wa-rail-logo img {
+  width: 34px !important;
+  height: 34px !important;
+  object-fit: contain !important;
+  filter: drop-shadow(0 10px 16px rgba(37, 99, 235, 0.22)) !important;
+}
+
+.wa-rail-logo-text {
+  display: inline-flex !important;
+  align-items: baseline !important;
+  gap: 3px !important;
+  min-width: 0 !important;
+  overflow: hidden !important;
+  white-space: nowrap !important;
+  color: var(--rail-text) !important;
+  font-size: 1.16rem !important;
+  font-weight: 900 !important;
+  letter-spacing: -0.045em !important;
+  opacity: 0 !important;
+  max-width: 0 !important;
+  transform: translateX(-8px) !important;
+  transition: opacity 0.2s ease, max-width 0.26s ease, transform 0.26s ease !important;
+}
+
+.wa-rail-logo-text span {
+  color: #0b83ff !important;
+  font-style: italic !important;
+}
+
+.wa-app-rail.is-expanded .wa-rail-logo-text {
+  opacity: 1 !important;
+  max-width: 160px !important;
+  transform: translateX(0) !important;
+}
+
+.wa-rail-nav {
+  width: 100% !important;
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  gap: 10px !important;
+}
+
+.wa-app-rail.is-expanded .wa-rail-nav {
+  align-items: stretch !important;
+  gap: 12px !important;
+}
+
+.wa-rail-item {
+  position: relative !important;
+  width: 52px !important;
+  height: 52px !important;
+  min-height: 52px !important;
+  border-radius: 17px !important;
+  padding: 0 !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 0 !important;
+  color: var(--rail-icon) !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  transform: translateZ(0) !important;
+  transition:
+    width 0.28s cubic-bezier(0.22, 1, 0.36, 1),
+    background 0.18s ease,
+    color 0.18s ease,
+    transform 0.18s ease,
+    box-shadow 0.18s ease,
+    padding 0.28s cubic-bezier(0.22, 1, 0.36, 1) !important;
+}
+
+.wa-app-rail.is-expanded .wa-rail-item {
+  width: 100% !important;
+  justify-content: flex-start !important;
+  gap: 14px !important;
+  padding: 0 16px !important;
+}
+
+.wa-rail-item::before {
+  display: none !important;
+}
+
+.wa-rail-item:hover,
+.wa-rail-item:focus-visible {
+  color: #2563ff !important;
+  background: var(--rail-hover-bg) !important;
+  transform: translateY(-1px) !important;
+  box-shadow: inset 0 0 0 1px rgba(37, 99, 255, 0.08) !important;
+}
+
+.wa-rail-item.active {
+  color: #ffffff !important;
+  background: var(--rail-active) !important;
+  box-shadow: var(--rail-active-shadow) !important;
+}
+
+.wa-rail-icon {
+  position: relative !important;
+  flex: 0 0 24px !important;
+  width: 24px !important;
+  height: 24px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+}
+
+.wa-rail-icon svg {
+  width: 23px !important;
+  height: 23px !important;
+  stroke: currentColor !important;
+  stroke-width: 2.18 !important;
+  filter: drop-shadow(0 0 0 rgba(37, 99, 255, 0)) !important;
+  transition: filter 0.18s ease, transform 0.18s ease !important;
+}
+
+.wa-rail-item.active .wa-rail-icon svg {
+  filter: drop-shadow(0 7px 14px rgba(255, 255, 255, 0.16)) !important;
+}
+
+.wa-rail-label {
+  min-width: 0 !important;
+  overflow: hidden !important;
+  white-space: nowrap !important;
+  text-overflow: ellipsis !important;
+  color: currentColor !important;
+  font-size: 0.96rem !important;
+  font-weight: 750 !important;
+  letter-spacing: -0.01em !important;
+  opacity: 0 !important;
+  max-width: 0 !important;
+  transform: translateX(-8px) !important;
+  transition: opacity 0.18s ease, max-width 0.24s ease, transform 0.24s ease !important;
+}
+
+.wa-app-rail.is-expanded .wa-rail-label {
+  opacity: 1 !important;
+  max-width: 170px !important;
+  transform: translateX(0) !important;
+}
+
+.wa-rail-badge {
+  top: -10px !important;
+  right: -12px !important;
+  background: #0ea5ff !important;
+  box-shadow: 0 8px 18px rgba(14, 165, 255, 0.34) !important;
+}
+
+.wa-rail-spacer {
+  flex: 1 1 auto !important;
+  min-height: 18px !important;
+}
+
+.wa-rail-support-card {
+  width: 100% !important;
+  min-height: 180px !important;
+  margin: 14px 0 18px !important;
+  padding: 22px 18px !important;
+  border: 1px solid rgba(37, 99, 255, 0.10) !important;
+  border-radius: 20px !important;
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 9px !important;
+  text-align: center !important;
+  background:
+    radial-gradient(circle at 50% 16%, rgba(14, 165, 255, 0.16), transparent 32%),
+    linear-gradient(145deg, rgba(239, 246, 255, 0.92), rgba(255, 255, 255, 0.72)) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.78), 0 16px 36px rgba(15, 23, 42, 0.08) !important;
+  opacity: 0 !important;
+  max-height: 0 !important;
+  overflow: hidden !important;
+  pointer-events: none !important;
+  transform: translateY(10px) scale(0.98) !important;
+  transition: opacity 0.18s ease, transform 0.22s ease, max-height 0.28s ease, margin 0.28s ease, padding 0.28s ease !important;
+}
+
+.wa-app-rail.is-collapsed .wa-rail-support-card {
+  min-height: 0 !important;
+  margin: 0 !important;
+  padding-top: 0 !important;
+  padding-bottom: 0 !important;
+  border-width: 0 !important;
+}
+
+.wa-app-rail.is-expanded .wa-rail-support-card {
+  opacity: 1 !important;
+  max-height: 220px !important;
+  pointer-events: auto !important;
+  transform: translateY(0) scale(1) !important;
+}
+
+.wa-rail-support-icon {
+  width: 58px !important;
+  height: 58px !important;
+  border-radius: 999px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  color: #2563ff !important;
+  background: linear-gradient(135deg, rgba(14, 165, 255, 0.16), rgba(124, 60, 255, 0.12)) !important;
+  box-shadow: inset 0 0 0 1px rgba(37, 99, 255, 0.08), 0 12px 28px rgba(37, 99, 255, 0.12) !important;
+  font-size: 1.35rem !important;
+}
+
+.wa-rail-support-card strong {
+  color: #0b66ff !important;
+  font-size: 0.92rem !important;
+  font-weight: 850 !important;
+  line-height: 1.2 !important;
+}
+
+.wa-rail-support-card p {
+  margin: 0 !important;
+  color: var(--rail-muted) !important;
+  font-size: 0.82rem !important;
+  line-height: 1.45 !important;
+}
+
+.wa-rail-profile {
+  width: 52px !important;
+  height: 52px !important;
+  min-height: 52px !important;
+  flex: 0 0 52px !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border-radius: 18px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 0 !important;
+  color: var(--rail-text) !important;
+  background: transparent !important;
+  transition:
+    width 0.28s cubic-bezier(0.22, 1, 0.36, 1),
+    background 0.18s ease,
+    transform 0.18s ease,
+    box-shadow 0.18s ease,
+    padding 0.28s cubic-bezier(0.22, 1, 0.36, 1) !important;
+}
+
+.wa-app-rail.is-expanded .wa-rail-profile {
+  width: 100% !important;
+  justify-content: flex-start !important;
+  gap: 12px !important;
+  padding: 8px 10px !important;
+  height: 64px !important;
+  flex-basis: 64px !important;
+  border-radius: 20px !important;
+  background: rgba(255, 255, 255, 0.60) !important;
+  box-shadow: inset 0 0 0 1px rgba(15, 23, 42, 0.06), 0 16px 36px rgba(15, 23, 42, 0.08) !important;
+}
+
+.wa-rail-profile:hover,
+.wa-rail-profile:focus-visible {
+  background: var(--rail-hover-bg) !important;
+  transform: translateY(-1px) !important;
+  box-shadow: inset 0 0 0 1px rgba(37, 99, 255, 0.10), 0 14px 30px rgba(37, 99, 255, 0.12) !important;
+}
+
+.wa-rail-profile-presence,
+.wa-rail-avatar-img,
+.wa-rail-avatar-fallback {
+  width: 42px !important;
+  height: 42px !important;
+  min-width: 42px !important;
+  border-radius: 999px !important;
+}
+
+.wa-rail-profile-presence {
+  position: relative !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  flex: 0 0 42px !important;
+  line-height: 0 !important;
+}
+
+.wa-rail-avatar-img {
+  display: block !important;
+  object-fit: cover !important;
+  border: 2px solid rgba(255, 255, 255, 0.86) !important;
+  box-shadow: 0 10px 22px rgba(15, 23, 42, 0.16) !important;
+}
+
+.wa-rail-avatar-fallback {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff !important;
+  font-size: 1rem !important;
+  font-weight: 900 !important;
+  line-height: 1 !important;
+  border: 2px solid rgba(255, 255, 255, 0.86) !important;
+  box-shadow: 0 10px 22px rgba(15, 23, 42, 0.16) !important;
+}
+
+.wa-rail-profile-presence .wa-presence-badge {
+  right: -3px !important;
+  bottom: -3px !important;
+  width: 15px !important;
+  height: 15px !important;
+  border-width: 2px !important;
+  border-color: rgba(255, 255, 255, 0.94) !important;
+  font-size: 7px !important;
+}
+
+.wa-rail-profile-info {
+  min-width: 0 !important;
+  flex: 1 1 auto !important;
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: flex-start !important;
+  justify-content: center !important;
+  gap: 3px !important;
+  overflow: hidden !important;
+  opacity: 0 !important;
+  max-width: 0 !important;
+  transform: translateX(-8px) !important;
+  transition: opacity 0.18s ease, max-width 0.24s ease, transform 0.24s ease !important;
+}
+
+.wa-app-rail.is-expanded .wa-rail-profile-info {
+  opacity: 1 !important;
+  max-width: 140px !important;
+  transform: translateX(0) !important;
+}
+
+.wa-rail-profile-info strong,
+.wa-rail-profile-info small {
+  max-width: 100% !important;
+  overflow: hidden !important;
+  white-space: nowrap !important;
+  text-overflow: ellipsis !important;
+}
+
+.wa-rail-profile-info strong {
+  color: var(--rail-text) !important;
+  font-size: 0.9rem !important;
+  font-weight: 850 !important;
+  line-height: 1.1 !important;
+}
+
+.wa-rail-profile-info small {
+  color: var(--rail-muted) !important;
+  font-size: 0.76rem !important;
+  font-weight: 650 !important;
+}
+
+.wa-rail-profile-chevron {
+  flex: 0 0 auto !important;
+  width: 24px !important;
+  height: 24px !important;
+  border-radius: 999px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  color: var(--rail-muted) !important;
+  opacity: 0 !important;
+  max-width: 0 !important;
+  transform: translateX(-6px) !important;
+  transition: opacity 0.18s ease, max-width 0.24s ease, transform 0.24s ease, background 0.18s ease !important;
+}
+
+.wa-app-rail.is-expanded .wa-rail-profile-chevron {
+  opacity: 1 !important;
+  max-width: 24px !important;
+  transform: translateX(0) !important;
+}
+
+.wa-app-rail.is-expanded .wa-rail-profile:hover .wa-rail-profile-chevron {
+  background: rgba(37, 99, 255, 0.10) !important;
+  color: #2563ff !important;
+}
+
+.wa-profile-popover.is-sidebar-collapsed {
+  --sidebar-profile-left: 82px;
+}
+
+.wa-profile-popover.is-sidebar-expanded {
+  --sidebar-profile-left: 292px;
+}
+
+.wa-profile-popover.is-sidebar-collapsed,
+.wa-profile-popover.is-sidebar-expanded {
+  left: var(--sidebar-profile-left) !important;
+  transition: left 0.28s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.18s ease, transform 0.18s ease !important;
+}
+
+:root[data-theme="dark"] .wa-app-rail {
+  --rail-bg: rgba(5, 12, 32, 0.92);
+  --rail-border: rgba(116, 139, 255, 0.18);
+  --rail-text: #f8fafc;
+  --rail-muted: #94a3b8;
+  --rail-icon: #9fb2d8;
+  --rail-hover-bg: rgba(116, 139, 255, 0.12);
+  --rail-active: linear-gradient(135deg, #0ea5ff 0%, #2563ff 52%, #8b5cf6 100%);
+  --rail-active-shadow: 0 0 24px rgba(37, 99, 255, 0.42), 0 16px 36px rgba(2, 6, 23, 0.34);
+  --rail-soft-shadow: 0 0 0 1px rgba(116, 139, 255, 0.08), 0 26px 60px rgba(0, 0, 0, 0.30);
+  background:
+    radial-gradient(circle at 28% 8%, rgba(14, 165, 255, 0.20), transparent 30%),
+    linear-gradient(180deg, rgba(10, 22, 50, 0.96), rgba(3, 7, 18, 0.96)),
+    #050b18 !important;
+}
+
+:root[data-theme="dark"] .wa-rail-logo {
+  background: rgba(10, 22, 50, 0.68) !important;
+  box-shadow: inset 0 0 0 1px rgba(116, 139, 255, 0.14), 0 12px 30px rgba(0, 0, 0, 0.24) !important;
+}
+
+:root[data-theme="dark"] .wa-rail-logo:hover,
+:root[data-theme="dark"] .wa-rail-profile:hover,
+:root[data-theme="dark"] .wa-rail-item:hover,
+:root[data-theme="dark"] .wa-rail-item:focus-visible {
+  background: rgba(37, 99, 255, 0.14) !important;
+  color: #e0f2fe !important;
+  box-shadow: inset 0 0 0 1px rgba(116, 139, 255, 0.18), 0 0 24px rgba(37, 99, 255, 0.16) !important;
+}
+
+:root[data-theme="dark"] .wa-rail-item.active {
+  color: #ffffff !important;
+  background: var(--rail-active) !important;
+  box-shadow: var(--rail-active-shadow) !important;
+}
+
+:root[data-theme="dark"] .wa-rail-logo-mark {
+  background: linear-gradient(135deg, rgba(14, 165, 255, 0.20), rgba(139, 92, 246, 0.16)) !important;
+}
+
+:root[data-theme="dark"] .wa-rail-logo img {
+  filter: drop-shadow(0 0 14px rgba(14, 165, 255, 0.28)) !important;
+}
+
+:root[data-theme="dark"] .wa-rail-logo-text span {
+  color: #38bdf8 !important;
+}
+
+:root[data-theme="dark"] .wa-rail-support-card {
+  border-color: rgba(116, 139, 255, 0.16) !important;
+  background:
+    radial-gradient(circle at 50% 16%, rgba(37, 99, 255, 0.28), transparent 34%),
+    linear-gradient(145deg, rgba(8, 18, 42, 0.92), rgba(10, 15, 32, 0.82)) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 18px 44px rgba(0, 0, 0, 0.32) !important;
+}
+
+:root[data-theme="dark"] .wa-rail-support-icon {
+  color: #7dd3fc !important;
+  background: linear-gradient(135deg, rgba(14, 165, 255, 0.22), rgba(139, 92, 246, 0.18)) !important;
+  box-shadow: inset 0 0 0 1px rgba(125, 211, 252, 0.12), 0 0 24px rgba(37, 99, 255, 0.22) !important;
+}
+
+:root[data-theme="dark"] .wa-rail-support-card strong {
+  color: #60a5fa !important;
+}
+
+:root[data-theme="dark"] .wa-app-rail.is-expanded .wa-rail-profile {
+  background: rgba(10, 22, 50, 0.70) !important;
+  box-shadow: inset 0 0 0 1px rgba(116, 139, 255, 0.14), 0 18px 40px rgba(0, 0, 0, 0.26) !important;
+}
+
+:root[data-theme="dark"] .wa-rail-avatar-img,
+:root[data-theme="dark"] .wa-rail-avatar-fallback {
+  border-color: rgba(15, 23, 42, 0.94) !important;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.34), 0 0 18px rgba(37, 99, 255, 0.16) !important;
+}
+
+:root[data-theme="dark"] .wa-rail-profile-presence .wa-presence-badge {
+  border-color: #050b18 !important;
+}
+
+:root[data-theme="dark"] .wa-rail-toggle {
+  border-color: rgba(125, 211, 252, 0.18) !important;
+  box-shadow: 0 0 24px rgba(37, 99, 255, 0.42), 0 0 0 6px rgba(139, 92, 246, 0.10) !important;
+}
+
+@media (max-width: 720px) {
+  .wa-app-rail.is-expanded {
+    --rail-expanded-width: 246px;
+    --rail-profile-left: 258px;
+  }
+
+  #root > .flex.h-screen > .wa-app-rail.is-expanded,
+  body > #root > .flex.h-screen > .wa-app-rail.is-expanded {
+    flex-basis: var(--rail-expanded-width) !important;
+    width: var(--rail-expanded-width) !important;
+    min-width: var(--rail-expanded-width) !important;
+    max-width: var(--rail-expanded-width) !important;
+  }
+
+  .wa-profile-popover.is-sidebar-collapsed,
+  .wa-profile-popover.is-sidebar-expanded {
+    left: 10px !important;
+    bottom: 10px !important;
+    width: calc(100vw - 20px) !important;
+  }
+}
+
+/* =========================================================
+   Fix modales de perfil con sidebar colapsable
+   - Los modales se renderizan en document.body desde SidebarProfilePanel.
+   - Estas reglas aseguran que siempre ocupen el viewport completo
+     y queden centrados, sin comprimirse por el ancho del sidebar.
+   ========================================================= */
+body > .wa-profile-modal-backdrop,
+#root ~ .wa-profile-modal-backdrop {
+  position: fixed !important;
+  inset: 0 !important;
+  left: 0 !important;
+  top: 0 !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  height: 100dvh !important;
+  min-width: 100vw !important;
+  min-height: 100vh !important;
+  min-height: 100dvh !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  padding: 18px !important;
+  z-index: 1000000 !important;
+  box-sizing: border-box !important;
+  overflow: auto !important;
+}
+
+body > .wa-profile-edit-layer,
+body > .wa-profile-status-layer,
+body > .wa-profile-image-picker-layer,
+body > .wa-profile-bio-full-layer,
+body > .wa-profile-crop-layer {
+  transform: none !important;
+  contain: none !important;
+}
+
+body > .wa-profile-modal-backdrop > .wa-profile-edit-modal,
+body > .wa-profile-modal-backdrop > .wa-profile-status-modal,
+body > .wa-profile-modal-backdrop > .wa-profile-image-picker-modal,
+body > .wa-profile-modal-backdrop > .wa-profile-bio-full-modal,
+body > .wa-profile-modal-backdrop > .wa-profile-crop-modal {
+  margin: auto !important;
+  max-width: calc(100vw - 36px) !important;
+  max-height: calc(100dvh - 36px) !important;
+}
+
+body > .wa-profile-edit-layer > .wa-profile-edit-modal {
+  width: min(860px, calc(100vw - 36px)) !important;
+}
+
+body > .wa-profile-status-layer > .wa-profile-status-modal {
+  width: min(486px, calc(100vw - 28px)) !important;
+}
+
+body > .wa-profile-image-picker-layer > .wa-profile-image-picker-modal,
+body > .wa-profile-crop-layer > .wa-profile-crop-modal {
+  width: min(560px, calc(100vw - 36px)) !important;
+}
+
+@media (max-width: 720px) {
+  body > .wa-profile-modal-backdrop,
+  #root ~ .wa-profile-modal-backdrop {
+    padding: 12px !important;
+  }
+
+  body > .wa-profile-modal-backdrop > .wa-profile-edit-modal,
+  body > .wa-profile-modal-backdrop > .wa-profile-status-modal,
+  body > .wa-profile-modal-backdrop > .wa-profile-image-picker-modal,
+  body > .wa-profile-modal-backdrop > .wa-profile-bio-full-modal,
+  body > .wa-profile-modal-backdrop > .wa-profile-crop-modal {
+    max-width: calc(100vw - 24px) !important;
+    max-height: calc(100dvh - 24px) !important;
+  }
+}
+
+/* =========================================================
+   QUICK CHAT - Ajuste fino del logo del sidebar
+   Corrige el encaje visual de /logo-quick-chat.png en modo claro/oscuro.
+   ========================================================= */
+.wa-app-rail .wa-rail-logo {
+  width: 54px !important;
+  min-height: 54px !important;
+  height: 54px !important;
+  flex-basis: 54px !important;
+  border-radius: 19px !important;
+  background:
+    radial-gradient(circle at 30% 20%, rgba(14, 165, 255, 0.18), transparent 42%),
+    linear-gradient(145deg, rgba(255, 255, 255, 0.92), rgba(239, 246, 255, 0.82)) !important;
+  box-shadow:
+    inset 0 0 0 1px rgba(37, 99, 255, 0.08),
+    0 12px 28px rgba(37, 99, 255, 0.14),
+    0 2px 8px rgba(15, 23, 42, 0.06) !important;
+  overflow: visible !important;
+}
+
+.wa-app-rail .wa-rail-logo-mark {
+  width: 48px !important;
+  height: 48px !important;
+  flex: 0 0 48px !important;
+  border-radius: 17px !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  overflow: visible !important;
+}
+
+.wa-app-rail .wa-rail-logo img {
+  width: 46px !important;
+  height: 46px !important;
+  max-width: none !important;
+  max-height: none !important;
+  display: block !important;
+  object-fit: contain !important;
+  transform: scale(1.12) !important;
+  transform-origin: center !important;
+  filter: drop-shadow(0 8px 15px rgba(14, 165, 255, 0.22)) !important;
+}
+
+.wa-app-rail.is-expanded .wa-rail-logo {
+  width: 100% !important;
+  min-height: 58px !important;
+  height: 58px !important;
+  flex-basis: 58px !important;
+  padding: 0 13px !important;
+}
+
+.wa-app-rail.is-expanded .wa-rail-logo-mark {
+  width: 48px !important;
+  height: 48px !important;
+  flex-basis: 48px !important;
+}
+
+:root[data-theme="dark"] .wa-app-rail .wa-rail-logo {
+  background:
+    radial-gradient(circle at 30% 20%, rgba(14, 165, 255, 0.20), transparent 44%),
+    linear-gradient(145deg, rgba(9, 25, 58, 0.96), rgba(3, 9, 26, 0.94)) !important;
+  box-shadow:
+    inset 0 0 0 1px rgba(125, 211, 252, 0.12),
+    0 0 24px rgba(37, 99, 255, 0.18),
+    0 14px 32px rgba(0, 0, 0, 0.34) !important;
+}
+
+:root[data-theme="dark"] .wa-app-rail .wa-rail-logo img {
+  filter:
+    drop-shadow(0 0 12px rgba(14, 165, 255, 0.34))
+    drop-shadow(0 8px 16px rgba(0, 0, 0, 0.26)) !important;
+}
+
+/* =========================================================
+   QUICK CHAT - Logo sin fondo en modo oscuro
+   En modo claro se conserva el fondo premium actual.
+   ========================================================= */
+:root[data-theme="dark"] .wa-app-rail .wa-rail-logo,
+:root[data-theme="dark"] .wa-app-rail .wa-rail-logo:hover,
+:root[data-theme="dark"] .wa-app-rail .wa-rail-logo:focus-visible {
+  background: transparent !important;
+  
+  border-color: transparent !important;
+}
+
+:root[data-theme="dark"] .wa-app-rail .wa-rail-logo-mark,
+:root[data-theme="dark"] .wa-app-rail .wa-rail-logo-mark:hover {
+  background: transparent !important;
+  
+}
+
+:root[data-theme="dark"] .wa-app-rail .wa-rail-logo img {
+  filter: drop-shadow(0 0 10px rgba(14, 165, 255, 0.28)) !important;
+}

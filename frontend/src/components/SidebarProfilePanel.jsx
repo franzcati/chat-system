@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import axios from "axios";
 import toast from "react-hot-toast";
 import { cambiarEstadoPresenciaSocket } from "../socket";
@@ -571,7 +572,7 @@ const buildProfileThemeVars = (primaryValue, secondaryValue) => {
   };
 };
 
-const SidebarProfilePanel = ({ usuario, show, onClose, onLogout, onUsuarioUpdate }) => {
+const SidebarProfilePanel = ({ usuario, show, onClose, onLogout, onUsuarioUpdate, sidebarExpanded = false }) => {
   const { theme: appTheme } = useTheme();
   const defaultProfileTheme = useMemo(() => getDefaultProfileTheme(appTheme), [appTheme]);
   const [perfil, setPerfil] = useState(usuario || null);
@@ -805,6 +806,12 @@ const SidebarProfilePanel = ({ usuario, show, onClose, onLogout, onUsuarioUpdate
   }, [cropEditor?.previewUrl]);
 
   if (!show) return null;
+
+  const renderModalPortal = (node) => {
+    if (!node) return null;
+    if (typeof document === "undefined") return node;
+    return createPortal(node, document.body);
+  };
 
   const syncUser = (nextUser) => {
     const merged = { ...(usuario || {}), ...(nextUser || {}) };
@@ -1073,7 +1080,7 @@ const SidebarProfilePanel = ({ usuario, show, onClose, onLogout, onUsuarioUpdate
 
   return (
     <>
-      <div className="wa-profile-popover" role="dialog" aria-label="Perfil de usuario">
+      <div className={`wa-profile-popover ${sidebarExpanded ? "is-sidebar-expanded" : "is-sidebar-collapsed"}`} role="dialog" aria-label="Perfil de usuario">
         <div className="wa-profile-card" style={profileThemeWithCoverStyle}>
           <div
             className={`wa-profile-cover ${coverUrl ? "has-image" : ""}`}
@@ -1224,7 +1231,7 @@ const SidebarProfilePanel = ({ usuario, show, onClose, onLogout, onUsuarioUpdate
         }}
       />
 
-      {imagePicker && (
+      {renderModalPortal(imagePicker && (
         <div className="wa-profile-modal-backdrop wa-profile-image-picker-layer">
           <div className="wa-profile-image-picker-modal" role="dialog" aria-label="Seleccionar una imagen" style={editOpen ? editThemeWithCoverStyle : profileThemeWithCoverStyle}>
             <button type="button" className="wa-profile-modal-close" onClick={() => setImagePicker(null)}>
@@ -1262,9 +1269,9 @@ const SidebarProfilePanel = ({ usuario, show, onClose, onLogout, onUsuarioUpdate
             )}
           </div>
         </div>
-      )}
+      ))}
 
-      {statusModalOpen && (
+      {renderModalPortal(statusModalOpen && (
         <div className="wa-profile-modal-backdrop wa-profile-status-layer">
           <div className={`wa-profile-status-modal ${statusModalShake ? "is-shaking" : ""}`} style={profileThemeWithCoverStyle}>
             <button type="button" className="wa-profile-modal-close" onClick={closeStatusModal}>
@@ -1327,9 +1334,9 @@ const SidebarProfilePanel = ({ usuario, show, onClose, onLogout, onUsuarioUpdate
             </div>
           </div>
         </div>
-      )}
+      ))}
 
-      {editOpen && (
+      {renderModalPortal(editOpen && (
         <div className="wa-profile-modal-backdrop wa-profile-edit-layer">
           <div className={`wa-profile-edit-modal ${editModalShake ? "is-shaking" : ""}`} style={editThemeWithCoverStyle}>
             <button type="button" className="wa-profile-modal-close" onClick={closeEditModal}>
@@ -1427,9 +1434,9 @@ const SidebarProfilePanel = ({ usuario, show, onClose, onLogout, onUsuarioUpdate
             </div>
           </div>
         </div>
-      )}
+      ))}
 
-      {bioModalOpen && (
+      {renderModalPortal(bioModalOpen && (
         <div className="wa-profile-modal-backdrop wa-profile-bio-full-layer">
           <div className="wa-profile-bio-full-modal" role="dialog" aria-label="Biografía completa" style={profileThemeWithCoverStyle}>
             <button type="button" className="wa-profile-modal-close" onClick={() => setBioModalOpen(false)} aria-label="Cerrar biografía">
@@ -1460,9 +1467,9 @@ const SidebarProfilePanel = ({ usuario, show, onClose, onLogout, onUsuarioUpdate
             </div>
           </div>
         </div>
-      )}
+      ))}
 
-      {cropEditor && (() => {
+      {renderModalPortal(cropEditor && (() => {
         const config = CROP_CONFIG[cropEditor.kind] || CROP_CONFIG.avatar;
         return (
           <div className="wa-profile-modal-backdrop wa-profile-crop-layer">
@@ -1543,7 +1550,7 @@ const SidebarProfilePanel = ({ usuario, show, onClose, onLogout, onUsuarioUpdate
             </div>
           </div>
         );
-      })()}
+      })())}
     </>
   );
 };
