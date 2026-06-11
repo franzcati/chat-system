@@ -22,7 +22,7 @@ const storage = multer.diskStorage({
 
 const upload = multer({ storage });
 
-const getBaseUrl = () => process.env.BASE_URL || "https://chatvista.click";
+const getBaseUrl = () => process.env.BASE_URL || "https://quickchat.click";
 
 const buildAbsoluteUrl = (url) => {
   if (!url) return null;
@@ -264,7 +264,7 @@ router.post("/", upload.single("imagen"), async (req, res) => {
     );
 
     // 6️⃣ Armar objeto completo
-    const BASE_URL = process.env.BASE_URL || "https://chatvista.click";
+    const BASE_URL = process.env.BASE_URL || "https://quickchat.click";
 
     const grupoCompleto = {
       ...grupo,
@@ -485,7 +485,7 @@ router.get("/usuario/:userId", async (req, res) => {
       userId, userId, userId, userId, userId, userId, userId
     ]);
 
-    const BASE_URL = process.env.BASE_URL || "https://chatvista.click";
+    const BASE_URL = process.env.BASE_URL || "https://quickchat.click";
 
     const gruposConExtras = grupos.map((g) => {
       const miembros = g.miembros ? JSON.parse(g.miembros) : [];
@@ -662,7 +662,7 @@ router.post("/:id/actualizar-miembros", async (req, res) => {
     `, [id]);
 
     const grupo = grupoRows[0];
-    const BASE_URL = process.env.BASE_URL || "https://chatvista.click";
+    const BASE_URL = process.env.BASE_URL || "https://quickchat.click";
 
     const grupoCompleto = {
       ...grupo,

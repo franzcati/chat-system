@@ -687,8 +687,8 @@ const Message = ({
       finalUrl = `/${finalUrl}`;
     }
 
-    if (finalUrl.startsWith("http://chatvista.click")) {
-      finalUrl = finalUrl.replace("http://chatvista.click", "https://chatvista.click");
+    if (finalUrl.startsWith("http://quickchat.click")) {
+      finalUrl = finalUrl.replace("http://quickchat.click", "https://quickchat.click");
     } else if (finalUrl.startsWith("http://")) {
       try {
         const u = new URL(finalUrl);
@@ -2307,10 +2307,10 @@ const Message = ({
                           {visibles.map((rawUrl, idx) => {
                             let finalUrl = todasNormalizadas[idx];
 
-                            if (finalUrl?.startsWith("http://chatvista.click")) {
+                            if (finalUrl?.startsWith("http://quickchat.click")) {
                               finalUrl = finalUrl.replace(
-                                "http://chatvista.click",
-                                "https://chatvista.click"
+                                "http://quickchat.click",
+                                "https://quickchat.click"
                               );
                             } else if (finalUrl?.startsWith("http://")) {
                               try {

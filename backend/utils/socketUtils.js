@@ -127,10 +127,10 @@ function programarPublicarEstadoUsuarios(io, options = {}) {
 
 function getAllowedSocketOrigins() {
   const defaults = [
-    "http://chatvista.click",
-    "https://chatvista.click",
-    "http://www.chatvista.click",
-    "https://www.chatvista.click",
+    "http://quickchat.click",
+    "https://quickchat.click",
+    "http://www.quickchat.click",
+    "https://www.quickchat.click",
     "http://quickchat.click",
     "https://quickchat.click",
     "http://www.quickchat.click",
