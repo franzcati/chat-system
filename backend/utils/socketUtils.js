@@ -131,10 +131,10 @@ function getAllowedSocketOrigins() {
     "https://quickchat.click",
     "http://www.quickchat.click",
     "https://www.quickchat.click",
-    "http://quickchat.click",
-    "https://quickchat.click",
-    "http://www.quickchat.click",
-    "https://www.quickchat.click",
+    "http://chatvista.click",
+    "https://chatvista.click",
+    "http://www.chatvista.click",
+    "https://www.chatvista.click",
   ];
 
   const envOrigins = String(
