@@ -2,9 +2,51 @@ const express = require("express");
 const router = express.Router();
 const db = require("../db");
 const { logDev } = require("../utils/logger");
+const { queryWithRetry } = require("../utils/dbRetry");
 
 function formatDateToMySQL(date) {
   return date.toISOString().slice(0, 19).replace("T", " ");
+}
+
+
+const MARK_PRIVATE_BATCH_SIZE = 500;
+const MARK_PRIVATE_MAX_BATCHES = 20;
+
+async function markPrivateMessagesAsSeen(contactoId, userId) {
+  let totalActualizados = 0;
+
+  for (let batch = 0; batch < MARK_PRIVATE_MAX_BATCHES; batch += 1) {
+    const [pendientes] = await queryWithRetry(
+      db,
+      `SELECT id
+       FROM mensajes
+       WHERE usuario_envia_id = ?
+         AND usuario_recibe_id = ?
+         AND visto = 0
+       ORDER BY id ASC
+       LIMIT ?`,
+      [contactoId, userId, MARK_PRIVATE_BATCH_SIZE],
+      { attempts: 4, label: "seleccionar mensajes privados pendientes" }
+    );
+
+    if (!pendientes.length) break;
+
+    const ids = pendientes.map((mensaje) => mensaje.id);
+    const [result] = await queryWithRetry(
+      db,
+      `UPDATE mensajes
+       SET visto = 1
+       WHERE id IN (?)`,
+      [ids],
+      { attempts: 4, label: "marcar mensajes privados como vistos" }
+    );
+
+    totalActualizados += result.affectedRows || 0;
+
+    if (pendientes.length < MARK_PRIVATE_BATCH_SIZE) break;
+  }
+
+  return totalActualizados;
 }
 
 function getPaginationOptions(query) {
@@ -682,11 +724,13 @@ router.post("/", async (req, res) => {
   try {
     await ensureReplyColumn();
 
-    const [result] = await db.query(
+    const [result] = await queryWithRetry(
+      db,
       `INSERT INTO mensajes 
         (usuario_envia_id, usuario_recibe_id, mensaje, lote_id, reply_to_id, reply_to_tipo, reply_to_grupo_id, reenviado, fecha_envio, fijado)
       VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, 0)`,
-      [senderId, receiverId, message, loteId || null, replyToIdNum, replyToTipo, replyToGrupoIdNum, fechaEnvioMySQL]
+      [senderId, receiverId, message, loteId || null, replyToIdNum, replyToTipo, replyToGrupoIdNum, fechaEnvioMySQL],
+      { attempts: 4, label: "insertar mensaje privado" }
     );
 
     const [senderInfo] = await db.query(
@@ -828,14 +872,7 @@ router.put("/marcar-vistos", async (req, res) => {
   }
 
   try {
-    const [result] = await db.query(
-      `UPDATE mensajes 
-       SET visto = 1 
-       WHERE usuario_envia_id = ? 
-         AND usuario_recibe_id = ? 
-         AND visto = 0`,
-      [contactoId, userId]
-    );
+    const actualizados = await markPrivateMessagesAsSeen(contactoId, userId);
 
     const { enviarEventoAlUsuario } = req.app.get("socketUtils");
 
@@ -844,7 +881,7 @@ router.put("/marcar-vistos", async (req, res) => {
     enviarEventoAlUsuario(contactoId, "mensajesVistos", payload);
     enviarEventoAlUsuario(userId, "mensajesVistos", payload);
 
-    res.json({ success: true, actualizados: result.affectedRows });
+    res.json({ success: true, actualizados });
   } catch (err) {
     console.error("❌ Error al marcar como vistos:", err);
     res.status(500).json({ error: "Error en el servidor" });

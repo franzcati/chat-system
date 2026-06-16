@@ -5,6 +5,7 @@ const multer = require("multer");
 const path = require("path");
 const fs = require("fs");
 const { logDev } = require("../utils/logger");
+const { queryWithRetry } = require("../utils/dbRetry");
 
 
 // =======================
@@ -12,6 +13,53 @@ const { logDev } = require("../utils/logger");
 // =======================
 function formatDateToMySQL(date) {
   return date.toISOString().slice(0, 19).replace("T", " ");
+}
+
+
+const MARK_GROUP_BATCH_SIZE = 500;
+const MARK_GROUP_MAX_BATCHES = 20;
+const MAX_GROUP_SEEN_EVENTS = 500;
+
+async function markGroupMessagesAsSeen(grupoId, userId) {
+  const idsMarcados = [];
+  let totalActualizados = 0;
+
+  for (let batch = 0; batch < MARK_GROUP_MAX_BATCHES; batch += 1) {
+    const [pendientes] = await queryWithRetry(
+      db,
+      `SELECT mg.id
+       FROM mensajes_grupo mg
+       LEFT JOIN mensajes_grupo_vistos mgv
+         ON mgv.mensaje_id = mg.id
+        AND mgv.usuario_id = ?
+       WHERE mg.grupo_id = ?
+         AND mg.usuario_id != ?
+         AND mgv.mensaje_id IS NULL
+       ORDER BY mg.id ASC
+       LIMIT ?`,
+      [userId, grupoId, userId, MARK_GROUP_BATCH_SIZE],
+      { attempts: 4, label: "seleccionar mensajes de grupo pendientes de visto" }
+    );
+
+    if (!pendientes.length) break;
+
+    const ids = pendientes.map((mensaje) => mensaje.id);
+    const values = ids.map((id) => [id, userId]);
+
+    const [result] = await queryWithRetry(
+      db,
+      `INSERT IGNORE INTO mensajes_grupo_vistos (mensaje_id, usuario_id) VALUES ?`,
+      [values],
+      { attempts: 4, label: "marcar mensajes de grupo como vistos" }
+    );
+
+    idsMarcados.push(...ids);
+    totalActualizados += result.affectedRows || 0;
+
+    if (pendientes.length < MARK_GROUP_BATCH_SIZE) break;
+  }
+
+  return { idsMarcados, totalActualizados };
 }
 
 function getPaginationOptions(query) {
@@ -693,28 +741,21 @@ router.put("/marcar-vistos-grupo", async (req, res) => {
   const { enviarEventoAlUsuario } = req.app.get("socketUtils");
 
   try {
-    const [mensajes] = await db.query(
-      `SELECT id 
-       FROM mensajes_grupo 
-       WHERE grupo_id = ? AND usuario_id != ?`,
-      [grupoId, userId]
-    );
+    const { idsMarcados, totalActualizados } = await markGroupMessagesAsSeen(grupoId, userId);
 
-    if (mensajes.length === 0) {
+    if (!idsMarcados.length) {
+      enviarEventoAlUsuario(userId, "actualizarNoVistosGrupo", {
+        grupoId,
+        reset: true,
+      });
       return res.json({ success: true, actualizados: 0 });
     }
 
-    const values = mensajes.map((m) => [m.id, userId]);
-    await db.query(
-      `INSERT IGNORE INTO mensajes_grupo_vistos (mensaje_id, usuario_id) VALUES ?`,
-      [values]
-    );
-
-    mensajes.forEach((m) => {
+    idsMarcados.slice(-MAX_GROUP_SEEN_EVENTS).forEach((mensajeId) => {
       io.to(`grupo_${grupoId}`).emit("mensajesVistosGrupo", {
         grupoId,
         userId,
-        mensajeId: m.id,
+        mensajeId,
       });
     });
 
@@ -723,26 +764,32 @@ router.put("/marcar-vistos-grupo", async (req, res) => {
       reset: true,
     });
 
-    const [[ultimoMensaje]] = await db.query(
+    const [[ultimoMensaje]] = await queryWithRetry(
+      db,
       `SELECT id, usuario_id AS creadorId 
        FROM mensajes_grupo 
        WHERE grupo_id = ? ORDER BY fecha_envio DESC LIMIT 1`,
-      [grupoId]
+      [grupoId],
+      { attempts: 3, label: "obtener ultimo mensaje de grupo" }
     );
 
     if (ultimoMensaje) {
-      const [[{ totalMiembros }]] = await db.query(
+      const [[{ totalMiembros }]] = await queryWithRetry(
+        db,
         `SELECT COUNT(*) AS totalMiembros 
          FROM usuario_grupo 
          WHERE grupo_id = ? AND usuario_id != ?`,
-        [grupoId, ultimoMensaje.creadorId]
+        [grupoId, ultimoMensaje.creadorId],
+        { attempts: 3, label: "contar miembros del grupo" }
       );
 
-      const [[{ vistos }]] = await db.query(
+      const [[{ vistos }]] = await queryWithRetry(
+        db,
         `SELECT COUNT(DISTINCT usuario_id) AS vistos 
          FROM mensajes_grupo_vistos 
          WHERE mensaje_id = ?`,
-        [ultimoMensaje.id]
+        [ultimoMensaje.id],
+        { attempts: 3, label: "contar vistos del ultimo mensaje de grupo" }
       );
 
       if (vistos === totalMiembros) {
@@ -755,7 +802,7 @@ router.put("/marcar-vistos-grupo", async (req, res) => {
       }
     }
 
-    res.json({ success: true, actualizados: mensajes.length });
+    res.json({ success: true, actualizados: totalActualizados });
   } catch (err) {
     console.error("❌ Error al marcar mensajes de grupo como vistos:", err);
     res.status(500).json({ error: "Error en el servidor" });

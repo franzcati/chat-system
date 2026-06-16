@@ -2,6 +2,7 @@
 const express = require("express");
 const router = express.Router();
 const db = require("../db");
+const { stripOwnDomainFromUploadUrl } = require("../utils/urlUtils");
 const multer = require("multer");
 const path = require("path");
 const fs = require("fs");
@@ -281,11 +282,8 @@ router.post("/favorito", async (req, res) => {
       return res.status(400).json({ success: false, error: "Faltan datos" });
     }
 
-    // 🔹 Normalizar: si viene con dominio completo, lo recortamos
-    const BASE_URL = process.env.BASE_URL || "https://quickchat.click";
-    if (url.startsWith(BASE_URL)) {
-      url = url.slice(BASE_URL.length); // deja "/uploads/..."
-    }
+    // 🔹 Normalizar: si viene con cualquiera de los dominios del sistema, lo recortamos
+    url = stripOwnDomainFromUploadUrl(url);
 
     logDev("👉 Buscando sticker por url:", url);
 
@@ -337,11 +335,7 @@ router.delete("/favorito", async (req, res) => {
   }
 
   try {
-    let urlBuscar = url;
-    const BASE_URL = process.env.BASE_URL || "https://quickchat.click";
-    if (urlBuscar.startsWith(BASE_URL)) {
-      urlBuscar = urlBuscar.slice(BASE_URL.length);
-    }
+    let urlBuscar = stripOwnDomainFromUploadUrl(url);
 
     // 1️⃣ Obtener el id del sticker por URL
     const [rows] = await db.query(

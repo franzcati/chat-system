@@ -3,6 +3,7 @@ const multer = require("multer");
 const { logDev } = require('../utils/logger');
 const path = require("path");
 const db = require("../db");
+const { toAbsoluteUploadUrl } = require("../utils/urlUtils");
 
 const router = express.Router();
 
@@ -22,13 +23,7 @@ const storage = multer.diskStorage({
 
 const upload = multer({ storage });
 
-const getBaseUrl = () => process.env.BASE_URL || "https://quickchat.click";
-
-const buildAbsoluteUrl = (url) => {
-  if (!url) return null;
-  if (/^https?:\/\//i.test(url)) return url;
-  return `${getBaseUrl()}${url}`;
-};
+const buildAbsoluteUrl = (url, req) => toAbsoluteUploadUrl(url, req);
 
 const obtenerRolEnGrupo = async (grupoId, usuarioId) => {
   const [rows] = await db.query(
@@ -38,7 +33,7 @@ const obtenerRolEnGrupo = async (grupoId, usuarioId) => {
   return rows[0]?.rol || null;
 };
 
-const obtenerMiembrosGrupo = async (grupoId) => {
+const obtenerMiembrosGrupo = async (grupoId, req) => {
   const [miembros] = await db.query(`
     SELECT 
       u.id,
@@ -56,12 +51,12 @@ const obtenerMiembrosGrupo = async (grupoId) => {
 
   return miembros.map((m) => ({
     ...m,
-    url_imagen: buildAbsoluteUrl(m.url_imagen),
+    url_imagen: buildAbsoluteUrl(m.url_imagen, req),
   }));
 };
 
 const emitirMiembrosActualizados = async (req, grupoId) => {
-  const miembros = await obtenerMiembrosGrupo(grupoId);
+  const miembros = await obtenerMiembrosGrupo(grupoId, req);
   const io = req.app.get("io");
   io.to(`grupo_${grupoId}`).emit("miembrosActualizados", {
     id: Number(grupoId),
@@ -264,14 +259,14 @@ router.post("/", upload.single("imagen"), async (req, res) => {
     );
 
     // 6️⃣ Armar objeto completo
-    const BASE_URL = process.env.BASE_URL || "https://quickchat.click";
+    const toAbsolute = (url) => toAbsoluteUploadUrl(url, req);
 
     const grupoCompleto = {
       ...grupo,
-      imagen_url: grupo.imagen_url ? `${BASE_URL}${grupo.imagen_url}` : null,
+      imagen_url: toAbsolute(grupo.imagen_url),
       miembros: miembrosRows.map((m) => ({
         ...m,
-        url_imagen: m.url_imagen ? `${BASE_URL}${m.url_imagen}` : null,
+        url_imagen: toAbsolute(m.url_imagen),
       })),
     };
 
@@ -485,7 +480,7 @@ router.get("/usuario/:userId", async (req, res) => {
       userId, userId, userId, userId, userId, userId, userId
     ]);
 
-    const BASE_URL = process.env.BASE_URL || "https://quickchat.click";
+    const toAbsolute = (url) => toAbsoluteUploadUrl(url, req);
 
     const gruposConExtras = grupos.map((g) => {
       const miembros = g.miembros ? JSON.parse(g.miembros) : [];
@@ -495,15 +490,13 @@ router.get("/usuario/:userId", async (req, res) => {
       const propietario = miembros.find((m) => m.id === g.propietario_id);
 
       fijados.forEach(f => {
-        if (f.url_imagen) f.url_imagen = `${BASE_URL}${f.url_imagen}`;
+        if (f.url_imagen) f.url_imagen = toAbsolute(f.url_imagen);
       });
 
       return {
         ...g,
-        imagen_url: g.imagen_url ? `${BASE_URL}${g.imagen_url}` : null,
-        ultimo_remitente_avatar: g.ultimo_remitente_avatar
-          ? `${BASE_URL}${g.ultimo_remitente_avatar}`
-          : null,
+        imagen_url: toAbsolute(g.imagen_url),
+        ultimo_remitente_avatar: toAbsolute(g.ultimo_remitente_avatar),
         miembros,
         fijados,
         archivos,
@@ -662,14 +655,14 @@ router.post("/:id/actualizar-miembros", async (req, res) => {
     `, [id]);
 
     const grupo = grupoRows[0];
-    const BASE_URL = process.env.BASE_URL || "https://quickchat.click";
+    const toAbsolute = (url) => toAbsoluteUploadUrl(url, req);
 
     const grupoCompleto = {
       ...grupo,
-      imagen_url: grupo.imagen_url ? `${BASE_URL}${grupo.imagen_url}` : null,
+      imagen_url: toAbsolute(grupo.imagen_url),
       miembros: miembrosDetalles.map(m => ({
         ...m,
-        url_imagen: m.url_imagen ? `${BASE_URL}${m.url_imagen}` : null,
+        url_imagen: toAbsolute(m.url_imagen),
       })),
     };
 
@@ -729,7 +722,7 @@ router.put("/:id/imagen", upload.single("imagen"), async (req, res) => {
     const imagenUrl = `/uploads/grupos/${file.filename}`;
     await db.query("UPDATE grupos SET imagen_url = ? WHERE id = ?", [imagenUrl, id]);
 
-    const imagenAbsoluta = buildAbsoluteUrl(imagenUrl);
+    const imagenAbsoluta = buildAbsoluteUrl(imagenUrl, req);
     const io = req.app.get("io");
     io.to(`grupo_${id}`).emit("grupoActualizado", {
       id: Number(id),

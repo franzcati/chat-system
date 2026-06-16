@@ -687,16 +687,14 @@ const Message = ({
       finalUrl = `/${finalUrl}`;
     }
 
-    if (finalUrl.startsWith("http://quickchat.click")) {
-      finalUrl = finalUrl.replace("http://quickchat.click", "https://quickchat.click");
-    } else if (finalUrl.startsWith("http://")) {
+    if (finalUrl.startsWith("http://")) {
       try {
         const u = new URL(finalUrl);
         finalUrl = `https://${u.host}${u.pathname}${u.search}`;
       } catch (e) {}
     }
 
-    if (finalUrl.startsWith("/uploads/")) {
+    if (/^https?:\/\//i.test(finalUrl) || finalUrl.startsWith("/uploads/")) {
       return getAvatarUrl(finalUrl) || finalUrl;
     }
 
@@ -2307,17 +2305,14 @@ const Message = ({
                           {visibles.map((rawUrl, idx) => {
                             let finalUrl = todasNormalizadas[idx];
 
-                            if (finalUrl?.startsWith("http://quickchat.click")) {
-                              finalUrl = finalUrl.replace(
-                                "http://quickchat.click",
-                                "https://quickchat.click"
-                              );
-                            } else if (finalUrl?.startsWith("http://")) {
+                            if (finalUrl?.startsWith("http://")) {
                               try {
                                 const u = new URL(finalUrl);
                                 finalUrl = `https://${u.host}${u.pathname}${u.search}`;
                               } catch (e) {}
                             }
+
+                            finalUrl = getAvatarUrl(finalUrl) || finalUrl;
 
                             const isLastVisible = idx === visibles.length - 1;
                             const showMoreBadge =

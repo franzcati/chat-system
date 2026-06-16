@@ -1628,7 +1628,7 @@ button:hover .lucide-star {
 
 .message-text p,
 .message-text .break-words,
-.message-text span:not(.badge):not(.reaction-emoji):not(.wa-quote-author):not(.wa-quote-text):not(.wa-preview-line):not(.wa-preview-label):not(.wa-rich-color),
+.message-text span:not(.badge):not(.reaction-emoji):not(.wa-quote-author):not(.wa-quote-text):not(.wa-preview-line):not(.wa-preview-label):not(.wa-rich-color):not(.extra-small):not(.ms-2):not(.svg15):not(.double-check):not(.double-check-blue),
 .message-text div:not(.dropdown):not(.dropdown-menu):not(.message-action):not(.reactions-popover):not(.reactions-popover-inner):not(.wa-audio-avatar):not(.wa-audio-main):not(.wa-audio-progress):not(.wa-audio-progress-fill):not(.wa-audio-times):not(.message-sender-name):not(.wa-quote-content) {
   color: inherit !important;
 }
@@ -8697,4 +8697,120 @@ body.dark .wa-rich-input-edit .wa-rich-editor,
 .wa-rich-html-message .wa-rich-color,
 .wa-rich-html-message .wa-rich-color * {
   -webkit-text-fill-color: currentColor !important;
+}
+
+/* =========================================================
+   Ajuste solicitado: mensajes enviados con fondo claro
+   ========================================================= */
+:root,
+:root[data-theme="dark"] {
+  --sent-message-bg: #e6e9f8;
+  --sent-message-text: #111827;
+  --sent-message-muted: #4b5563;
+  --sent-message-border: rgba(17, 24, 39, 0.08);
+  --sent-message-shadow: 0 3px 12px rgba(15, 23, 42, 0.08);
+}
+
+.message.message-out .message-text:not(.message-sticker-bubble) {
+  background: var(--sent-message-bg) !important;
+  color: var(--sent-message-text) !important;
+  border-color: var(--sent-message-border) !important;
+  box-shadow: var(--sent-message-shadow) !important;
+}
+
+.message.message-out .message-text:not(.message-sticker-bubble) .message-footer .extra-small,
+.message.message-out .message-text:not(.message-sticker-bubble) .message-footer .extra-small.text-muted,
+.message.message-out .message-text:not(.message-sticker-bubble) .wa-audio-times {
+  color: var(--sent-message-muted) !important;
+  -webkit-text-fill-color: currentColor !important;
+  text-shadow: none !important;
+}
+
+.message.message-out .message-text:not(.message-sticker-bubble) .wa-message-menu-btn {
+  color: rgba(17, 24, 39, 0.58) !important;
+}
+
+.message.message-out .message-text:not(.message-sticker-bubble) .wa-message-menu-btn.visible,
+.message.message-out .message-text:not(.message-sticker-bubble) .wa-message-menu-btn:hover {
+  background: rgba(17, 24, 39, 0.08) !important;
+  color: rgba(17, 24, 39, 0.78) !important;
+}
+
+.message.message-out .message-text:not(.message-sticker-bubble) .wa-quoted-message,
+.message.message-out .message-text:not(.message-sticker-bubble) .wa-quoted-message.out {
+  background: rgba(17, 24, 39, 0.06) !important;
+}
+
+.message.message-out .message-text:not(.message-sticker-bubble) .wa-quote-text,
+.message.message-out .message-text:not(.message-sticker-bubble) .wa-quoted-message.out .wa-quote-text {
+  color: rgba(17, 24, 39, 0.72) !important;
+  -webkit-text-fill-color: currentColor !important;
+}
+
+.message.message-out .message-text:not(.message-sticker-bubble) .wa-rich-code {
+  background: rgba(17, 24, 39, 0.08) !important;
+}
+
+.message.message-out .message-text:not(.message-sticker-bubble) .wa-rich-quote-block {
+  border-left-color: rgba(17, 24, 39, 0.35) !important;
+}
+
+.message.message-out .message-text:not(.message-sticker-bubble) .wa-undo-delete-btn {
+  color: #2563eb !important;
+  -webkit-text-fill-color: #2563eb !important;
+}
+
+.message.message-out .message-footer .double-check,
+.message.message-out .message-footer .double-check-blue {
+  filter: none !important;
+  opacity: 0.82 !important;
+}
+
+.message.message-out .message-footer .double-check-blue {
+  opacity: 1 !important;
+}
+
+.message.message-out .message-text.message-sticker-bubble .message-footer {
+  background: var(--sent-message-bg) !important;
+  color: var(--sent-message-text) !important;
+  box-shadow: var(--sent-message-shadow) !important;
+}
+
+.message.message-out .message-text.message-sticker-bubble .message-footer .extra-small,
+.message.message-out .message-text.message-sticker-bubble .message-footer .extra-small.text-muted,
+.message.message-out .message-text.message-sticker-bubble .message-footer .wa-undo-delete-btn,
+.message.message-out .message-text.message-sticker-bubble .message-footer button {
+  color: var(--sent-message-muted) !important;
+  -webkit-text-fill-color: currentColor !important;
+  text-shadow: none !important;
+}
+
+
+/* =========================================================
+   FIX: hora de stickers enviados legible sobre fondo claro
+   ========================================================= */
+.message.message-out .message-text.message-sticker-bubble .message-footer {
+  background: var(--sent-message-bg, #e6e9f8) !important;
+  color: var(--sent-message-muted, #4b5563) !important;
+  -webkit-text-fill-color: var(--sent-message-muted, #4b5563) !important;
+  box-shadow: var(--sent-message-shadow, 0 3px 12px rgba(15, 23, 42, 0.08)) !important;
+}
+
+.message.message-out .message-text.message-sticker-bubble .message-footer .extra-small,
+.message.message-out .message-text.message-sticker-bubble .message-footer .extra-small.text-muted,
+.message.message-out .message-text.message-sticker-bubble .message-footer .extra-small.mt-1 {
+  color: var(--sent-message-muted, #4b5563) !important;
+  -webkit-text-fill-color: var(--sent-message-muted, #4b5563) !important;
+  text-shadow: none !important;
+}
+
+.message.message-out .message-text.message-sticker-bubble .message-footer .ms-2 {
+  color: inherit !important;
+  -webkit-text-fill-color: currentColor !important;
+  opacity: 1 !important;
+}
+
+.message.message-out .message-text.message-sticker-bubble .message-footer .double-check,
+.message.message-out .message-text.message-sticker-bubble .message-footer .double-check-blue {
+  filter: none !important;
 }

@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from "react";
 import { toLocalDate } from "../utils/date"; // 👈 importa tu función
+import { getAvatarUrl } from "../utils/url";
 
 const VerArchivos = ({ chat, visible, onClose }) => {
   const [tabActiva, setTabActiva] = useState("multimedia");
@@ -9,27 +10,24 @@ const VerArchivos = ({ chat, visible, onClose }) => {
   const fixUrl = (url = "") => {
     if (!url) return "";
 
-    // 1) URLs absolutas
-    if (url.startsWith("https://")) return url;
-
-    if (url.startsWith("http://")) {
-      // Forzar https para evitar mixed content
-      return url.replace("http://", "https://");
+    // 1) URLs absolutas: si son del sistema, se ajustan al dominio actual.
+    if (/^https?:\/\//i.test(url)) {
+      return getAvatarUrl(url) || url.replace("http://", "https://");
     }
 
     // 2) Viejas rutas con /api/uploads → quitar /api
     if (url.startsWith("/api/uploads/")) {
-      return url.replace("/api", ""); // => /uploads/...
+      return getAvatarUrl(url.replace("/api", "")) || url.replace("/api", ""); // => /uploads/...
     }
 
     // 3) Ruta correcta /uploads/...
     if (url.startsWith("/uploads/")) {
-      return url; // el navegador la resolverá como https://quickchat.click/uploads/...
+      return getAvatarUrl(url) || url;
     }
 
     // 4) Ruta sin slash inicial: "uploads/..."
     if (url.startsWith("uploads/")) {
-      return `/${url}`;
+      return getAvatarUrl(`/${url}`) || `/${url}`;
     }
 
     // 5) Cualquier otro caso raro, la devolvemos tal cual
