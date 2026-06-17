@@ -360,6 +360,41 @@ async function getReplyMessageByContext(id, tipo = "privado") {
   return getReplyMessageById(id);
 }
 
+async function safeGetReplyMessageByContext(id, tipo = "privado", contexto = "mensaje privado") {
+  if (!id) return null;
+  try {
+    return await getReplyMessageByContext(id, tipo);
+  } catch (err) {
+    console.warn(`⚠️ No se pudo cargar la respuesta citada para ${contexto}:`, err?.message || err);
+    return null;
+  }
+}
+
+function emitPrivateMessageSafely(enviarEventoAlUsuario, senderId, receiverId, mensaje) {
+  if (typeof enviarEventoAlUsuario !== "function") return;
+  [...new Set([senderId, receiverId].map((id) => Number(id)).filter(Boolean))].forEach((userId) => {
+    try {
+      enviarEventoAlUsuario(userId, "nuevoMensaje", mensaje);
+    } catch (err) {
+      console.warn(`⚠️ No se pudo emitir nuevoMensaje al usuario ${userId}:`, err?.message || err);
+    }
+  });
+}
+
+async function safeGetUserInfo(userId, contexto = "usuario") {
+  if (!userId) return {};
+  try {
+    const [rows] = await db.query(
+      "SELECT nombre, apellido, correo, url_imagen, background FROM usuario WHERE id = ?",
+      [userId]
+    );
+    return rows[0] || {};
+  } catch (err) {
+    console.warn(`⚠️ No se pudo cargar información de ${contexto} ${userId}:`, err?.message || err);
+    return {};
+  }
+}
+
 // =======================
 // Subir archivo en chat individual
 // =======================
@@ -733,17 +768,13 @@ router.post("/", async (req, res) => {
       { attempts: 4, label: "insertar mensaje privado" }
     );
 
-    const [senderInfo] = await db.query(
-      "SELECT nombre, apellido, correo, url_imagen, background FROM usuario WHERE id = ?",
-      [senderId]
-    );
-    const sender = senderInfo[0];
-
-    const [receiverInfo] = await db.query(
-      "SELECT nombre, apellido, correo, url_imagen, background FROM usuario WHERE id = ?",
-      [receiverId]
-    );
-    const receiver = receiverInfo[0];
+    // Desde aquí el mensaje ya quedó guardado. Todo lo adicional se hace de forma segura
+    // para no devolver 500 ni mostrar la alerta falsa en el frontend cuando se responde.
+    const [sender, receiver, replyTo] = await Promise.all([
+      safeGetUserInfo(senderId, "emisor privado"),
+      safeGetUserInfo(receiverId, "receptor privado"),
+      safeGetReplyMessageByContext(replyToIdNum, replyToTipo, "envío privado"),
+    ]);
 
     const nuevoMensaje = {
       id: result.insertId,
@@ -754,38 +785,33 @@ router.post("/", async (req, res) => {
       reply_to_id: replyToIdNum,
       reply_to_tipo: replyToTipo,
       reply_to_grupo_id: replyToGrupoIdNum,
-      reply_to: replyToIdNum ? await getReplyMessageByContext(replyToIdNum, replyToTipo) : null,
+      reply_to: replyTo,
       reenviado: 0,
       fecha_envio: fechaEnvioISO,
       fecha_envio_db: fechaEnvioMySQL,
       editado: 0,
       visto: 0,
       fijado: false,
-      emisor_nombre: sender.nombre,
-      emisor_apellido: sender.apellido,
-      emisor_correo: sender.correo,
-      emisor_avatar: sender.url_imagen,
-      emisor_background: sender.background,
-      receptor_nombre: receiver.nombre,
-      receptor_apellido: receiver.apellido,
-      receptor_correo: receiver.correo,
-      receptor_avatar: receiver.url_imagen,
-      receptor_background: receiver.background,
+      emisor_nombre: sender.nombre || null,
+      emisor_apellido: sender.apellido || null,
+      emisor_correo: sender.correo || null,
+      emisor_avatar: sender.url_imagen || null,
+      emisor_background: sender.background || null,
+      receptor_nombre: receiver.nombre || null,
+      receptor_apellido: receiver.apellido || null,
+      receptor_correo: receiver.correo || null,
+      receptor_avatar: receiver.url_imagen || null,
+      receptor_background: receiver.background || null,
       reacciones: [],
     };
 
-    const [rowsReacciones] = await db.query(
-      `SELECT * FROM reacciones WHERE mensaje_id = ?`,
-      [result.insertId]
-    );
-    logDev("🔹 Reacciones del mensaje recién creado:", rowsReacciones);
-
     logDev("📦 Mensaje listo para emitir:", nuevoMensaje);
 
-    enviarEventoAlUsuario(senderId, "nuevoMensaje", nuevoMensaje);
-    enviarEventoAlUsuario(receiverId, "nuevoMensaje", nuevoMensaje);
-
+    // Respondemos primero porque el mensaje ya fue guardado.
+    // Si falla un socket, no debe mostrarse la alerta falsa de "no se pudo enviar".
     res.status(201).json(nuevoMensaje);
+    emitPrivateMessageSafely(enviarEventoAlUsuario, senderId, receiverId, nuevoMensaje);
+    return;
   } catch (err) {
     console.error("❌ Error al insertar mensaje:", err);
     res.status(500).json({ error: "Error al guardar mensaje" });
@@ -1344,29 +1370,31 @@ router.post("/archivo", upload.single("archivo"), async (req, res) => {
     const fechaEnvioMySQL = formatDateToMySQL(fechaUTC);
     const fechaEnvioISO = fechaUTC.toISOString();
 
-    const [resultadoArchivo] = await db.query(
+    const [resultadoArchivo] = await queryWithRetry(
+      db,
       `INSERT INTO mensajes_archivos 
         (sender_id, receiver_id, archivo_url, tipo_archivo, nombre_archivo, tamano, fecha_envio, lote_id)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      [sender_id, receiver_id, urlArchivo, file.mimetype, file.originalname, file.size, fechaEnvioMySQL, loteId]
+      [sender_id, receiver_id, urlArchivo, file.mimetype, file.originalname, file.size, fechaEnvioMySQL, loteId],
+      { attempts: 4, label: "insertar archivo privado" }
     );
 
-    const [resultadoMensaje] = await db.query(
+    const [resultadoMensaje] = await queryWithRetry(
+      db,
       `INSERT INTO mensajes 
         (usuario_envia_id, usuario_recibe_id, mensaje, lote_id, reply_to_id, reply_to_tipo, reply_to_grupo_id, fecha_envio, fijado)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0)`,
-      [sender_id, receiver_id, urlArchivo, loteId || null, replyToIdNum, replyToTipo, replyToGrupoIdNum, fechaEnvioMySQL]
+      [sender_id, receiver_id, urlArchivo, loteId || null, replyToIdNum, replyToTipo, replyToGrupoIdNum, fechaEnvioMySQL],
+      { attempts: 4, label: "insertar mensaje archivo privado" }
     );
 
-    const [[emisor]] = await db.query(
-      "SELECT nombre, apellido, correo, url_imagen, background FROM usuario WHERE id = ?",
-      [sender_id]
-    );
-
-    const [[receptor]] = await db.query(
-      "SELECT nombre, apellido, correo, url_imagen, background FROM usuario WHERE id = ?",
-      [receiver_id]
-    );
+    // El archivo y el mensaje ya quedaron guardados. La información extra no debe
+    // provocar alerta falsa si alguna consulta auxiliar falla.
+    const [emisor, receptor, replyTo] = await Promise.all([
+      safeGetUserInfo(sender_id, "emisor archivo privado"),
+      safeGetUserInfo(receiver_id, "receptor archivo privado"),
+      safeGetReplyMessageByContext(replyToIdNum, replyToTipo, "archivo privado"),
+    ]);
 
     const mensaje = {
       id: resultadoMensaje.insertId,
@@ -1377,7 +1405,7 @@ router.post("/archivo", upload.single("archivo"), async (req, res) => {
       reply_to_id: replyToIdNum,
       reply_to_tipo: replyToTipo,
       reply_to_grupo_id: replyToGrupoIdNum,
-      reply_to: replyToIdNum ? await getReplyMessageByContext(replyToIdNum, replyToTipo) : null,
+      reply_to: replyTo,
       reenviado: 0,
       fecha_envio: fechaEnvioISO,
       editado: 0,
@@ -1388,29 +1416,29 @@ router.post("/archivo", upload.single("archivo"), async (req, res) => {
       tipo_archivo: file.mimetype,
       nombre_archivo: file.originalname,
       tamano: file.size,
-      emisor_nombre: emisor.nombre,
-      emisor_apellido: emisor.apellido,
-      emisor_correo: emisor.correo,
-      emisor_avatar: emisor.url_imagen,
-      emisor_background: emisor.background,
-      receptor_nombre: receptor.nombre,
-      receptor_apellido: receptor.apellido,
-      receptor_correo: receptor.correo,
-      receptor_avatar: receptor.url_imagen,
-      receptor_background: receptor.background,
+      emisor_nombre: emisor.nombre || null,
+      emisor_apellido: emisor.apellido || null,
+      emisor_correo: emisor.correo || null,
+      emisor_avatar: emisor.url_imagen || null,
+      emisor_background: emisor.background || null,
+      receptor_nombre: receptor.nombre || null,
+      receptor_apellido: receptor.apellido || null,
+      receptor_correo: receptor.correo || null,
+      receptor_avatar: receptor.url_imagen || null,
+      receptor_background: receptor.background || null,
       reacciones: [],
     };
 
     const { enviarEventoAlUsuario } = req.app.get("socketUtils");
-
-    enviarEventoAlUsuario(sender_id, "nuevoMensaje", mensaje);
-    enviarEventoAlUsuario(receiver_id, "nuevoMensaje", mensaje);
 
     res.json({
       success: true,
       mensaje,
       archivo_id: resultadoArchivo.insertId,
     });
+
+    emitPrivateMessageSafely(enviarEventoAlUsuario, sender_id, receiver_id, mensaje);
+    return;
   } catch (err) {
     console.error("❌ Error al subir archivo privado:", err);
     res.status(500).json({ success: false, error: "Error al subir archivo" });

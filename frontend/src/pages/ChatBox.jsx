@@ -2354,6 +2354,53 @@ const ChatBox = ({ chat, user, setChat, onVerPerfil }) => {
           }
         } catch (err) {
           console.error("❌ Error enviando mensaje:", err);
+
+          // Cuando se responde un mensaje, versiones anteriores del backend podían guardar
+          // el mensaje pero fallar al devolver/armar la cita. En ese caso el socket o una
+          // recarga trae el mensaje y mostrar alerta confunde al usuario.
+          if (replyToId) {
+            setTimeout(async () => {
+              try {
+                let resVerificacion;
+                if (chat.tipo === "grupo") {
+                  resVerificacion = await axios.get(`/api/mensajes/grupo/${chat.grupo_id}`, {
+                    params: { paginated: 1, limit: MESSAGE_PAGE_SIZE },
+                  });
+                } else {
+                  resVerificacion = await axios.get("/api/mensajes", {
+                    params: {
+                      usuario1: user.id,
+                      usuario2: chat.usuario_id,
+                      paginated: 1,
+                      limit: MESSAGE_PAGE_SIZE,
+                    },
+                  });
+                }
+
+                const { mensajes } = extractMessagesPayload(resVerificacion.data);
+                const posibleGuardado = mensajes.some((m) => {
+                  const mismoTexto = String(m?.mensaje || "").trim() === text;
+                  const mismoReply = Number(m?.reply_to_id || 0) === Number(replyToId || 0);
+                  const mismoUsuario = chat.tipo === "grupo"
+                    ? Number(m?.usuario_id) === Number(user.id)
+                    : Number(m?.usuario_envia_id) === Number(user.id);
+                  return mismoTexto && mismoReply && mismoUsuario;
+                });
+
+                if (posibleGuardado) {
+                  setMessages((prev) => sortAndDedupeMessages([...prev, ...mensajes]));
+                  return;
+                }
+
+                alert("No se pudo enviar el mensaje. Inténtalo otra vez.");
+              } catch (verifyErr) {
+                console.warn("⚠️ No se pudo verificar si la respuesta fue guardada:", verifyErr);
+                alert("No se pudo confirmar el envío. Revisa si el mensaje apareció antes de reenviarlo.");
+              }
+            }, 600);
+            return;
+          }
+
           alert("No se pudo enviar el mensaje. Inténtalo otra vez.");
         }
       }
@@ -2949,6 +2996,19 @@ const ChatBox = ({ chat, user, setChat, onVerPerfil }) => {
   const getInitial = (text) => {
     if (!text) return "U";
       return text.charAt(0).toUpperCase();
+  };
+
+  const addSelfSuffix = (name = "Usuario") => {
+    const cleanName = String(name || "Usuario").trim() || "Usuario";
+    return /\(Tú\)$/i.test(cleanName) ? cleanName : `${cleanName} (Tú)`;
+  };
+
+  const isSelfPrivateChat = (targetChat = chat) =>
+    targetChat?.tipo !== "grupo" && Number(targetChat?.usuario_id) === Number(user?.id);
+
+  const getChatDisplayName = (targetChat = chat) => {
+    const baseName = targetChat?.usuario_nombre || targetChat?.nombre || (targetChat?.tipo === "grupo" ? "Grupo" : "Usuario");
+    return isSelfPrivateChat(targetChat) ? addSelfSuffix(baseName) : baseName;
   };
 
   const getPresenceInfo = (targetUserId) => {
@@ -3713,7 +3773,7 @@ const ChatBox = ({ chat, user, setChat, onVerPerfil }) => {
                                 <div className="wa-presence-wrapper">
                                   <img
                                     src={getAvatarUrl(chat.url_imagen)}
-                                    alt={chat.usuario_nombre}
+                                    alt={getChatDisplayName(chat)}
                                     className="avatar-img"
                                     style={{
                                       width: "44px",
@@ -3742,7 +3802,7 @@ const ChatBox = ({ chat, user, setChat, onVerPerfil }) => {
                             </div>
                             <div className="col overflow-hidden wa-chat-title-block">
                               <h5 className="text-truncate mb-0">
-                                {chat.usuario_nombre}
+                                {getChatDisplayName(chat)}
                               </h5>
                               {(getTypingHeaderText() || getHeaderSubtitle()) && (
                                 <small className={`text-truncate d-block ${getTypingHeaderText() ? "wa-header-typing" : "text-muted"}`}>
@@ -3779,12 +3839,12 @@ const ChatBox = ({ chat, user, setChat, onVerPerfil }) => {
                               {chat.tipo === "grupo" ? (
                                 <GroupAvatar group={chat} members={chat.miembros} size={42} />
                               ) : chat?.url_imagen ? (
-                                <img src={getAvatarUrl(chat.url_imagen)} alt={chat.usuario_nombre} />
+                                <img src={getAvatarUrl(chat.url_imagen)} alt={getChatDisplayName(chat)} />
                               ) : (
                                 <div style={{ backgroundColor: chat?.background || "#6c757d" }}>{getInitial(chat?.usuario_nombre || "U")}</div>
                               )}
                               <div>
-                                <strong>{chat.usuario_nombre || chat.nombre || "Chat"}</strong>
+                                <strong>{getChatDisplayName(chat)}</strong>
                                 <span>{chat.tipo === "grupo" ? "Selecciona personas" : "Llamada"}</span>
                               </div>
                             </div>
@@ -3934,7 +3994,7 @@ const ChatBox = ({ chat, user, setChat, onVerPerfil }) => {
                                   <img
                                     className="avatar-img rounded-circle"
                                     src={getAvatarUrl(chat.url_imagen)}
-                                    alt={chat.usuario_nombre}
+                                    alt={getChatDisplayName(chat)}
                                     style={{ objectFit: "cover" }}
                                   />
                                 ) : (

@@ -422,6 +422,7 @@ const Message = ({
 
   const [isEditing, setIsEditing] = useState(false);
   const [editText, setEditText] = useState(mensajeData.mensaje);
+  const [editInitialText, setEditInitialText] = useState(mensajeData.mensaje || "");
   const editInputRef = useRef(null);
 
   const [estaFijado, setEstaFijado] = useState(mensajeData?.fijado || false);
@@ -960,6 +961,7 @@ const Message = ({
         // 👉 Actualiza el estado local
         setIsEditing(false);
         setEditText("");
+        setEditInitialText("");
       }
     } catch (err) {
       console.error("❌ [FRONT] Error fetch editar:", err);
@@ -1913,8 +1915,9 @@ const Message = ({
                           href="#"
                           onClick={(e) => {
                             e.preventDefault();
+                            setEditInitialText(mensajeData.mensaje || "");
+                            setEditText(mensajeData.mensaje || "");
                             setIsEditing(true);
-                            setEditText(mensajeData.mensaje);
                             setDropdownOpen(false);
                           }}
                         >
@@ -3281,7 +3284,7 @@ const Message = ({
               <div className="wa-edit-modal-preview">
                 <div className="wa-edit-preview-bubble">
                   <div className="wa-rich-message">
-                    {renderFormattedMessageBlocks(editText || mensajeData.mensaje || "")}
+                    {renderFormattedMessageBlocks(editText ?? editInitialText ?? mensajeData.mensaje ?? "")}
                   </div>
                   <div className="wa-edit-preview-time">
                     {hora}
@@ -3303,7 +3306,7 @@ const Message = ({
                 <div className="wa-edit-rich-input-shell">
                   <ChatInput
                     ref={editInputRef}
-                    initialValue={editText || mensajeData.mensaje || ""}
+                    initialValue={editInitialText || mensajeData.mensaje || ""}
                     onValueChange={setEditText}
                     onSend={(nextText) => handleEditar(id, nextText)}
                     placeholder="Edita el mensaje"

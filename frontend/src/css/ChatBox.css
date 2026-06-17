@@ -8814,3 +8814,217 @@ body.dark .wa-rich-input-edit .wa-rich-editor,
 .message.message-out .message-text.message-sticker-bubble .message-footer .double-check-blue {
   filter: none !important;
 }
+
+/* =========================================================
+   FIX: editor de mensajes con el mismo estilo del chat
+   - El preview usa el wallpaper real del chat.
+   - La burbuja editada usa el color de mensajes enviados #e6e9f8.
+   - El texto base queda oscuro, sin pisar colores personalizados.
+   ========================================================= */
+.wa-edit-modal-card {
+  overflow: hidden;
+}
+
+.wa-edit-modal-preview {
+  position: relative;
+  overflow-y: auto;
+  max-height: min(420px, 52vh);
+  min-height: 190px;
+  background-color: var(--wa-chat-wallpaper-bg, #efeae2) !important;
+  background-image: var(--wa-chat-wallpaper-pattern) !important;
+  background-repeat: repeat !important;
+  background-size: 360px 360px !important;
+  background-position: center top !important;
+  border-color: rgba(17, 24, 39, 0.08) !important;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(15, 23, 42, 0.35) transparent;
+}
+
+.wa-edit-modal-preview::-webkit-scrollbar {
+  width: 8px;
+}
+
+.wa-edit-modal-preview::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.wa-edit-modal-preview::-webkit-scrollbar-thumb {
+  background: rgba(15, 23, 42, 0.35);
+  border-radius: 999px;
+}
+
+.wa-edit-modal-preview::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: rgba(255, 255, 255, 0.18);
+  z-index: 0;
+}
+
+.wa-edit-preview-bubble {
+  position: relative;
+  z-index: 1;
+  background: var(--sent-message-bg, #e6e9f8) !important;
+  color: var(--sent-message-text, #111827) !important;
+  border: 1px solid var(--sent-message-border, rgba(17, 24, 39, 0.08)) !important;
+  box-shadow: var(--sent-message-shadow, 0 3px 12px rgba(15, 23, 42, 0.08)) !important;
+}
+
+.wa-edit-preview-bubble .wa-rich-message {
+  color: var(--sent-message-text, #111827) !important;
+  -webkit-text-fill-color: currentColor !important;
+}
+
+.wa-edit-preview-bubble .wa-rich-message p,
+.wa-edit-preview-bubble .wa-rich-message div,
+.wa-edit-preview-bubble .wa-rich-message span:not(.wa-rich-color) {
+  color: inherit !important;
+  -webkit-text-fill-color: currentColor !important;
+}
+
+.wa-edit-preview-bubble .wa-rich-message .wa-rich-color,
+.wa-edit-preview-bubble .wa-rich-message .wa-rich-color * {
+  -webkit-text-fill-color: currentColor !important;
+}
+
+.wa-edit-preview-time {
+  color: var(--sent-message-muted, #4b5563) !important;
+  -webkit-text-fill-color: currentColor !important;
+  text-shadow: none !important;
+}
+
+.wa-edit-preview-time .double-check,
+.wa-edit-preview-time .double-check-blue {
+  filter: none !important;
+  opacity: 0.88 !important;
+}
+
+.wa-edit-preview-time .double-check-blue {
+  opacity: 1 !important;
+}
+
+:root[data-theme="dark"] .wa-edit-modal-preview,
+body.dark .wa-edit-modal-preview,
+[data-bs-theme="dark"] .wa-edit-modal-preview {
+  background-color: var(--wa-chat-wallpaper-bg, #0b141a) !important;
+  background-image: var(--wa-chat-wallpaper-pattern) !important;
+  border-color: rgba(134, 150, 160, 0.18) !important;
+  scrollbar-color: rgba(174, 186, 193, 0.55) transparent;
+}
+
+:root[data-theme="dark"] .wa-edit-modal-preview::-webkit-scrollbar-thumb,
+body.dark .wa-edit-modal-preview::-webkit-scrollbar-thumb,
+[data-bs-theme="dark"] .wa-edit-modal-preview::-webkit-scrollbar-thumb {
+  background: rgba(174, 186, 193, 0.55);
+}
+
+:root[data-theme="dark"] .wa-edit-modal-preview::before,
+body.dark .wa-edit-modal-preview::before,
+[data-bs-theme="dark"] .wa-edit-modal-preview::before {
+  background: rgba(0, 0, 0, 0.16);
+}
+
+@media (max-width: 640px) {
+  .wa-edit-modal-preview {
+    max-height: min(390px, 48vh);
+    min-height: 160px;
+    padding: 14px;
+  }
+}
+
+/* =========================================================
+   FIX v2 editor de mensajes
+   - El contenido editable ya no reinicia el cursor en cada tecla.
+   - Fuerza escritura normal de izquierda a derecha dentro del editor.
+   - La burbuja del preview cubre todo el contenido, incluso textos largos.
+   ========================================================= */
+.wa-rich-input-edit,
+.wa-rich-input-edit .wa-rich-editor {
+  direction: ltr !important;
+  unicode-bidi: plaintext !important;
+  text-align: left !important;
+}
+
+.wa-rich-input-edit .wa-rich-editor,
+.wa-rich-input-edit .wa-rich-editor * {
+  caret-color: var(--msg-out-bg, #2787F5) !important;
+}
+
+.wa-edit-modal-preview {
+  display: block !important;
+  align-items: initial !important;
+  justify-content: initial !important;
+  overflow-x: hidden !important;
+}
+
+.wa-edit-preview-bubble {
+  display: block !important;
+  width: fit-content !important;
+  min-width: 170px !important;
+  max-width: min(430px, 100%) !important;
+  height: auto !important;
+  min-height: 0 !important;
+  margin-left: auto !important;
+  margin-right: 0 !important;
+  box-sizing: border-box !important;
+  overflow: visible !important;
+  direction: ltr !important;
+  unicode-bidi: isolate !important;
+}
+
+.wa-edit-preview-bubble .wa-rich-message,
+.wa-edit-preview-bubble .wa-rich-html-message {
+  display: block !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  box-sizing: border-box !important;
+  white-space: normal !important;
+  overflow: visible !important;
+  overflow-wrap: anywhere !important;
+  word-break: break-word !important;
+  direction: ltr !important;
+  unicode-bidi: isolate !important;
+}
+
+.wa-edit-preview-bubble .wa-rich-html-message *,
+.wa-edit-preview-bubble .wa-rich-message * {
+  max-width: 100% !important;
+  box-sizing: border-box !important;
+  overflow-wrap: anywhere !important;
+  word-break: break-word !important;
+}
+
+.wa-edit-preview-bubble .wa-rich-line,
+.wa-edit-preview-bubble .wa-rich-empty-line,
+.wa-edit-preview-bubble .wa-rich-quote-line,
+.wa-edit-preview-bubble .wa-rich-html-message div,
+.wa-edit-preview-bubble .wa-rich-html-message p {
+  display: block !important;
+  width: 100% !important;
+}
+
+.wa-edit-preview-bubble .wa-rich-line-content {
+  white-space: pre-wrap !important;
+  overflow-wrap: anywhere !important;
+  word-break: break-word !important;
+}
+
+.wa-edit-preview-bubble .wa-rich-list,
+.wa-edit-preview-bubble .wa-rich-html-message ul,
+.wa-edit-preview-bubble .wa-rich-html-message ol {
+  max-width: 100% !important;
+  padding-left: 1.25rem !important;
+  margin: 2px 0 !important;
+}
+
+.wa-edit-preview-time {
+  clear: both !important;
+  width: 100% !important;
+}
+
+@media (max-width: 640px) {
+  .wa-edit-preview-bubble {
+    max-width: 100% !important;
+  }
+}

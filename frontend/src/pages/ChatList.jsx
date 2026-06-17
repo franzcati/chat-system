@@ -170,6 +170,23 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat }) => {
     return d ? d.getTime() : 0;
   };
   const getInitial = (text) => (text ? text.charAt(0).toUpperCase() : "U");
+  const isSelfUserId = (id) => Number(id) === Number(userId);
+  const addSelfSuffix = (name = "Usuario") => {
+    const cleanName = String(name || "Usuario").trim() || "Usuario";
+    return /\(Tú\)$/i.test(cleanName) ? cleanName : `${cleanName} (Tú)`;
+  };
+
+  const getDisplayUserName = (user = {}) => {
+    const fullName = `${user.nombre || ""} ${user.apellido || ""}`.trim() || user.nombre || "Usuario";
+    return isSelfUserId(user.id) ? addSelfSuffix(fullName) : fullName;
+  };
+
+  const getDisplayChatTitle = (chat = {}) => {
+    const baseTitle = chat.usuario_nombre || (chat.tipo === "grupo" ? "Grupo" : "Usuario");
+    return chat.tipo === "privado" && isSelfUserId(chat.usuario_id)
+      ? addSelfSuffix(baseTitle)
+      : baseTitle;
+  };
 
   const getPresenceInfo = (targetUserId) => {
     const estado = estadosUsuarios?.[String(targetUserId)] || estadosUsuarios?.[Number(targetUserId)] || null;
@@ -350,8 +367,9 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat }) => {
     const grouped = {};
 
     mensajes.forEach((msg) => {
-      const esEmisor = msg.usuario_envia_id === userId;
+      const esEmisor = Number(msg.usuario_envia_id) === Number(userId);
       const otherUserId = esEmisor ? msg.usuario_recibe_id : msg.usuario_envia_id;
+      const esChatPropio = Number(msg.usuario_envia_id) === Number(userId) && Number(msg.usuario_recibe_id) === Number(userId);
       const eliminado = msg.eliminado ?? 0;
 
       const otherUserNombre = esEmisor
@@ -373,7 +391,7 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat }) => {
           usuario_correo: otherUserCorreo,
           url_imagen: otherUserAvatar,
           background: otherUserBackground,
-          mensajes_no_leidos: msg.usuario_recibe_id === userId && msg.visto === 0 ? 1 : 0,
+          mensajes_no_leidos: !esChatPropio && Number(msg.usuario_recibe_id) === Number(userId) && Number(msg.visto) === 0 ? 1 : 0,
           eliminado,
           ultimo_mensaje: mensajeMostrado,
           ultimo_archivo_url: msg.archivo_url || null,
@@ -405,7 +423,7 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat }) => {
           grouped[otherUserId].lastTime = msgTime;
         }
 
-        if (msg.usuario_recibe_id === userId && msg.visto === 0) {
+        if (!esChatPropio && Number(msg.usuario_recibe_id) === Number(userId) && Number(msg.visto) === 0) {
           grouped[otherUserId].mensajes_no_leidos += 1;
         }
       }
@@ -1267,16 +1285,18 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat }) => {
   };
 
   const handleSelectUsuarioComun = (usuario) => {
+    const nombreBase = `${usuario.nombre || ""} ${usuario.apellido || ""}`.trim() || usuario.nombre || "Usuario";
     const nuevoChat = {
       tipo: "privado",
       usuario_id: usuario.id,
-      usuario_nombre: `${usuario.nombre} ${usuario.apellido}`,
+      usuario_nombre: nombreBase,
       usuario_apellido: usuario.apellido,
       url_imagen: usuario.url_imagen,
       background: usuario.background,
       correo: usuario.correo,
       mensajes: [],
       esNuevo: true,
+      es_chat_propio: isSelfUserId(usuario.id),
       lastTime: Date.now(), // ⚡ Importante
     };
 
@@ -1405,7 +1425,7 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat }) => {
 
   const getChatId = (chat) => (chat.tipo === "grupo" ? chat.grupo_id : chat.usuario_id);
 
-  const getChatTitle = (chat) => chat.usuario_nombre || (chat.tipo === "grupo" ? "Grupo" : "Usuario");
+  const getChatTitle = (chat) => getDisplayChatTitle(chat);
 
   const getPreviewPrefix = (chat) => {
     if (chat.eliminado === 1) return "";
@@ -1884,7 +1904,7 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat }) => {
 
               {usuariosComunes.length > 0 && searchTerm.trim() !== "" && (
                 <div className="mt-3 mb-3 wa-common-users">
-                  <h6 className="fw-bold text-muted mb-2">Personas en proyectos comunes</h6>
+                  <h6 className="fw-bold text-muted mb-2">Resultados de búsqueda</h6>
                   {usuariosComunes.map((u) => (
                     <button
                       type="button"
@@ -1915,8 +1935,10 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat }) => {
                         </div>
                       )}
                       <div className="text-start">
-                        <div className="fw-bold">{u.nombre} {u.apellido}</div>
-                        <div className="fst-italic text-muted">Iniciar conversación</div>
+                        <div className="fw-bold">{getDisplayUserName(u)}</div>
+                        <div className="fst-italic text-muted">
+                          {isSelfUserId(u.id) ? "Chat personal" : "Iniciar conversación"}
+                        </div>
                       </div>
                     </button>
                   ))}

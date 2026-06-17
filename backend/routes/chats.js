@@ -220,32 +220,63 @@ router.delete("/favoritos", async (req, res) => {
 
 router.get("/usuarios/comunes/:miUsuarioId", async (req, res) => {
   const { miUsuarioId } = req.params;
-  const { search } = req.query;
+  const { search = "" } = req.query;
+  const searchLike = `%${search}%`;
 
   try {
     const [rows] = await db.query(
       `
-      SELECT DISTINCT u.id, u.nombre, u.apellido, u.url_imagen, u.background
-      FROM usuario u
-      INNER JOIN usuario_proyecto up ON u.id = up.usuario_id
-      INNER JOIN usuario_proyecto up2 ON up.proyecto_id = up2.proyecto_id
-      WHERE up2.usuario_id = ? 
-        AND u.id != ?
-        AND CONCAT(u.nombre, ' ', u.apellido) LIKE ?
-        AND u.id NOT IN (
-          SELECT 
-            CASE
-              WHEN m.usuario_envia_id = ? THEN m.usuario_recibe_id
-              ELSE m.usuario_envia_id
-            END
-          FROM mensajes m
-          WHERE (m.usuario_envia_id = ? OR m.usuario_recibe_id = ?)
-        )
+      SELECT *
+      FROM (
+        -- Permite que el usuario se encuentre a si mismo para iniciar su chat personal.
+        SELECT
+          u.id,
+          u.nombre,
+          u.apellido,
+          u.correo,
+          u.url_imagen,
+          u.background,
+          1 AS es_tu
+        FROM usuario u
+        WHERE u.id = ?
+          AND CONCAT(u.nombre, ' ', u.apellido) LIKE ?
+
+        UNION
+
+        -- Usuarios de proyectos comunes que aun no tienen chat privado abierto.
+        SELECT DISTINCT
+          u.id,
+          u.nombre,
+          u.apellido,
+          u.correo,
+          u.url_imagen,
+          u.background,
+          0 AS es_tu
+        FROM usuario u
+        INNER JOIN usuario_proyecto up ON u.id = up.usuario_id
+        INNER JOIN usuario_proyecto up2 ON up.proyecto_id = up2.proyecto_id
+        WHERE up2.usuario_id = ?
+          AND u.id != ?
+          AND CONCAT(u.nombre, ' ', u.apellido) LIKE ?
+          AND u.id NOT IN (
+            SELECT
+              CASE
+                WHEN m.usuario_envia_id = ? THEN m.usuario_recibe_id
+                ELSE m.usuario_envia_id
+              END
+            FROM mensajes m
+            WHERE (m.usuario_envia_id = ? OR m.usuario_recibe_id = ?)
+          )
+      ) AS resultados
+      ORDER BY es_tu DESC, nombre ASC, apellido ASC
+      LIMIT 30
       `,
       [
         miUsuarioId,
+        searchLike,
         miUsuarioId,
-        `%${search}%`,
+        miUsuarioId,
+        searchLike,
         miUsuarioId,
         miUsuarioId,
         miUsuarioId,

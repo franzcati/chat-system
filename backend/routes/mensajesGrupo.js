@@ -152,6 +152,53 @@ async function getReplyMessageById(id) {
   return map.get(Number(id)) || null;
 }
 
+async function safeGetReplyMessageById(id, contexto = "mensaje de grupo") {
+  if (!id) return null;
+  try {
+    return await getReplyMessageById(id);
+  } catch (err) {
+    console.warn(`⚠️ No se pudo cargar la respuesta citada para ${contexto}:`, err?.message || err);
+    return null;
+  }
+}
+
+function emitGroupMessageSafely(miembros, enviarEventoAlUsuario, mensaje) {
+  if (typeof enviarEventoAlUsuario !== "function") return;
+  miembros.forEach(({ usuario_id }) => {
+    try {
+      enviarEventoAlUsuario(usuario_id, "nuevoMensajeGrupo", mensaje);
+    } catch (err) {
+      console.warn(`⚠️ No se pudo emitir nuevoMensajeGrupo al usuario ${usuario_id}:`, err?.message || err);
+    }
+  });
+}
+
+async function safeGetUserInfo(userId, contexto = "usuario") {
+  if (!userId) return {};
+  try {
+    const [rows] = await db.query(
+      "SELECT nombre, apellido, correo, url_imagen, background FROM usuario WHERE id = ?",
+      [userId]
+    );
+    return rows[0] || {};
+  } catch (err) {
+    console.warn(`⚠️ No se pudo cargar información de ${contexto} ${userId}:`, err?.message || err);
+    return {};
+  }
+}
+
+async function emitGroupMessageAfterResponse(grupoId, enviarEventoAlUsuario, mensaje) {
+  try {
+    const [miembros] = await db.query(
+      "SELECT usuario_id FROM usuario_grupo WHERE grupo_id = ?",
+      [grupoId]
+    );
+    emitGroupMessageSafely(miembros, enviarEventoAlUsuario, mensaje);
+  } catch (err) {
+    console.warn(`⚠️ No se pudo emitir mensaje al grupo ${grupoId}:`, err?.message || err);
+  }
+}
+
 // =======================
 // 📦 Configuración de Multer (con carpetas dinámicas por grupo y tipo)
 // =======================
@@ -681,17 +728,20 @@ router.post("/", async (req, res) => {
   try {
     await ensureReplyColumn();
 
-    const [result] = await db.query(
+    const [result] = await queryWithRetry(
+      db,
       `INSERT INTO mensajes_grupo (grupo_id, usuario_id, mensaje, fecha_envio, lote_id, reply_to_id, reenviado)
        VALUES (?, ?, ?, UTC_TIMESTAMP(3), ?, ?, 0)`,
-      [grupoId, usuarioId, mensaje, loteId || null, replyToIdNum]
+      [grupoId, usuarioId, mensaje, loteId || null, replyToIdNum],
+      { attempts: 4, label: "insertar mensaje de grupo" }
     );
 
-    const [usuarioInfo] = await db.query(
-      "SELECT nombre, apellido, correo, url_imagen, background FROM usuario WHERE id = ?",
-      [usuarioId]
-    );
-    const usuario = usuarioInfo[0];
+    // Desde aquí el mensaje ya quedó guardado. Todo lo adicional se hace de forma segura
+    // para no devolver 500 ni mostrar la alerta falsa en el frontend cuando se responde.
+    const [usuario, replyTo] = await Promise.all([
+      safeGetUserInfo(usuarioId, "usuario mensaje de grupo"),
+      safeGetReplyMessageById(replyToIdNum, "envío de grupo"),
+    ]);
 
     const nuevoMensaje = {
       id: result.insertId,
@@ -701,24 +751,22 @@ router.post("/", async (req, res) => {
       eliminado: 0,
       fecha_envio: fechaEnvioISO,
       editado: 0,
-      correo: usuario.correo,
+      correo: usuario.correo || null,
       lote_id: loteId || null,
       reply_to_id: replyToIdNum,
-      reply_to: replyToIdNum ? await getReplyMessageById(replyToIdNum) : null,
+      reply_to: replyTo,
       reenviado: 0,
-      ...usuario,
+      nombre: usuario.nombre || null,
+      apellido: usuario.apellido || null,
+      url_imagen: usuario.url_imagen || null,
+      background: usuario.background || null,
     };
 
-    const [miembros] = await db.query(
-      "SELECT usuario_id FROM usuario_grupo WHERE grupo_id = ?",
-      [grupoId]
-    );
-
-    miembros.forEach(({ usuario_id }) => {
-      enviarEventoAlUsuario(usuario_id, "nuevoMensajeGrupo", nuevoMensaje);
-    });
-
-    return res.status(201).json(nuevoMensaje);
+    // Respondemos antes de consultar miembros y emitir sockets. Si esa parte falla,
+    // el frontend ya recibió que el mensaje se guardó correctamente.
+    res.status(201).json(nuevoMensaje);
+    emitGroupMessageAfterResponse(grupoId, enviarEventoAlUsuario, nuevoMensaje);
+    return;
   } catch (err) {
     console.error("❌ Error al enviar mensaje de grupo:", err);
     if (!res.headersSent) {
@@ -1296,26 +1344,31 @@ router.post("/archivo", upload.single("archivo"), async (req, res) => {
     // 1️⃣ Crear mensaje en mensajes_grupo (mensaje = ruta de la imagen)
     await ensureReplyColumn();
 
-    const [resultadoMsg] = await db.query(
+    const [resultadoMsg] = await queryWithRetry(
+      db,
       `INSERT INTO mensajes_grupo (grupo_id, usuario_id, mensaje, fecha_envio, lote_id, reply_to_id)
       VALUES (?, ?, ?, UTC_TIMESTAMP(3), ?, ?)`,
-      [grupo_id, usuario_id, urlArchivo, loteId || null, replyToIdNum]   // 👈 usamos el lote
+      [grupo_id, usuario_id, urlArchivo, loteId || null, replyToIdNum],
+      { attempts: 4, label: "insertar mensaje archivo de grupo" }
     );
     const mensajeId = resultadoMsg.insertId;
 
     // 2️⃣ Guardar metadatos en mensajes_grupo_archivos
-    await db.query(
+    await queryWithRetry(
+      db,
       `INSERT INTO mensajes_grupo_archivos 
         (grupo_id, usuario_id, archivo_url, tipo_archivo, nombre_archivo, tamano, fecha_envio)
        VALUES (?, ?, ?, ?, ?, ?, UTC_TIMESTAMP(3))`,
-      [grupo_id, usuario_id, urlArchivo, file.mimetype, file.originalname, file.size]
+      [grupo_id, usuario_id, urlArchivo, file.mimetype, file.originalname, file.size],
+      { attempts: 4, label: "insertar archivo de grupo" }
     );
 
-    // 3️⃣ Info del usuario
-    const [[usuarioInfo]] = await db.query(
-      "SELECT nombre, apellido, correo, url_imagen, background FROM usuario WHERE id = ?",
-      [usuario_id]
-    );
+    // 3️⃣ Info del usuario y respuesta citada. Esto ya no puede romper la respuesta HTTP,
+    // porque el archivo y el mensaje ya quedaron guardados.
+    const [usuarioInfo, replyTo] = await Promise.all([
+      safeGetUserInfo(usuario_id, "usuario archivo de grupo"),
+      safeGetReplyMessageById(replyToIdNum, "archivo de grupo"),
+    ]);
 
     // 4️⃣ Objeto mensaje que entiende el front
     const mensaje = {
@@ -1331,19 +1384,28 @@ router.post("/archivo", upload.single("archivo"), async (req, res) => {
       editado: 0,
       fijado: 0,
       fecha_envio: new Date().toISOString(),
-      lote_id: loteId || null,       // 👈 AQUÍ
+      lote_id: loteId || null,
       reply_to_id: replyToIdNum,
-      reply_to: replyToIdNum ? await getReplyMessageById(replyToIdNum) : null,
-      ...usuarioInfo,
+      reply_to: replyTo,
+      nombre: usuarioInfo.nombre || null,
+      apellido: usuarioInfo.apellido || null,
+      correo: usuarioInfo.correo || null,
+      url_imagen: usuarioInfo.url_imagen || null,
+      background: usuarioInfo.background || null,
     };
 
-    // 5️⃣ Emitir por socket a todos los del grupo
+    // Respondemos antes de emitir por socket para evitar alertas falsas.
+    res.json({ success: true, mensaje });
+
     const io = req.app.get("io");
     if (io) {
-      io.to(`grupo_${grupo_id}`).emit("nuevoMensajeGrupo", mensaje);
+      try {
+        io.to(`grupo_${grupo_id}`).emit("nuevoMensajeGrupo", mensaje);
+      } catch (emitErr) {
+        console.warn("⚠️ No se pudo emitir archivo de grupo por socket:", emitErr?.message || emitErr);
+      }
     }
-
-    res.json({ success: true, mensaje });
+    return;
   } catch (err) {
     console.error("❌ Error al subir archivo:", err);
     res.status(500).json({ error: "Error al subir archivo" });
