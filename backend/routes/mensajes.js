@@ -419,6 +419,49 @@ const storage = multer.diskStorage({
 
 const upload = multer({ storage });
 
+function esArchivoAudio(file) {
+  const mime = String(file?.mimetype || "").toLowerCase();
+  const name = String(file?.originalname || "").toLowerCase();
+  return mime.startsWith("audio/") || /\.(webm|ogg|m4a|mp3|wav|aac|opus)$/i.test(name);
+}
+
+function esNotaVozGrabada(req, file) {
+  const flag = String(req.body?.esNotaVoz || req.query?.esNotaVoz || "").toLowerCase();
+  const name = String(file?.originalname || "").toLowerCase();
+  return flag === "1" || flag === "true" || name.startsWith("voice_note_");
+}
+
+function eliminarArchivoTemporal(file) {
+  if (!file?.path) return;
+  fs.unlink(file.path, (err) => {
+    if (err) {
+      console.warn("⚠️ No se pudo eliminar archivo no autorizado:", err?.message || err);
+    }
+  });
+}
+
+function normalizarPermisosChat(value) {
+  let parsed = value || {};
+  if (typeof parsed === "string") {
+    try {
+      parsed = JSON.parse(parsed);
+    } catch {
+      parsed = {};
+    }
+  }
+  return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
+}
+
+async function usuarioPuedeEnviarAudios(usuarioId) {
+  const [rows] = await db.query(
+    "SELECT permisos_chat FROM usuario WHERE id = ? LIMIT 1",
+    [usuarioId]
+  );
+  const permisos = normalizarPermisosChat(rows[0]?.permisos_chat);
+  const valor = permisos.enviar_audios;
+  return valor === 1 || valor === "1" || valor === true || valor === "true";
+}
+
 
 router.get("/contexto/:mensajeId", async (req, res) => {
   try {
@@ -1355,6 +1398,14 @@ router.post("/archivo", upload.single("archivo"), async (req, res) => {
     const file = req.file;
     if (!file) {
       return res.status(400).json({ success: false, error: "No se recibió ningún archivo" });
+    }
+
+    if (esNotaVozGrabada(req, file) && !(await usuarioPuedeEnviarAudios(sender_id))) {
+      eliminarArchivoTemporal(file);
+      return res.status(403).json({
+        success: false,
+        error: "No tienes permiso para grabar audios. Solicita autorización a un administrador.",
+      });
     }
 
     const relativePath = path.relative(

@@ -29,6 +29,41 @@ const uploadPerfil = multer({
   },
 });
 
+const DEFAULT_CHAT_PERMISSIONS = {
+  crear_grupos: 0,
+  editar_mensajes: 0,
+  eliminar_mensajes: 0,
+  enviar_audios: 0,
+};
+
+function normalizarPermisosChat(value) {
+  let parsed = value;
+
+  if (!parsed) parsed = {};
+
+  if (typeof parsed === "string") {
+    try {
+      parsed = JSON.parse(parsed);
+    } catch {
+      parsed = {};
+    }
+  }
+
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    parsed = {};
+  }
+
+  const normalizados = { ...DEFAULT_CHAT_PERMISSIONS };
+
+  for (const key of Object.keys(normalizados)) {
+    const raw = parsed[key];
+    normalizados[key] = raw === 1 || raw === "1" || raw === true || raw === "true" ? 1 : 0;
+  }
+
+  return normalizados;
+}
+
+
 let columnasPerfilVerificadas = false;
 
 async function columnaExiste(nombre) {
@@ -401,7 +436,7 @@ router.get("/", async (req, res) => {
         perfil_avatar_transform: perfilNormalizado.perfil_avatar_transform,
         perfil_cartel_transform: perfilNormalizado.perfil_cartel_transform,
         perfil_avatares_recientes: perfilNormalizado.perfil_avatares_recientes,
-        permisos_chat: JSON.parse(u.permisos_chat),
+        permisos_chat: normalizarPermisosChat(u.permisos_chat),
         proyectos_detallados: u.proyectos_detallados
           ? JSON.parse(u.proyectos_detallados)
           : [],
@@ -465,7 +500,7 @@ router.post("/", async (req, res) => {
         usuario,
         contrasena,
         rol_id || 4,                       // o el rol que quieras por defecto
-        JSON.stringify(permisos_chat || {}),
+        JSON.stringify(normalizarPermisosChat(permisos_chat)),
         randomColor,                       // 👈 color aleatorio
         'aprobado'                         // 👈 si quieres que se creen aprobados
       ]
@@ -532,7 +567,7 @@ router.put("/:id", async (req, res) => {
       nombre,
       apellido,
       usuario,
-      JSON.stringify(permisos_chat || {})
+      JSON.stringify(normalizarPermisosChat(permisos_chat))
     ];
 
     if (contrasena) {

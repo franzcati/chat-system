@@ -230,6 +230,27 @@ const getAudioExtensionFromMimeType = (mimeType = "") => {
   return "webm";
 };
 
+const esArchivoAudio = (file) => {
+  const mime = String(file?.type || "").toLowerCase();
+  const name = String(file?.name || "").toLowerCase();
+  return mime.startsWith("audio/") || /\.(webm|ogg|m4a|mp3|wav|aac|opus)$/i.test(name);
+};
+
+const permisoChatActivo = (permisos, campo) => {
+  let parsed = permisos || {};
+
+  if (typeof parsed === "string") {
+    try {
+      parsed = JSON.parse(parsed);
+    } catch {
+      parsed = {};
+    }
+  }
+
+  const valor = parsed?.[campo];
+  return valor === 1 || valor === "1" || valor === true || valor === "true";
+};
+
 const RECORDER_WAVE_BAR_COUNT = 42;
 const RECORDER_WAVE_SAMPLE_INTERVAL_MS = 70;
 const RECORDER_SILENCE_THRESHOLD = 0.018;
@@ -327,6 +348,8 @@ const ChatBox = ({ chat, user, setChat, onVerPerfil }) => {
   const [gifResults, setGifResults] = useState([]); // resultados de la API
   const { theme } = useTheme();
   const emojiTheme = theme === "dark" ? "dark" : "light";
+  const puedeGrabarAudios = permisoChatActivo(user?.permisos_chat, "enviar_audios");
+  const acceptAdjuntos = "image/*,video/*,audio/*,.pdf,.doc,.docx,.xls,.xlsx,.zip,.rar,.txt";
 
   const replyTitleStyle = useMemo(
     () => (replyingTo ? getProfileTitleStyle(replyingTo, user, theme) : {}),
@@ -3219,15 +3242,19 @@ const ChatBox = ({ chat, user, setChat, onVerPerfil }) => {
     const filesArray = Array.from(fileList || []);
     if (!filesArray.length) return;
 
+    const archivosPermitidos = filesArray;
+
+    if (!archivosPermitidos.length) return;
+
     // 1) Imágenes → van a la cola de preview
-    const imageFiles = filesArray.filter((f) => f.type.startsWith("image/"));
+    const imageFiles = archivosPermitidos.filter((f) => f.type.startsWith("image/"));
 
     if (imageFiles.length) {
       addImagesToPending(imageFiles, options);
     }
 
     // 2) Otros archivos (Word, Excel, ZIP, EXE, etc.) → subir directo
-    const otherFiles = filesArray.filter((f) => !f.type.startsWith("image/"));
+    const otherFiles = archivosPermitidos.filter((f) => !f.type.startsWith("image/"));
 
     const replyFileId = replyingTo?.id || null;
     const replyFileType = replyingTo?.reply_to_tipo || replyingTo?.reply_source || "privado";
@@ -3311,6 +3338,7 @@ const ChatBox = ({ chat, user, setChat, onVerPerfil }) => {
 
     const formData = new FormData();
     formData.append("archivo", file);
+    if (requestOptions?.isVoiceNote) formData.append("esNotaVoz", "1");
     if (loteId) formData.append("loteId", loteId); // 👈 importante
     if (replyToId) formData.append("replyToId", replyToId);
     if (replyToId && replyToType) formData.append("replyToType", replyToType);
@@ -3489,6 +3517,11 @@ const ChatBox = ({ chat, user, setChat, onVerPerfil }) => {
   };
 
   const uploadRecordedAudio = async (audioFile, replyContext = null) => {
+    if (!puedeGrabarAudios) {
+      alert("No tienes permiso para grabar audios. Solicita autorización a un administrador.");
+      return;
+    }
+
     const replyAudioId = replyContext?.id || null;
     const replyAudioType = replyContext?.reply_to_tipo || replyContext?.reply_source || "privado";
     const replyAudioGrupoId = replyContext?.reply_to_grupo_id || replyContext?.source_group_id || null;
@@ -3505,12 +3538,13 @@ const ChatBox = ({ chat, user, setChat, onVerPerfil }) => {
         null,
         replyAudioId,
         replyAudioType,
-        replyAudioGrupoId
+        replyAudioGrupoId,
+        { isVoiceNote: true }
       );
       logDev("🎙️ Audio enviado correctamente:", audioFile.name);
     } catch (err) {
       console.error("❌ Error enviando audio:", err);
-      alert("No se pudo enviar el audio. Revisa el permiso del micrófono e inténtalo otra vez.");
+      alert("No se pudo enviar la nota de voz. Revisa el permiso del micrófono e inténtalo otra vez.");
     } finally {
       setIsSendingAudio(false);
       recordingReplyRef.current = null;
@@ -3558,6 +3592,11 @@ const ChatBox = ({ chat, user, setChat, onVerPerfil }) => {
 
   const handleAudioRecordClick = async () => {
     if (isSendingAudio) return;
+
+    if (!puedeGrabarAudios) {
+      alert("No tienes permiso para grabar audios. Solicita autorización a un administrador.");
+      return;
+    }
 
     if (isRecordingAudio) {
       stopAndSendAudioRecording();
@@ -4381,7 +4420,7 @@ const ChatBox = ({ chat, user, setChat, onVerPerfil }) => {
                     type="file"
                     id="fileInput"
                     hidden
-                    accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.xls,.xlsx,.zip,.rar,.txt"
+                    accept={acceptAdjuntos}
                     onChange={handleArchivoSeleccionado}
                   />
                   <button
@@ -5019,11 +5058,11 @@ const ChatBox = ({ chat, user, setChat, onVerPerfil }) => {
                   ) : (
                     <button
                       type="button"
-                      className={`btn btn-icon rounded-circle ms-5 wa-audio-record-button ${isRecordingAudio ? "recording" : ""}`}
+                      className={`btn btn-icon rounded-circle ms-5 wa-audio-record-button ${isRecordingAudio ? "recording" : ""} ${!puedeGrabarAudios ? "no-permission" : ""}`}
                       onClick={handleAudioRecordClick}
-                      disabled={isSendingAudio}
-                      aria-label={isRecordingAudio ? "Enviar audio" : "Grabar audio"}
-                      title={isRecordingAudio ? "Toca para enviar el audio" : "Grabar audio"}
+                      disabled={isSendingAudio || !puedeGrabarAudios}
+                      aria-label={puedeGrabarAudios ? (isRecordingAudio ? "Enviar nota de voz" : "Grabar nota de voz") : "Sin permiso para grabar audios"}
+                      title={puedeGrabarAudios ? (isRecordingAudio ? "Toca para enviar la nota de voz" : "Grabar nota de voz") : "No tienes permiso para grabar audios"}
                     >
                       {isRecordingAudio ? (
                         <svg

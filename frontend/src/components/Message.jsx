@@ -2980,19 +2980,14 @@ const Message = ({
 
         {/* Reacciones agrupadas */}
         {reacciones.length > 0 && (
-          <div
-            className="d-flex flex-row flex-wrap px-2 py-1 bg-light rounded-pill border"
-            style={{
-              fontSize: "10px",
-              lineHeight: 1,
-              cursor: "pointer",
-              marginTop: "-5px",
-              alignSelf: "flex-start",
-            }}
+          <button
+            type="button"
+            className={`wa-message-reactions-summary ${enviadoPorMi ? "out" : "in"}`}
             onClick={() => {
               setSelectedEmoji("ALL");
               setShowReactionModal(true);
             }}
+            aria-label={`Ver ${reacciones.length} reacciones`}
           >
             {Object.keys(
               reacciones.reduce((acc, r) => {
@@ -3000,39 +2995,33 @@ const Message = ({
                 return acc;
               }, {})
             ).map((emoji, i) => (
-              <span key={i} style={{ marginRight: "2px" }}>
+              <span key={i} className="wa-message-reaction-emoji">
                 {emoji}
               </span>
             ))}
 
-            <span className="ms-1 fw-bold">{reacciones.length}</span>
-          </div>
+            <span className="wa-message-reaction-count">{reacciones.length}</span>
+          </button>
         )}
 
         {/* Modal detalle reacciones */}
-        {showReactionModal && (
+        {showReactionModal && typeof document !== "undefined" && createPortal(
           <div
-            className="position-fixed top-0 start-0 w-100 h-100 d-flex align-items-center justify-content-center"
-            style={{ backgroundColor: "rgba(0,0,0,0.5)", zIndex: 3000 }}
+            className="wa-reactions-modal-backdrop"
             onClick={() => setShowReactionModal(false)}
           >
             <div
-              className="bg-white rounded-4 shadow p-3"
-              style={{ maxWidth: "420px", width: "100%" }}
+              className="wa-reactions-modal-card"
               onClick={(e) => e.stopPropagation()}
             >
-              <div className="d-flex border-bottom mb-3">
-                <div
+              <div className="wa-reactions-modal-tabs">
+                <button
+                  type="button"
                   onClick={() => setSelectedEmoji("ALL")}
-                  className={`me-3 pb-2 ${
-                    selectedEmoji === "ALL"
-                      ? "border-bottom border-success fw-bold"
-                      : "text-muted"
-                  }`}
-                  style={{ cursor: "pointer" }}
+                  className={`wa-reactions-modal-tab ${selectedEmoji === "ALL" ? "active" : ""}`}
                 >
                   Total {reacciones.length}
-                </div>
+                </button>
 
                 {Object.values(
                   reacciones.reduce((acc, r) => {
@@ -3043,22 +3032,19 @@ const Message = ({
                     return acc;
                   }, {})
                 ).map((item, i) => (
-                  <div
+                  <button
+                    type="button"
                     key={i}
                     onClick={() => setSelectedEmoji(item.emoji)}
-                    className={`me-3 pb-2 ${
-                      selectedEmoji === item.emoji
-                        ? "border-bottom border-success fw-bold"
-                        : "text-muted"
-                    }`}
-                    style={{ cursor: "pointer" }}
+                    className={`wa-reactions-modal-tab ${selectedEmoji === item.emoji ? "active" : ""}`}
                   >
-                    {item.emoji} {item.count > 1 && item.count}
-                  </div>
+                    <span>{item.emoji}</span>
+                    {item.count > 1 && <strong>{item.count}</strong>}
+                  </button>
                 ))}
               </div>
 
-              <ul className="list-unstyled m-0">
+              <ul className="wa-reactions-modal-list">
                 {reacciones
                   .filter(
                     (r) => selectedEmoji === "ALL" || r.emoji === selectedEmoji
@@ -3070,13 +3056,10 @@ const Message = ({
                     const nombre = r.usuario?.nombre || "Usuario";
 
                     return (
-                      <li
-                        key={idx}
-                        className="d-flex align-items-center justify-content-between mb-2 p-2 rounded hover-bg-light"
-                      >
-                        <div
-                          className="d-flex align-items-center"
-                          style={{ cursor: "pointer" }}
+                      <li key={idx} className="wa-reactions-modal-item">
+                        <button
+                          type="button"
+                          className="wa-reactions-modal-user"
                           onClick={() => {
                             if (!isMineReaction) {
                               onVerPerfil(r.usuario);
@@ -3088,61 +3071,46 @@ const Message = ({
                             <img
                               src={getAvatarUrl(avatarUrl)}
                               alt={nombre}
-                              className="rounded-circle me-2"
-                              style={{
-                                width: "36px",
-                                height: "36px",
-                                objectFit: "cover",
-                              }}
+                              className="wa-reactions-modal-avatar"
                             />
                           ) : (
-                            <div
-                              className="rounded-circle text-white d-flex align-items-center justify-content-center me-2 fw-bold"
-                              style={{
-                                width: "36px",
-                                height: "36px",
-                                backgroundColor: bgColor,
-                                fontSize: "14px",
-                              }}
+                            <span
+                              className="wa-reactions-modal-avatar fallback"
+                              style={{ backgroundColor: bgColor }}
                             >
                               {nombre.charAt(0).toUpperCase()}
-                            </div>
+                            </span>
                           )}
 
-                          <div>
-                            <div
-                              className="fw-bold"
-                              style={{ fontSize: "14px" }}
-                            >
+                          <span className="wa-reactions-modal-name-wrap">
+                            <strong className="wa-reactions-modal-name">
                               {isMineReaction
                                 ? "Tú"
                                 : `${r.usuario?.nombre || ""} ${
                                     r.usuario?.apellido || ""
                                   }`}
-                            </div>
+                            </strong>
                             {isMineReaction && (
-                              <div
-                                className="text-muted"
-                                style={{ fontSize: "12px" }}
-                              >
-                                Haz clic en el emoji para eliminarla
-                              </div>
+                              <small>Haz clic en el emoji para eliminarla</small>
                             )}
-                          </div>
-                        </div>
+                          </span>
+                        </button>
 
-                        <span
-                          style={{ fontSize: "22px", cursor: "pointer" }}
+                        <button
+                          type="button"
+                          className="wa-reactions-modal-emoji"
                           onClick={() => handleReaction(r.emoji)}
+                          aria-label={isMineReaction ? "Eliminar reacción" : "Reaccionar igual"}
                         >
                           {r.emoji}
-                        </span>
+                        </button>
                       </li>
                     );
                   })}
               </ul>
             </div>
-          </div>
+          </div>,
+          document.body
         )}
 
         {/* Modal de fijar mensaje */}
@@ -3343,90 +3311,81 @@ const Message = ({
         )}
 
         {/* Modal historial de ediciones */}
-        {showHistorial && (
+        {showHistorial && typeof document !== "undefined" && createPortal(
           <div
-            className="position-fixed top-0 start-0 w-100 h-100 d-flex align-items-center justify-content-center"
-            style={{ backgroundColor: "rgba(0,0,0,0.5)", zIndex: 5000 }}
+            className="wa-history-modal-backdrop"
             onClick={() => setShowHistorial(false)}
           >
             <div
-              className="bg-white rounded-4 shadow p-3"
-              style={{ maxWidth: "420px", width: "100%" }}
+              className="wa-history-modal-card"
               onClick={(e) => e.stopPropagation()}
             >
-              <div className="d-flex align-items-center mb-3">
+              <div className="wa-history-modal-header">
                 <button
-                  className="btn btn-link p-0 me-2"
+                  type="button"
+                  className="wa-history-modal-close"
                   onClick={() => setShowHistorial(false)}
+                  aria-label="Cerrar historial de ediciones"
                 >
                   ←
                 </button>
-                <h6 className="m-0">Historial de ediciones</h6>
+                <div>
+                  <h6>Historial de ediciones</h6>
+                  <span>Versiones anteriores del mensaje</span>
+                </div>
               </div>
 
-              {historial.length === 0 ? (
-                <p className="text-muted text-center">
-                  No hay ediciones registradas.
-                </p>
-              ) : (
-                <div className="d-flex flex-column gap-2">
-                  {historial.map((h, index) => {
-                    const hora = formatChatTimeOnly(h.fecha);
-                    const fecha = formatChatDate(h.fecha);
-                    const background = isMine ? "#2787f5" : "#f6f9fb";
-                    const color = isMine ? "#fff" : "#95aac9";
+              <div className="wa-history-timeline">
+                {historial.length === 0 ? (
+                  <div className="wa-history-empty">
+                    No hay ediciones registradas.
+                  </div>
+                ) : (
+                  <div className="wa-history-list">
+                    {historial.map((h, index) => {
+                      const hora = formatChatTimeOnly(h.fecha);
+                      const fecha = formatChatDate(h.fecha);
+                      const showDate =
+                        index === 0 ||
+                        formatChatDate(historial[index - 1].fecha) !== fecha;
 
-                    return (
-                      <div key={h.id} className="d-flex flex-column">
-                        {index === 0 ||
-                        formatChatDate(historial[index - 1].fecha) !== fecha ? (
-                          <div className="date-sticky-wrapper text-center my-2">
-                            <span
-                              className="date-chip px-2 py-1 rounded-pill"
-                              style={{
-                                background: "#e9ecef",
-                                fontSize: "0.75rem",
-                                color: "#6c757d",
-                              }}
-                            >
-                              {fecha}
-                            </span>
+                      return (
+                        <React.Fragment key={h.id}>
+                          {showDate && (
+                            <div className="wa-history-date-row">
+                              <span className="wa-history-date-chip">{fecha}</span>
+                            </div>
+                          )}
+
+                          <div className={`wa-history-message-row ${isMine ? "out" : "in"}`}>
+                            <div className="wa-history-bubble">
+                              <div className="wa-rich-message">
+                                {renderFormattedMessageBlocks(h.texto_original)}
+                              </div>
+
+                              <div className="wa-history-message-time">
+                                {hora}
+                                {isMine && (
+                                  <span className="ms-1">
+                                    {h.visto === 0 ? (
+                                      <span className="svg15 double-check"></span>
+                                    ) : (
+                                      <span className="svg15 double-check-blue"></span>
+                                    )}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
                           </div>
-                        ) : null}
-
-                        <div
-                          className="p-2"
-                          style={{
-                            background,
-                            borderRadius: "10px",
-                            maxWidth: "80%",
-                            alignSelf: isMine ? "flex-end" : "flex-start",
-                            color,
-                          }}
-                        >
-                          <div>{h.texto_original}</div>
-
-                          <div
-                            className="d-flex justify-content-end align-items-center"
-                            style={{ fontSize: "0.65rem", opacity: 0.9 }}
-                          >
-                            {hora}
-                            <span className="ms-2">
-                              {h.visto === 0 ? (
-                                <span className="svg15 double-check"></span>
-                              ) : (
-                                <span className="svg15 double-check-blue"></span>
-                              )}
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
+                        </React.Fragment>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
             </div>
-          </div>
+          </div>,
+          document.body
         )}
 
         {/* Galería tipo WhatsApp */}
