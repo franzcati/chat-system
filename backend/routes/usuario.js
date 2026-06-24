@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const pool = require('../db'); // Asegúrate de tener configurada tu conexión MySQL
+const pool = require('../db');
 
 const DEFAULT_CHAT_PERMISSIONS = {
   crear_grupos: 0,
@@ -36,43 +36,89 @@ function normalizarPermisosChat(value) {
   return normalizados;
 }
 
+function normalizarCorreo(value) {
+  return String(value || '')
+    .normalize('NFKC')
+    .replace(/[\u200B-\u200D\uFEFF]/g, '')
+    .replace(/\s+/g, '')
+    .trim()
+    .toLowerCase();
+}
+
+function normalizarContrasena(value) {
+  return String(value || '')
+    .normalize('NFKC')
+    .replace(/[\u200B-\u200D\uFEFF]/g, '')
+    .trim();
+}
+
+function contrasenasCoinciden(contrasenaGuardada, contrasenaIngresada) {
+  const guardada = String(contrasenaGuardada ?? '');
+  const ingresada = String(contrasenaIngresada ?? '');
+
+  return guardada === ingresada || normalizarContrasena(guardada) === normalizarContrasena(ingresada);
+}
+
+function estadoNormalizado(value) {
+  return String(value || '').trim().toLowerCase();
+}
+
 // Ruta para login
 router.post('/login', async (req, res) => {
-  const { correo, contrasena } = req.body;
+  const correoNormalizado = normalizarCorreo(req.body?.correo);
+  const contrasena = req.body?.contrasena;
+
+  if (!correoNormalizado) {
+    return res.status(400).json({ error: 'Ingrese un correo válido' });
+  }
 
   try {
     const [rows] = await pool.query(
-      'SELECT * FROM usuario WHERE correo = ?',
-      [correo]
+      `SELECT *
+       FROM usuario
+       WHERE LOWER(
+         REPLACE(
+           REPLACE(
+             REPLACE(
+               REPLACE(
+                 REPLACE(TRIM(correo), ' ', ''),
+               CHAR(9), ''),
+             CHAR(10), ''),
+           CHAR(13), ''),
+         CHAR(160), '')
+       ) = ?
+       ORDER BY
+         CASE WHEN LOWER(TRIM(estado)) = 'aprobado' THEN 0 ELSE 1 END,
+         id DESC
+       LIMIT 10`,
+      [correoNormalizado]
     );
 
     if (rows.length === 0) {
       return res.status(404).json({ error: 'El correo ingresado no existe' });
     }
 
-    const usuario = rows[0];
+    const usuario =
+      rows.find((row) => contrasenasCoinciden(row.contrasena, contrasena) && estadoNormalizado(row.estado) === 'aprobado') ||
+      rows.find((row) => contrasenasCoinciden(row.contrasena, contrasena));
 
-    if (usuario.contrasena !== contrasena) {
+    if (!usuario) {
       return res.status(401).json({ error: 'Contraseña incorrecta' });
     }
 
-    // 👉 Convertir permisos_chat si viene como string
     usuario.permisos_chat = normalizarPermisosChat(usuario.permisos_chat);
 
-    // 👉 Obtener permisos del rol
     const [permisos] = await pool.query(
       'SELECT permiso FROM roles_permisos WHERE rol_id = ?',
       [usuario.rol_id]
     );
 
-    // Convertir a array simple: ["crear_usuarios","editar_usuarios"]
     usuario.rol_permisos = permisos.map((p) => p.permiso);
 
     res.json({
       mensaje: 'Inicio de sesión exitoso',
       usuario,
     });
-
   } catch (error) {
     console.error('Error en login:', error);
     res.status(500).json({ error: 'Error interno del servidor' });

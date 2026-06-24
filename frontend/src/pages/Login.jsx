@@ -14,19 +14,16 @@ function Login() {
   const handleLogin = async (e) => {
     e.preventDefault();
 
-    if (!email.includes('@')) {
-      setError('Email inválido');
-      return;
-    }
+    const cleanEmail = email.trim();
 
-    if (password.length < 6) {
-      setError('La contraseña debe tener al menos 6 caracteres');
+    if (!cleanEmail.includes('@')) {
+      setError('Email inválido');
       return;
     }
 
     try {
       const res = await axios.post('/api/usuario/login', {
-        correo: email,
+        correo: cleanEmail,
         contrasena: password,
       });
 
