@@ -4,6 +4,7 @@ import axios from "axios";
 import ChatBody from "../components/ChatBody";
 import MiembrosGrupos from "../components/MiembrosGrupos";
 import VerInfoGrupo from "../components/VerInfoGrupo";
+import VerInfoContacto from "../components/VerInfoContacto";
 import VerArchivos from "../components/VerArchivos";
 import ProfileModal from "../components/ProfileModal";
 import { useTheme } from "../context/ThemeContext";
@@ -282,7 +283,7 @@ const STICKER_EDITOR_COLORS = [
 ];
 
 
-const ChatBox = ({ chat, user, setChat, onVerPerfil }) => {
+const ChatBox = ({ chat, user, setChat, onVerPerfil, onAddToList }) => {
 
   const [messages, setMessages] = useState([]);
   const [hasMoreMessages, setHasMoreMessages] = useState(false);
@@ -308,6 +309,8 @@ const ChatBox = ({ chat, user, setChat, onVerPerfil }) => {
   const [showEmojiPicker, setShowEmojiPicker] = useState(false); // 👈 control del picker
   const [offcanvasGrupo, setOffcanvasGrupo] = useState(null);
   const [mostrarInfoGrupo, setMostrarInfoGrupo] = useState(false);
+  const [mostrarInfoContacto, setMostrarInfoContacto] = useState(false);
+  const [contactoInfoArchivos, setContactoInfoArchivos] = useState([]);
   const [mostrarVerArchivos, setMostrarVerArchivos] = useState(false);
   const [mostrarMenuLlamada, setMostrarMenuLlamada] = useState(false);
   const [searchRequestToken, setSearchRequestToken] = useState(null);
@@ -350,6 +353,12 @@ const ChatBox = ({ chat, user, setChat, onVerPerfil }) => {
   const emojiTheme = theme === "dark" ? "dark" : "light";
   const puedeGrabarAudios = permisoChatActivo(user?.permisos_chat, "enviar_audios");
   const acceptAdjuntos = "image/*,video/*,audio/*,.pdf,.doc,.docx,.xls,.xlsx,.zip,.rar,.txt";
+
+  useEffect(() => {
+    setMostrarInfoGrupo(false);
+    setMostrarInfoContacto(false);
+    setContactoInfoArchivos([]);
+  }, [chat?.tipo, chat?.grupo_id, chat?.usuario_id]);
 
   const replyTitleStyle = useMemo(
     () => (replyingTo ? getProfileTitleStyle(replyingTo, user, theme) : {}),
@@ -2478,6 +2487,34 @@ const ChatBox = ({ chat, user, setChat, onVerPerfil }) => {
     }
   };
 
+  const closeMediaPickers = () => {
+    setShowEmojiPicker(false);
+    setShowGifPicker(false);
+    setShowStickerPicker(false);
+  };
+
+  const openMediaPicker = (panel = "emoji") => {
+    setShowEmojiPicker(panel === "emoji");
+    setShowGifPicker(panel === "gif");
+    setShowStickerPicker(panel === "sticker");
+
+    if (panel === "gif") {
+      fetchTrendingGifs();
+    }
+  };
+
+  const isMediaPickerOpen = showEmojiPicker || showGifPicker || showStickerPicker;
+  const activeMediaPicker = showGifPicker ? "gif" : showStickerPicker ? "sticker" : "emoji";
+
+  const toggleMediaPicker = () => {
+    if (isMediaPickerOpen) {
+      closeMediaPickers();
+      return;
+    }
+
+    openMediaPicker("emoji");
+  };
+
   const closeStickerEditor = useCallback(() => {
     setShowStickerEditor(false);
     setPendingStickerFile(null);
@@ -3739,7 +3776,7 @@ const ChatBox = ({ chat, user, setChat, onVerPerfil }) => {
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
     >
-      <div className={`container-fluid h-100 px-0 wa-chat-shell ${mostrarInfoGrupo ? "is-info-open" : ""}`}>
+      <div className={`container-fluid h-100 px-0 wa-chat-shell ${(mostrarInfoGrupo || mostrarInfoContacto) ? "is-info-open" : ""}`}>
         <div className="wa-chat-conversation d-flex flex-column h-100 position-relative">
           {/* Header del chat */}
           <div className="chat-header wa-chat-header border-bottom">
@@ -3780,7 +3817,7 @@ const ChatBox = ({ chat, user, setChat, onVerPerfil }) => {
                         <>
                           <div 
                             className="d-flex align-items-center cursor-pointer"
-                            onClick={() => setMostrarInfoGrupo(true)} // 👈 al hacer clic abrimos la info
+                            onClick={() => { setMostrarInfoContacto(false); setMostrarInfoGrupo(true); }} // 👈 al hacer clic abrimos la info
                           >
                             {/* Avatar o icono del grupo */}
                             <div className="avatar me-3">
@@ -3806,7 +3843,10 @@ const ChatBox = ({ chat, user, setChat, onVerPerfil }) => {
                         </>
                         ) : (
                         <>
-                          <div className="d-flex align-items-center">
+                          <div
+                            className="d-flex align-items-center cursor-pointer"
+                            onClick={() => { setMostrarInfoGrupo(false); setMostrarInfoContacto(true); }}
+                          >
                             <div className="avatar d-none d-xl-inline-block me-3">
                               {chat?.url_imagen ? (
                                 <div className="wa-presence-wrapper">
@@ -4414,146 +4454,75 @@ const ChatBox = ({ chat, user, setChat, onVerPerfil }) => {
                 </div>
               ) : (
               <div className="row align-items-center gx-0">
-                {/* Botón para adjuntar archivo */}
-                <div className="col-auto">
-                  <input
-                    type="file"
-                    id="fileInput"
-                    hidden
-                    accept={acceptAdjuntos}
-                    onChange={handleArchivoSeleccionado}
-                  />
-                  <button
-                    type="button"
-                    className="btn btn-icon btn-link text-body rounded-circle"
-                    onClick={() => document.getElementById("fileInput").click()}
-                  >
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      width="24"
-                      height="24"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      className="feather feather-paperclip"
-                    >
-                      <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"></path>
-                    </svg>
-                  </button>
-                </div>
-
                 {/* Input de texto */}
                 <div className="col position-relative">
                   <div className="input-group">
-                    <div style={{ display: "flex", flex: 1 }}>
+                    <input
+                      type="file"
+                      id="fileInput"
+                      hidden
+                      accept={acceptAdjuntos}
+                      onChange={handleArchivoSeleccionado}
+                    />
+                    <button
+                      type="button"
+                      className="btn btn-icon btn-link text-body rounded-circle wa-attach-trigger"
+                      aria-label="Adjuntar archivo"
+                      title="Adjuntar archivo"
+                      onClick={() => document.getElementById("fileInput").click()}
+                    >
+                      <i className="fa-solid fa-plus" aria-hidden="true" />
+                    </button>
+                    <button
+                      type="button"
+                      ref={(node) => {
+                        emojiBtnRef.current = node;
+                        gifBtnRef.current = node;
+                        stickerBtnRef.current = node;
+                      }}
+                      className={`input-group-text text-body wa-media-trigger ${isMediaPickerOpen ? "show" : ""}`}
+                      data-emoji-btn=""
+                      aria-expanded={isMediaPickerOpen}
+                      aria-label="Abrir emojis, GIFs y stickers"
+                      title="Emojis, GIFs y stickers"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        toggleMediaPicker();
+                      }}
+                    >
+                      <span className="wa-media-trigger-icon" aria-hidden="true">
+                        <svg
+                          xmlns="http://www.w3.org/2000/svg"
+                          width="24"
+                          height="24"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        >
+                          <path d="M6.75 3.75h8.9c2.52 0 4.6 2.04 4.6 4.56v5.39c0 2.52-2.08 4.56-4.6 4.56H13.2l-3.72 2.2a.75.75 0 0 1-1.13-.65v-1.55h-1.6c-2.52 0-4.6-2.04-4.6-4.56V8.31c0-2.52 2.08-4.56 4.6-4.56Z" />
+                          <path d="M8.15 13.15c.72.86 1.66 1.28 2.85 1.28s2.13-.42 2.85-1.28" />
+                          <path d="M8.05 9.5h.01" />
+                          <path d="M13.95 9.5h.01" />
+                        </svg>
+                      </span>
+                    </button>
+
+                    <div className="wa-input-grow">
                       <ChatInput
                         ref={inputRef}
                         onSend={(msg) => handleSendMessage(msg)}
                         onPasteFiles={(files, options) => handleFilesSeleccionados(files, options)}
                         onValueChange={setInputText}
                         mentionOptions={mentionOptions}
+                        placeholder="Escribe un mensaje..."
                         onReply={handleReplyMessage}
                         onReplyPrivado={handleReplyPrivado}
                         onEnviarMensajePrivado={handleEnviarMensajePrivado}
                       />
                     </div>
-
-                    <a
-                      href="#"
-                      ref={emojiBtnRef}   // 👈 botón con ref
-                      className="input-group-text text-body pe-0"
-                      data-emoji-btn=""
-                      onClick={(e) => {
-                        e.preventDefault();
-                        setShowEmojiPicker((prev) => !prev);
-                      }}
-                    >
-                      <span className="icon icon-lg">
-                        <svg
-                          xmlns="http://www.w3.org/2000/svg"
-                          width="24"
-                          height="24"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="2"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          className="feather feather-smile"
-                        >
-                          <circle cx="12" cy="12" r="10"></circle>
-                          <path d="M8 14s1.5 2 4 2 4-2 4-2"></path>
-                          <line x1="9" y1="9" x2="9.01" y2="9"></line>
-                          <line x1="15" y1="9" x2="15.01" y2="9"></line>
-                        </svg>
-                      </span>
-                    </a>
-                     {/* Botón GIF */}
-                    <a
-                      href="#"
-                      ref={gifBtnRef}   // 👈 botón con ref-
-                      className="input-group-text text-body pe-0"
-                      onClick={(e) => {
-                        e.preventDefault();
-                        setShowGifPicker((prev) => !prev);
-                        setShowEmojiPicker(false);
-                        setShowStickerPicker(false);
-                        fetchTrendingGifs();
-                      }}
-                    >
-                      <span className="icon icon-lg">
-                        <svg
-                          xmlns="http://www.w3.org/2000/svg"
-                          width="24"
-                          height="24"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="2"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                        >
-                          <path d="M3 4h18v16H3z"></path>
-                          <path d="M3 10h18"></path>
-                          <path d="M8 4v6"></path>
-                          <path d="M16 4v6"></path>
-                        </svg>
-                      </span>
-                    </a>
-
-                    {/* Botón Stickers */}
-                    <a
-                      href="#"
-                      ref={stickerBtnRef}   // 👈 botón con ref
-                      className="input-group-text text-body pe-0"
-                      onClick={(e) => {
-                        e.preventDefault();
-                        setShowStickerPicker((prev) => !prev);
-                        setShowEmojiPicker(false);
-                        setShowGifPicker(false);
-                      }}
-                    >
-                      <span className="icon icon-lg">
-                        <svg
-                          xmlns="http://www.w3.org/2000/svg"
-                          width="24"
-                          height="24"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="2"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                        >
-                          <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
-                          <circle cx="8.5" cy="8.5" r="1.5"></circle>
-                          <path d="M21 15l-5-5L5 21"></path>
-                        </svg>
-                      </span>
-                    </a>
                   </div>
                   <input
                     ref={stickerFileInputRef}
@@ -4883,146 +4852,183 @@ const ChatBox = ({ chat, user, setChat, onVerPerfil }) => {
                     </div>
                   )}
 
-                  {/* Picker flotante */}
-                  {showEmojiPicker && (
-                  <div
-                    ref={emojiRef}  // 👈 contenedor con ref
-                    style={{
-                      position: "absolute",
-                      bottom: "60px",
-                      right: "0",
-                      zIndex: 1000,
-                    }}
-                  >
-                    <Picker
-                      data={data}
-                      onEmojiSelect={(emoji) => handleEmojiClick({ emoji: emoji.native })}
-                      previewPosition="none"   // sin preview abajo
-                      skinTonePosition="search" // tonos arriba al lado del buscador
-                      theme={emojiTheme}     // ✅ antes: "light"
-                      locale="es"               // idioma español
-                      style={{ width: "350px", height: "450px" }}
-                    />
-                  </div>
-                  )}
-                  {/* GIF Picker (placeholder) */}
-                  {showGifPicker && (
+                  {/* Picker flotante unificado tipo WhatsApp */}
+                  {isMediaPickerOpen && (
                     <div
-                      ref={gifRef}  // 👈 contenedor con ref
-                      style={{
-                        position: "absolute",
-                        bottom: "60px",
-                        right: "50px",
-                        zIndex: 1000,
-                        width: "350px",
-                        height: "450px",
-                        background: "white",
-                        border: "1px solid #ddd",
-                        overflow: "auto",
-                        padding: "10px",
+                      ref={(node) => {
+                        emojiRef.current = node;
+                        gifRef.current = node;
+                        stickerRef.current = node;
                       }}
-                    >
-                      <input
-                        type="text"
-                        placeholder="Buscar GIFs..."
-                        value={gifSearch}
-                        onChange={(e) => setGifSearch(e.target.value)}
-                        onKeyUp={(e) => e.key === "Enter" && fetchGifs(gifSearch)}
-                        style={{ width: "100%", marginBottom: "10px", padding: "5px" }}
-                      />
-                      <div style={{ display: "flex", flexWrap: "wrap", gap: "5px" }}>
-                        {gifResults.map((gif) => (
-                          <img
-                            key={gif.id}
-                            src={gif.images.fixed_height_small.url}
-                            alt={gif.title}
-                            style={{ width: "80px", cursor: "pointer" }}
-                            onClick={() => {
-                              handleSendMessage(gif.images.original.url); // envía la URL del GIF
-                              setShowGifPicker(false);
-                              setGifSearch("");
-                              setGifResults([]);
-                            }}
-                          />
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                  {/* Sticker / GIF Picker */}
-                  {showStickerPicker && (
-                    <div
-                      ref={stickerRef}
-                      className="wa-sticker-picker"
+                      className={`wa-picker-popover wa-media-picker-shell is-${activeMediaPicker}`}
                       role="dialog"
-                      aria-label="Stickers"
+                      aria-label="Emojis, GIFs y stickers"
                     >
-                      <div className="wa-sticker-tabs" role="tablist" aria-label="Filtros de stickers">
-                        <button
-                          type="button"
-                          className={`wa-sticker-tab ${stickerTab === "todos" ? "active" : ""}`}
-                          onClick={() => setStickerTab("todos")}
-                          role="tab"
-                          aria-selected={stickerTab === "todos"}
-                        >
-                          Todos
-                        </button>
-                        <button
-                          type="button"
-                          className={`wa-sticker-tab ${stickerTab === "favoritos" ? "active" : ""}`}
-                          onClick={() => setStickerTab("favoritos")}
-                          role="tab"
-                          aria-selected={stickerTab === "favoritos"}
-                        >
-                          Favoritos
-                        </button>
-                      </div>
+                      <div className={`wa-media-picker-content ${activeMediaPicker}`}>
+                        {activeMediaPicker === "emoji" && (
+                          <Picker
+                            data={data}
+                            onEmojiSelect={(emoji) => handleEmojiClick({ emoji: emoji.native })}
+                            previewPosition="none"
+                            skinTonePosition="search"
+                            perLine={9}
+                            dynamicWidth
+                            theme={emojiTheme}
+                            locale="es"
+                            style={{ width: "100%", height: "100%" }}
+                          />
+                        )}
 
-                      <div className="wa-sticker-grid-wrap">
-                        <div className="wa-sticker-grid">
-                          {stickerTab === "todos" && (
-                            <div className="wa-sticker-cell">
+                        {activeMediaPicker === "gif" && (
+                          <div className="wa-gif-picker-panel">
+                            <input
+                              type="text"
+                              className="wa-gif-search"
+                              placeholder="Buscar GIFs..."
+                              value={gifSearch}
+                              onChange={(e) => setGifSearch(e.target.value)}
+                              onKeyUp={(e) => e.key === "Enter" && fetchGifs(gifSearch)}
+                            />
+                            <div className="wa-gif-grid">
+                              {gifResults.map((gif) => (
+                                <img
+                                  key={gif.id}
+                                  src={gif.images.fixed_height_small.url}
+                                  alt={gif.title}
+                                  className="wa-gif-result"
+                                  onClick={() => {
+                                    handleSendMessage(gif.images.original.url);
+                                    closeMediaPickers();
+                                    setGifSearch("");
+                                    setGifResults([]);
+                                  }}
+                                />
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {activeMediaPicker === "sticker" && (
+                          <div className="wa-sticker-panel" role="tabpanel" aria-label="Stickers">
+                            <div className="wa-sticker-wa-header" role="tablist" aria-label="Filtros de stickers">
                               <button
                                 type="button"
-                                className="wa-sticker-create"
+                                className={`wa-sticker-wa-tab ${stickerTab === "todos" ? "active" : ""}`}
+                                onClick={() => setStickerTab("todos")}
+                                role="tab"
+                                aria-selected={stickerTab === "todos"}
+                                title="Recientes"
+                              >
+                                <i className="fa-regular fa-clock" aria-hidden="true" />
+                              </button>
+                              <button
+                                type="button"
+                                className={`wa-sticker-wa-tab ${stickerTab === "favoritos" ? "active" : ""}`}
+                                onClick={() => setStickerTab("favoritos")}
+                                role="tab"
+                                aria-selected={stickerTab === "favoritos"}
+                                title="Favoritos"
+                              >
+                                <i className="fa-regular fa-star" aria-hidden="true" />
+                              </button>
+                              <button
+                                type="button"
+                                className="wa-sticker-wa-tab wa-sticker-wa-add"
+                                onClick={openStickerCreator}
                                 title="Crear sticker"
                                 aria-label="Crear sticker"
-                                onClick={openStickerCreator}
                               >
                                 <i className="fa-solid fa-plus" aria-hidden="true" />
                               </button>
                             </div>
-                          )}
 
-                          {listaStickers.length > 0 ? (
-                            listaStickers.map((sticker) => (
-                              <button
-                                key={sticker.id || sticker.url}
-                                type="button"
-                                className="wa-sticker-item"
-                                title="Enviar sticker"
-                                onClick={() => {
-                                  const stickerUrl = normalizeStickerMessageUrl(sticker.url);
-                                  sendStickerMessage(stickerUrl, sticker).catch((err) => {
-                                    console.error("❌ Error enviando sticker:", err);
-                                    alert("No se pudo enviar el sticker.");
-                                  });
-                                }}
-                              >
-                                <img src={getStickerImageUrl(sticker.url)} alt="sticker" />
-                              </button>
-                            ))
-                          ) : (
-                            <div className="wa-sticker-empty">
-                              {stickerTab === "favoritos"
-                                ? "Tus stickers favoritos aparecerán aquí"
-                                : "Tus stickers enviados aparecerán aquí"}
+                            <div className="wa-sticker-search-shell">
+                              <i className="fa-solid fa-magnifying-glass" aria-hidden="true" />
+                              <span>Buscar stickers</span>
                             </div>
-                          )}
-                        </div>
+
+                            <div className="wa-sticker-grid-wrap">
+                              <div className="wa-sticker-grid wa-sticker-grid-whatsapp">
+                                {stickerTab === "todos" && (
+                                  <div className="wa-sticker-cell">
+                                    <button
+                                      type="button"
+                                      className="wa-sticker-create"
+                                      title="Crear sticker"
+                                      aria-label="Crear sticker"
+                                      onClick={openStickerCreator}
+                                    >
+                                      <i className="fa-solid fa-plus" aria-hidden="true" />
+                                      <span>Crear</span>
+                                    </button>
+                                  </div>
+                                )}
+
+                                {listaStickers.length > 0 ? (
+                                  listaStickers.map((sticker) => (
+                                    <button
+                                      key={sticker.id || sticker.url}
+                                      type="button"
+                                      className="wa-sticker-item"
+                                      title="Enviar sticker"
+                                      onClick={() => {
+                                        const stickerUrl = normalizeStickerMessageUrl(sticker.url);
+                                        sendStickerMessage(stickerUrl, sticker).catch((err) => {
+                                          console.error("❌ Error enviando sticker:", err);
+                                          alert("No se pudo enviar el sticker.");
+                                        });
+                                      }}
+                                    >
+                                      <img src={getStickerImageUrl(sticker.url)} alt="sticker" />
+                                    </button>
+                                  ))
+                                ) : (
+                                  <div className="wa-sticker-empty">
+                                    {stickerTab === "favoritos"
+                                      ? "Tus stickers favoritos aparecerán aquí"
+                                      : "Tus stickers enviados aparecerán aquí"}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="wa-media-tabs" role="tablist" aria-label="Tipo de contenido">
+                        <button
+                          type="button"
+                          className={activeMediaPicker === "emoji" ? "active" : ""}
+                          onClick={() => openMediaPicker("emoji")}
+                          role="tab"
+                          aria-selected={activeMediaPicker === "emoji"}
+                          title="Emojis"
+                        >
+                          <i className="fa-regular fa-face-smile" aria-hidden="true" />
+                        </button>
+                        <button
+                          type="button"
+                          className={activeMediaPicker === "gif" ? "active" : ""}
+                          onClick={() => openMediaPicker("gif")}
+                          role="tab"
+                          aria-selected={activeMediaPicker === "gif"}
+                          title="GIF"
+                        >
+                          GIF
+                        </button>
+                        <button
+                          type="button"
+                          className={activeMediaPicker === "sticker" ? "active" : ""}
+                          onClick={() => openMediaPicker("sticker")}
+                          role="tab"
+                          aria-selected={activeMediaPicker === "sticker"}
+                          title="Stickers"
+                        >
+                          <i className="fa-regular fa-note-sticky" aria-hidden="true" />
+                        </button>
                       </div>
                     </div>
-                  )}
-                </div>
+                  )}                </div>
 
                 {/* Botón enviar / grabar audio */}
                 <div className="col-auto d-flex align-items-center">
@@ -5118,6 +5124,22 @@ const ChatBox = ({ chat, user, setChat, onVerPerfil }) => {
             searchRequestToken={searchRequestToken}
           />
         )}
+        {chat?.tipo !== "grupo" && (
+          <VerInfoContacto
+            chat={{ ...chat, archivos: contactoInfoArchivos.length ? contactoInfoArchivos : chat.archivos }}
+            user={user}
+            visible={mostrarInfoContacto}
+            onClose={() => setMostrarInfoContacto(false)}
+            onBuscarEnChat={() => {
+              setMostrarInfoContacto(false);
+              handleBuscarEnChat();
+            }}
+            onOpenFiles={() => setMostrarVerArchivos(true)}
+            onEnviarMensaje={() => setMostrarInfoContacto(false)}
+            onAddToList={onAddToList}
+            onInfoLoaded={(data) => setContactoInfoArchivos(Array.isArray(data?.archivos) ? data.archivos : [])}
+          />
+        )}
       </div>
       {/* 👇 Offcanvas MiembrosGrupos controlado por estado */}
       {offcanvasGrupo && (
@@ -5130,7 +5152,7 @@ const ChatBox = ({ chat, user, setChat, onVerPerfil }) => {
 
       {/* 🔹 Panel de archivos */}
       <VerArchivos
-        chat={chat}
+        chat={chat?.tipo === "grupo" ? chat : { ...chat, archivos: contactoInfoArchivos.length ? contactoInfoArchivos : chat?.archivos }}
         visible={mostrarVerArchivos}
         onClose={() => setMostrarVerArchivos(false)}
       />

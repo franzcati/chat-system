@@ -32,6 +32,260 @@ const ensureChatEstadosSchema = async () => {
   chatEstadosSchemaReady = true;
 };
 
+let chatListasSchemaReady = false;
+
+const ensureChatListasSchema = async () => {
+  if (chatListasSchemaReady) return;
+
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS chat_listas (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      usuario_id INT NOT NULL,
+      nombre VARCHAR(80) NOT NULL,
+      emoji VARCHAR(16) DEFAULT NULL,
+      creado_en TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      actualizado_en TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      INDEX idx_chat_listas_usuario (usuario_id)
+    )
+  `);
+
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS chat_lista_items (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      lista_id INT NOT NULL,
+      usuario_id INT NOT NULL,
+      tipo VARCHAR(20) NOT NULL,
+      chat_id INT NOT NULL,
+      creado_en TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE KEY unique_lista_chat (lista_id, tipo, chat_id),
+      INDEX idx_chat_lista_items_usuario (usuario_id),
+      CONSTRAINT fk_chat_lista_items_lista
+        FOREIGN KEY (lista_id) REFERENCES chat_listas(id)
+        ON DELETE CASCADE
+    )
+  `);
+
+  chatListasSchemaReady = true;
+};
+
+const normalizeChatListName = (value = '') => String(value || '').trim().slice(0, 80);
+
+const getChatListasPayload = async (usuarioId) => {
+  await ensureChatListasSchema();
+
+  const [listas] = await db.query(
+    `SELECT id, usuario_id, nombre, emoji, creado_en, actualizado_en
+     FROM chat_listas
+     WHERE usuario_id = ?
+     ORDER BY actualizado_en DESC, id DESC`,
+    [usuarioId]
+  );
+
+  if (!listas.length) return [];
+
+  const [items] = await db.query(
+    `SELECT id, lista_id, usuario_id, tipo, chat_id, creado_en
+     FROM chat_lista_items
+     WHERE usuario_id = ? AND lista_id IN (?)
+     ORDER BY id ASC`,
+    [usuarioId, listas.map((lista) => lista.id)]
+  );
+
+  const itemsByList = new Map();
+  items.forEach((item) => {
+    const key = Number(item.lista_id);
+    if (!itemsByList.has(key)) itemsByList.set(key, []);
+    itemsByList.get(key).push({
+      id: item.id,
+      tipo: item.tipo,
+      chat_id: Number(item.chat_id),
+      creado_en: item.creado_en,
+    });
+  });
+
+  return listas.map((lista) => ({
+    ...lista,
+    id: Number(lista.id),
+    items: itemsByList.get(Number(lista.id)) || [],
+  }));
+};
+
+// Listas personalizadas tipo WhatsApp
+router.get('/listas/:usuarioId', async (req, res) => {
+  try {
+    const listas = await getChatListasPayload(req.params.usuarioId);
+    res.json(listas);
+  } catch (err) {
+    console.error('❌ Error obteniendo listas de chats:', err);
+    res.status(500).json({ error: 'Error obteniendo listas de chats' });
+  }
+});
+
+router.post('/listas', async (req, res) => {
+  const { usuarioId, nombre, emoji = null, items = [] } = req.body || {};
+  const cleanName = normalizeChatListName(nombre);
+
+  if (!usuarioId || !cleanName) {
+    return res.status(400).json({ error: 'Faltan usuarioId o nombre de lista' });
+  }
+
+  const conn = await db.getConnection();
+  await conn.beginTransaction();
+
+  try {
+    await ensureChatListasSchema();
+
+    const [result] = await conn.query(
+      'INSERT INTO chat_listas (usuario_id, nombre, emoji) VALUES (?, ?, ?)',
+      [usuarioId, cleanName, emoji ? String(emoji).slice(0, 16) : null]
+    );
+
+    const listaId = result.insertId;
+    const cleanItems = Array.isArray(items)
+      ? items
+          .map((item) => ({
+            tipo: item?.tipo === 'grupo' ? 'grupo' : 'privado',
+            chatId: Number(item?.chatId ?? item?.chat_id),
+          }))
+          .filter((item) => item.chatId > 0)
+      : [];
+
+    for (const item of cleanItems) {
+      await conn.query(
+        `INSERT IGNORE INTO chat_lista_items (lista_id, usuario_id, tipo, chat_id)
+         VALUES (?, ?, ?, ?)`,
+        [listaId, usuarioId, item.tipo, item.chatId]
+      );
+    }
+
+    await conn.commit();
+    const listas = await getChatListasPayload(usuarioId);
+    res.json({ success: true, lista: listas.find((lista) => Number(lista.id) === Number(listaId)), listas });
+  } catch (err) {
+    await conn.rollback();
+    console.error('❌ Error creando lista de chats:', err);
+    res.status(500).json({ error: 'Error creando lista de chats' });
+  } finally {
+    conn.release();
+  }
+});
+
+router.put('/listas/:listaId', async (req, res) => {
+  const { listaId } = req.params;
+  const { usuarioId, nombre, emoji, items } = req.body || {};
+  const cleanName = typeof nombre === 'undefined' ? null : normalizeChatListName(nombre);
+
+  if (!usuarioId || !listaId) {
+    return res.status(400).json({ error: 'Faltan parámetros' });
+  }
+
+  const conn = await db.getConnection();
+  await conn.beginTransaction();
+
+  try {
+    await ensureChatListasSchema();
+
+    if (cleanName !== null && cleanName) {
+      await conn.query(
+        'UPDATE chat_listas SET nombre = ?, emoji = COALESCE(?, emoji) WHERE id = ? AND usuario_id = ?',
+        [cleanName, typeof emoji === 'undefined' ? null : String(emoji || '').slice(0, 16), listaId, usuarioId]
+      );
+    }
+
+    if (Array.isArray(items)) {
+      await conn.query('DELETE FROM chat_lista_items WHERE lista_id = ? AND usuario_id = ?', [listaId, usuarioId]);
+
+      for (const item of items) {
+        const tipo = item?.tipo === 'grupo' ? 'grupo' : 'privado';
+        const chatId = Number(item?.chatId ?? item?.chat_id);
+        if (!chatId) continue;
+        await conn.query(
+          `INSERT IGNORE INTO chat_lista_items (lista_id, usuario_id, tipo, chat_id)
+           VALUES (?, ?, ?, ?)`,
+          [listaId, usuarioId, tipo, chatId]
+        );
+      }
+    }
+
+    await conn.commit();
+    const listas = await getChatListasPayload(usuarioId);
+    res.json({ success: true, listas });
+  } catch (err) {
+    await conn.rollback();
+    console.error('❌ Error actualizando lista de chats:', err);
+    res.status(500).json({ error: 'Error actualizando lista de chats' });
+  } finally {
+    conn.release();
+  }
+});
+
+router.delete('/listas/:listaId', async (req, res) => {
+  const { listaId } = req.params;
+  const { usuarioId } = req.body || {};
+
+  if (!usuarioId || !listaId) {
+    return res.status(400).json({ error: 'Faltan parámetros' });
+  }
+
+  try {
+    await ensureChatListasSchema();
+    await db.query('DELETE FROM chat_listas WHERE id = ? AND usuario_id = ?', [listaId, usuarioId]);
+    const listas = await getChatListasPayload(usuarioId);
+    res.json({ success: true, listas });
+  } catch (err) {
+    console.error('❌ Error eliminando lista de chats:', err);
+    res.status(500).json({ error: 'Error eliminando lista de chats' });
+  }
+});
+
+// Información de contacto para panel lateral tipo WhatsApp
+router.get('/contacto-info/:miUsuarioId/:contactoId', async (req, res) => {
+  const { miUsuarioId, contactoId } = req.params;
+
+  try {
+    const [usuarios] = await db.query(
+      `SELECT id, nombre, apellido, correo, url_imagen, background
+       FROM usuario
+       WHERE id = ?
+       LIMIT 1`,
+      [contactoId]
+    );
+
+    if (!usuarios.length) {
+      return res.status(404).json({ error: 'Contacto no encontrado' });
+    }
+
+    const [archivos] = await db.query(
+      `SELECT id, sender_id AS usuario_id, receiver_id, nombre_archivo, archivo_url, tipo_archivo, tamano, fecha_envio,
+              CASE WHEN tipo_archivo LIKE 'image/%' THEN 'imagen' ELSE 'documento' END AS tipo
+       FROM mensajes_archivos
+       WHERE (sender_id = ? AND receiver_id = ?)
+          OR (sender_id = ? AND receiver_id = ?)
+       ORDER BY fecha_envio DESC, id DESC`,
+      [miUsuarioId, contactoId, contactoId, miUsuarioId]
+    );
+
+    const [gruposComunes] = await db.query(
+      `SELECT g.id AS grupo_id, g.nombre, g.imagen_url, g.descripcion,
+              (SELECT COUNT(*) FROM usuario_grupo ugc WHERE ugc.grupo_id = g.id) AS total_miembros
+       FROM grupos g
+       JOIN usuario_grupo ug1 ON ug1.grupo_id = g.id AND ug1.usuario_id = ?
+       JOIN usuario_grupo ug2 ON ug2.grupo_id = g.id AND ug2.usuario_id = ?
+       ORDER BY g.nombre ASC`,
+      [miUsuarioId, contactoId]
+    );
+
+    res.json({
+      usuario: usuarios[0],
+      archivos,
+      grupos_comunes: gruposComunes,
+    });
+  } catch (err) {
+    console.error('❌ Error obteniendo info del contacto:', err);
+    res.status(500).json({ error: 'Error obteniendo info del contacto' });
+  }
+});
+
 // Obtener estados personalizados de chats: archivado / marcado como no leído
 router.get('/estados/:usuarioId', async (req, res) => {
   try {

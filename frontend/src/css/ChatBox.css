@@ -9764,3 +9764,1795 @@ body.dark .wa-reactions-modal-emoji:hover,
     max-width: 210px;
   }
 }
+
+/* =========================================================
+   FIX: pickers completos al responder
+   - El formulario con respuesta ya no recorta popovers.
+   - Emoji/GIF/stickers suben por encima de toda la barra de respuesta.
+   ========================================================= */
+.wa-chat-form.chat-form,
+.wa-chat-form.chat-form.has-reply-compose,
+.wa-chat-form .row.align-items-center.gx-0,
+.wa-chat-form .input-group,
+.wa-chat-form .col.position-relative {
+  overflow: visible !important;
+}
+
+.wa-chat-form.chat-form {
+  --wa-picker-bottom: 62px;
+}
+
+.wa-chat-form.chat-form.has-reply-compose {
+  --wa-picker-bottom: 126px;
+}
+
+.wa-picker-popover {
+  position: absolute !important;
+  right: 0 !important;
+  bottom: var(--wa-picker-bottom, 62px) !important;
+  z-index: 30000 !important;
+  max-width: calc(100vw - 28px) !important;
+  max-height: min(450px, calc(100vh - var(--wa-picker-bottom, 62px) - 28px)) !important;
+  box-sizing: border-box !important;
+}
+
+.wa-emoji-picker-popover {
+  width: min(350px, calc(100vw - 28px)) !important;
+  height: min(450px, calc(100vh - var(--wa-picker-bottom, 62px) - 28px)) !important;
+  overflow: hidden !important;
+  border-radius: 16px !important;
+  box-shadow: 0 12px 36px rgba(15, 23, 42, 0.22) !important;
+}
+
+.wa-emoji-picker-popover em-emoji-picker {
+  width: 100% !important;
+  height: 100% !important;
+}
+
+.wa-gif-picker {
+  right: 50px !important;
+  width: min(350px, calc(100vw - 28px)) !important;
+  height: min(450px, calc(100vh - var(--wa-picker-bottom, 62px) - 28px)) !important;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 10px !important;
+  padding: 10px !important;
+  overflow: hidden !important;
+  border-radius: 16px !important;
+  background: #ffffff !important;
+  border: 1px solid rgba(17, 24, 39, 0.1) !important;
+  box-shadow: 0 12px 36px rgba(15, 23, 42, 0.22) !important;
+}
+
+.wa-gif-search {
+  width: 100% !important;
+  min-height: 38px !important;
+  padding: 8px 10px !important;
+  border: 1px solid rgba(17, 24, 39, 0.12) !important;
+  border-radius: 10px !important;
+  outline: none !important;
+  color: #111827 !important;
+  background: #f7f8fa !important;
+}
+
+.wa-gif-search:focus {
+  border-color: rgba(39, 135, 245, 0.45) !important;
+  box-shadow: 0 0 0 3px rgba(39, 135, 245, 0.12) !important;
+}
+
+.wa-gif-grid {
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+  display: grid !important;
+  grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  gap: 6px !important;
+  overflow-y: auto !important;
+  padding-right: 2px !important;
+}
+
+.wa-gif-result {
+  width: 100% !important;
+  aspect-ratio: 1 / 1 !important;
+  object-fit: cover !important;
+  border-radius: 10px !important;
+  cursor: pointer !important;
+}
+
+.wa-gif-result:hover {
+  transform: translateY(-1px);
+}
+
+.wa-picker-popover.wa-sticker-picker {
+  right: 92px !important;
+  bottom: var(--wa-picker-bottom, 62px) !important;
+  width: min(320px, calc(100vw - 28px)) !important;
+  max-height: min(420px, calc(100vh - var(--wa-picker-bottom, 62px) - 28px)) !important;
+}
+
+:root[data-theme="dark"] .wa-gif-picker {
+  background: #202c33 !important;
+  border-color: rgba(134, 150, 160, 0.18) !important;
+  color: #e9edef !important;
+}
+
+:root[data-theme="dark"] .wa-gif-search {
+  background: #111b21 !important;
+  border-color: rgba(134, 150, 160, 0.22) !important;
+  color: #e9edef !important;
+}
+
+@media (max-width: 520px) {
+  .wa-picker-popover,
+  .wa-gif-picker,
+  .wa-picker-popover.wa-sticker-picker {
+    right: 0 !important;
+    width: calc(100vw - 22px) !important;
+  }
+
+  .wa-gif-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+}
+
+/* =========================================================
+   AJUSTE 2: un solo botón para Emoji / GIF / Sticker
+   - El input ya no carga 3 botones separados.
+   - El panel tiene pestañas inferiores tipo WhatsApp.
+   ========================================================= */
+.wa-media-trigger.input-group-text {
+  appearance: none !important;
+  border: 0 !important;
+  background: transparent !important;
+  cursor: pointer !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  padding-left: 10px !important;
+  padding-right: 0 !important;
+  color: #54656f !important;
+}
+
+.wa-media-trigger.show,
+.wa-media-trigger:hover,
+.wa-media-trigger:focus-visible {
+  color: #00a884 !important;
+  outline: none !important;
+}
+
+.wa-media-picker-shell.wa-picker-popover {
+  right: 0 !important;
+  bottom: var(--wa-picker-bottom, 62px) !important;
+  width: min(560px, calc(100vw - 28px)) !important;
+  height: min(520px, calc(100vh - var(--wa-picker-bottom, 62px) - 28px)) !important;
+  max-width: calc(100vw - 28px) !important;
+  max-height: min(520px, calc(100vh - var(--wa-picker-bottom, 62px) - 28px)) !important;
+  display: flex !important;
+  flex-direction: column !important;
+  overflow: hidden !important;
+  border-radius: 16px !important;
+  background: #ffffff !important;
+  border: 1px solid rgba(17, 24, 39, 0.10) !important;
+  box-shadow: 0 12px 36px rgba(15, 23, 42, 0.22) !important;
+  color: #111827 !important;
+}
+
+.wa-media-picker-content {
+  flex: 1 1 auto;
+  min-height: 0;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: inherit;
+}
+
+.wa-media-picker-content.emoji em-emoji-picker {
+  flex: 1 1 auto !important;
+  width: 100% !important;
+  height: 100% !important;
+  min-height: 0 !important;
+  border-radius: 0 !important;
+}
+
+.wa-gif-picker-panel,
+.wa-sticker-panel {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 10px;
+  overflow: hidden;
+  background: inherit;
+}
+
+.wa-sticker-panel .wa-sticker-grid-wrap {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.wa-media-tabs {
+  flex: 0 0 auto;
+  height: 42px;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-items: center;
+  border-top: 1px solid rgba(17, 24, 39, 0.10);
+  background: #ffffff;
+}
+
+.wa-media-tabs button {
+  height: 100%;
+  border: 0;
+  border-right: 1px solid rgba(17, 24, 39, 0.08);
+  background: transparent;
+  color: #54656f;
+  font-size: 14px;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background-color 0.16s ease, color 0.16s ease;
+}
+
+.wa-media-tabs button:last-child {
+  border-right: 0;
+}
+
+.wa-media-tabs button:hover,
+.wa-media-tabs button.active {
+  background: #f0f2f5;
+  color: #00a884;
+}
+
+.wa-media-tabs button.active {
+  box-shadow: inset 0 3px 0 #00a884;
+}
+
+.wa-media-tabs i {
+  font-size: 17px;
+}
+
+:root[data-theme="dark"] .wa-media-trigger.input-group-text {
+  color: #aebac1 !important;
+}
+
+:root[data-theme="dark"] .wa-media-trigger.show,
+:root[data-theme="dark"] .wa-media-trigger:hover,
+:root[data-theme="dark"] .wa-media-trigger:focus-visible {
+  color: #6ee7b7 !important;
+}
+
+:root[data-theme="dark"] .wa-media-picker-shell.wa-picker-popover {
+  background: #202c33 !important;
+  border-color: rgba(134, 150, 160, 0.18) !important;
+  color: #e9edef !important;
+  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.42) !important;
+}
+
+:root[data-theme="dark"] .wa-media-tabs {
+  background: #202c33;
+  border-top-color: rgba(134, 150, 160, 0.18);
+}
+
+:root[data-theme="dark"] .wa-media-tabs button {
+  color: #aebac1;
+  border-right-color: rgba(134, 150, 160, 0.14);
+}
+
+:root[data-theme="dark"] .wa-media-tabs button:hover,
+:root[data-theme="dark"] .wa-media-tabs button.active {
+  background: #111b21;
+  color: #6ee7b7;
+}
+
+@media (max-width: 720px) {
+  .wa-media-picker-shell.wa-picker-popover {
+    width: min(560px, calc(100vw - 18px)) !important;
+    right: 0 !important;
+  }
+}
+
+@media (max-width: 520px) {
+  .wa-media-picker-shell.wa-picker-popover {
+    left: 0 !important;
+    right: 0 !important;
+    width: calc(100vw - 22px) !important;
+  }
+}
+
+/* =========================================================
+   AJUSTE 3: input y selector estilo WhatsApp
+   - Boton unico de emojis/GIF/stickers junto al boton +.
+   - Panel alineado a la izquierda del input y sin area vacia.
+   - Stickers con cabecera compacta, busqueda y grilla tipo WhatsApp.
+   ========================================================= */
+.wa-chat-form.chat-form {
+  --wa-picker-bottom: 58px;
+}
+
+.wa-chat-form.chat-form.has-reply-compose {
+  --wa-picker-bottom: 122px;
+}
+
+.wa-chat-form.chat-form .row.align-items-center.gx-0 {
+  flex-wrap: nowrap !important;
+  gap: 0 !important;
+}
+
+.wa-chat-form.chat-form .col.position-relative {
+  min-width: 0 !important;
+}
+
+.wa-chat-form.chat-form .input-group {
+  display: flex !important;
+  align-items: center !important;
+  flex-wrap: nowrap !important;
+  gap: 0 !important;
+  width: 100% !important;
+  min-width: 0 !important;
+}
+
+.wa-input-grow {
+  flex: 1 1 auto !important;
+  min-width: 0 !important;
+  display: flex !important;
+}
+
+.wa-chat-form .btn.btn-icon.btn-link,
+.wa-chat-form .wa-media-trigger.input-group-text,
+.wa-chat-form .wa-audio-record-button {
+  width: 40px !important;
+  min-width: 40px !important;
+  height: 40px !important;
+  padding: 0 !important;
+  margin: 0 !important;
+}
+
+.wa-chat-form .btn.btn-icon.btn-link {
+  margin-left: 2px !important;
+  margin-right: 0 !important;
+}
+
+.wa-media-trigger.input-group-text {
+  flex: 0 0 40px !important;
+  appearance: none !important;
+  border: 0 !important;
+  background: transparent !important;
+  cursor: pointer !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  color: #54656f !important;
+  border-radius: 50% !important;
+  line-height: 1 !important;
+}
+
+.wa-media-trigger-icon,
+.wa-media-trigger-icon svg {
+  display: block !important;
+  width: 23px !important;
+  height: 23px !important;
+}
+
+.wa-media-trigger.show,
+.wa-media-trigger:hover,
+.wa-media-trigger:focus-visible {
+  color: #00a884 !important;
+  background: rgba(84, 101, 111, 0.10) !important;
+  outline: none !important;
+}
+
+.wa-chat-form .wa-rich-input-wrapper,
+.wa-chat-form .mention-input-wrapper {
+  width: 100% !important;
+  min-width: 0 !important;
+}
+
+.wa-chat-form .wa-rich-editor.form-control {
+  min-height: 40px !important;
+  padding: 9px 8px !important;
+  line-height: 1.35 !important;
+}
+
+.wa-chat-form .btn-primary.rounded-circle.ms-5,
+.wa-chat-form .wa-audio-record-button.ms-5 {
+  margin-left: 0 !important;
+}
+
+.wa-chat-form .col-auto.d-flex.align-items-center {
+  flex: 0 0 auto !important;
+}
+
+.wa-media-picker-shell.wa-picker-popover {
+  left: 0 !important;
+  right: auto !important;
+  bottom: var(--wa-picker-bottom, 58px) !important;
+  z-index: 30000 !important;
+  height: min(520px, calc(100vh - var(--wa-picker-bottom, 58px) - 26px)) !important;
+  max-height: min(520px, calc(100vh - var(--wa-picker-bottom, 58px) - 26px)) !important;
+  max-width: min(520px, 100%) !important;
+  border-radius: 13px !important;
+  overflow: hidden !important;
+}
+
+.wa-media-picker-shell.is-emoji {
+  width: min(420px, 100%) !important;
+}
+
+.wa-media-picker-shell.is-gif,
+.wa-media-picker-shell.is-sticker {
+  width: min(520px, 100%) !important;
+}
+
+.wa-media-picker-content.emoji {
+  background: #fff !important;
+}
+
+.wa-media-picker-content.emoji em-emoji-picker {
+  width: 100% !important;
+  min-width: 0 !important;
+  height: 100% !important;
+  --border-radius: 0;
+  --rgb-background: 255, 255, 255;
+  --rgb-input: 245, 246, 246;
+  --rgb-color: 17, 27, 33;
+}
+
+.wa-media-picker-content.emoji em-emoji-picker::part(search) {
+  border-radius: 18px !important;
+}
+
+.wa-gif-picker-panel,
+.wa-sticker-panel {
+  padding: 0 !important;
+}
+
+.wa-gif-picker-panel .wa-gif-search {
+  width: calc(100% - 24px) !important;
+  margin: 10px 12px 8px !important;
+  min-height: 38px !important;
+  border-radius: 10px !important;
+}
+
+.wa-gif-picker-panel .wa-gif-grid {
+  padding: 0 12px 12px !important;
+}
+
+.wa-sticker-wa-header {
+  flex: 0 0 auto !important;
+  height: 46px !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 0 !important;
+  padding: 0 10px !important;
+  border-bottom: 1px solid rgba(17, 24, 39, 0.08) !important;
+  background: inherit !important;
+}
+
+.wa-sticker-wa-tab {
+  flex: 1 1 0 !important;
+  height: 46px !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  color: #54656f !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  font-size: 18px !important;
+  position: relative !important;
+  cursor: pointer !important;
+}
+
+.wa-sticker-wa-tab.muted {
+  opacity: 0.9 !important;
+  pointer-events: none !important;
+}
+
+.wa-sticker-wa-tab.active {
+  color: #00a884 !important;
+}
+
+.wa-sticker-wa-tab.active::after {
+  content: "";
+  position: absolute;
+  left: 18%;
+  right: 18%;
+  bottom: 0;
+  height: 3px;
+  border-radius: 999px 999px 0 0;
+  background: #00a884;
+}
+
+.wa-sticker-search-shell {
+  flex: 0 0 auto !important;
+  height: 42px !important;
+  margin: 10px 12px 8px !important;
+  padding: 0 14px !important;
+  border: 1.5px solid #00a884 !important;
+  border-radius: 18px !important;
+  color: #667781 !important;
+  background: #ffffff !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 10px !important;
+  font-size: 14px !important;
+}
+
+.wa-sticker-grid-wrap {
+  padding: 0 10px 12px !important;
+}
+
+.wa-sticker-grid.wa-sticker-grid-whatsapp {
+  grid-template-columns: repeat(auto-fill, minmax(76px, 1fr)) !important;
+  gap: 10px 12px !important;
+  align-items: start !important;
+}
+
+.wa-sticker-grid.wa-sticker-grid-whatsapp .wa-sticker-create,
+.wa-sticker-grid.wa-sticker-grid-whatsapp .wa-sticker-item,
+.wa-sticker-grid.wa-sticker-grid-whatsapp .wa-sticker-item img {
+  width: 76px !important;
+  height: 76px !important;
+  border-radius: 8px !important;
+}
+
+.wa-sticker-grid.wa-sticker-grid-whatsapp .wa-sticker-create {
+  flex-direction: column !important;
+  gap: 4px !important;
+  border: 1px solid rgba(17, 24, 39, 0.10) !important;
+  background: #f5f6f6 !important;
+  color: #667781 !important;
+  font-size: 18px !important;
+}
+
+.wa-sticker-grid.wa-sticker-grid-whatsapp .wa-sticker-create span {
+  font-size: 11px !important;
+  font-weight: 500 !important;
+}
+
+.wa-sticker-grid.wa-sticker-grid-whatsapp .wa-sticker-item {
+  background: transparent !important;
+}
+
+.wa-sticker-grid.wa-sticker-grid-whatsapp .wa-sticker-item img {
+  object-fit: cover !important;
+  background: transparent !important;
+}
+
+.wa-media-tabs {
+  height: 38px !important;
+  border-top: 1px solid rgba(17, 24, 39, 0.10) !important;
+}
+
+.wa-media-tabs button {
+  border-radius: 12px 12px 0 0 !important;
+  border-right: 1px solid rgba(17, 24, 39, 0.08) !important;
+  font-size: 13px !important;
+}
+
+.wa-media-tabs button.active {
+  box-shadow: inset 0 3px 0 #00a884 !important;
+}
+
+:root[data-theme="dark"] .wa-media-trigger.input-group-text {
+  color: #aebac1 !important;
+}
+
+:root[data-theme="dark"] .wa-media-trigger.show,
+:root[data-theme="dark"] .wa-media-trigger:hover,
+:root[data-theme="dark"] .wa-media-trigger:focus-visible {
+  color: #e9edef !important;
+  background: rgba(174, 186, 193, 0.12) !important;
+}
+
+:root[data-theme="dark"] .wa-media-picker-content.emoji,
+:root[data-theme="dark"] .wa-sticker-search-shell {
+  background: #202c33 !important;
+}
+
+:root[data-theme="dark"] .wa-media-picker-content.emoji em-emoji-picker {
+  --rgb-background: 32, 44, 51;
+  --rgb-input: 42, 57, 66;
+  --rgb-color: 233, 237, 239;
+}
+
+:root[data-theme="dark"] .wa-sticker-wa-header {
+  border-bottom-color: rgba(134, 150, 160, 0.16) !important;
+}
+
+:root[data-theme="dark"] .wa-sticker-wa-tab {
+  color: #aebac1 !important;
+}
+
+:root[data-theme="dark"] .wa-sticker-wa-tab.active {
+  color: #00a884 !important;
+}
+
+:root[data-theme="dark"] .wa-sticker-search-shell {
+  border-color: #00a884 !important;
+  color: #aebac1 !important;
+}
+
+:root[data-theme="dark"] .wa-sticker-grid.wa-sticker-grid-whatsapp .wa-sticker-create {
+  border-color: rgba(134, 150, 160, 0.18) !important;
+  background: #2a3942 !important;
+  color: #aebac1 !important;
+}
+
+@media (max-width: 700px) {
+  .wa-media-picker-shell.is-emoji,
+  .wa-media-picker-shell.is-gif,
+  .wa-media-picker-shell.is-sticker {
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+
+  .wa-media-picker-shell.wa-picker-popover {
+    height: min(500px, calc(100vh - var(--wa-picker-bottom, 58px) - 20px)) !important;
+  }
+
+  .wa-sticker-grid.wa-sticker-grid-whatsapp {
+    grid-template-columns: repeat(auto-fill, minmax(68px, 1fr)) !important;
+  }
+
+  .wa-sticker-grid.wa-sticker-grid-whatsapp .wa-sticker-create,
+  .wa-sticker-grid.wa-sticker-grid-whatsapp .wa-sticker-item,
+  .wa-sticker-grid.wa-sticker-grid-whatsapp .wa-sticker-item img {
+    width: 68px !important;
+    height: 68px !important;
+  }
+}
+
+/* =========================================================
+   Ajuste 4: input y stickers más parecidos a WhatsApp
+   ========================================================= */
+.wa-chat-form.chat-form .input-group {
+  gap: 0 !important;
+  column-gap: 0 !important;
+}
+
+.wa-chat-form .wa-attach-trigger.btn.btn-icon.btn-link,
+.wa-chat-form .wa-media-trigger.input-group-text {
+  width: 34px !important;
+  min-width: 34px !important;
+  flex: 0 0 34px !important;
+  height: 40px !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+.wa-chat-form .wa-attach-trigger.btn.btn-icon.btn-link {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  color: #111b21 !important;
+  font-size: 24px !important;
+  line-height: 1 !important;
+  border-radius: 50% !important;
+}
+
+.wa-chat-form .wa-attach-trigger.btn.btn-icon.btn-link:hover,
+.wa-chat-form .wa-attach-trigger.btn.btn-icon.btn-link:focus-visible {
+  color: #00a884 !important;
+  background: rgba(84, 101, 111, 0.10) !important;
+  outline: none !important;
+}
+
+.wa-chat-form .wa-media-trigger.input-group-text {
+  margin-left: 0 !important;
+  margin-right: 2px !important;
+}
+
+.wa-chat-form .wa-media-trigger-icon,
+.wa-chat-form .wa-media-trigger-icon svg {
+  width: 22px !important;
+  height: 22px !important;
+}
+
+.wa-chat-form .wa-input-grow {
+  margin-left: 0 !important;
+}
+
+.wa-chat-form .wa-rich-editor.form-control {
+  padding-left: 6px !important;
+}
+
+:root[data-theme="dark"] .wa-chat-form .wa-attach-trigger.btn.btn-icon.btn-link {
+  color: #aebac1 !important;
+}
+
+:root[data-theme="dark"] .wa-chat-form .wa-attach-trigger.btn.btn-icon.btn-link:hover,
+:root[data-theme="dark"] .wa-chat-form .wa-attach-trigger.btn.btn-icon.btn-link:focus-visible {
+  color: #e9edef !important;
+  background: rgba(174, 186, 193, 0.12) !important;
+}
+
+.wa-sticker-wa-header {
+  justify-content: flex-start !important;
+  gap: 18px !important;
+  padding: 0 14px !important;
+}
+
+.wa-sticker-wa-tab {
+  flex: 0 0 38px !important;
+  width: 38px !important;
+}
+
+.wa-sticker-wa-add {
+  margin-left: auto !important;
+}
+
+.wa-sticker-wa-add:hover,
+.wa-sticker-wa-add:focus-visible {
+  color: #00a884 !important;
+  background: rgba(0, 168, 132, 0.10) !important;
+  border-radius: 999px !important;
+  outline: none !important;
+}
+
+.wa-sticker-wa-tab.active::after {
+  left: 5px !important;
+  right: 5px !important;
+}
+
+.wa-sticker-grid.wa-sticker-grid-whatsapp {
+  grid-template-columns: repeat(auto-fill, minmax(78px, 1fr)) !important;
+  gap: 12px 14px !important;
+}
+
+.wa-sticker-grid.wa-sticker-grid-whatsapp .wa-sticker-create {
+  width: 76px !important;
+  height: 76px !important;
+  border-radius: 12px !important;
+  border: 1px solid rgba(17, 24, 39, 0.11) !important;
+  background: #f7f8f8 !important;
+  box-shadow: 0 1px 2px rgba(17, 24, 39, 0.06) !important;
+  color: #8696a0 !important;
+  transform: scale(0.9) !important;
+  transform-origin: center !important;
+  transition: transform 0.15s ease, background 0.15s ease, box-shadow 0.15s ease, color 0.15s ease !important;
+}
+
+.wa-sticker-grid.wa-sticker-grid-whatsapp .wa-sticker-create i {
+  font-size: 22px !important;
+  line-height: 1 !important;
+}
+
+.wa-sticker-grid.wa-sticker-grid-whatsapp .wa-sticker-create span {
+  margin-top: 2px !important;
+  font-size: 10px !important;
+  line-height: 1 !important;
+  color: inherit !important;
+}
+
+.wa-sticker-grid.wa-sticker-grid-whatsapp .wa-sticker-create:hover,
+.wa-sticker-grid.wa-sticker-grid-whatsapp .wa-sticker-create:focus-visible {
+  transform: scale(1) !important;
+  background: #ffffff !important;
+  color: #54656f !important;
+  box-shadow: 0 4px 12px rgba(17, 24, 39, 0.12) !important;
+  outline: none !important;
+}
+
+:root[data-theme="dark"] .wa-sticker-grid.wa-sticker-grid-whatsapp .wa-sticker-create {
+  background: #26343d !important;
+  border-color: rgba(134, 150, 160, 0.20) !important;
+  color: #aebac1 !important;
+  box-shadow: none !important;
+}
+
+:root[data-theme="dark"] .wa-sticker-grid.wa-sticker-grid-whatsapp .wa-sticker-create:hover,
+:root[data-theme="dark"] .wa-sticker-grid.wa-sticker-grid-whatsapp .wa-sticker-create:focus-visible {
+  background: #31424d !important;
+  color: #e9edef !important;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.28) !important;
+}
+
+@media (max-width: 700px) {
+  .wa-chat-form .wa-attach-trigger.btn.btn-icon.btn-link,
+  .wa-chat-form .wa-media-trigger.input-group-text {
+    width: 32px !important;
+    min-width: 32px !important;
+    flex-basis: 32px !important;
+  }
+
+  .wa-sticker-wa-header {
+    gap: 14px !important;
+  }
+}
+
+
+/* =========================================================
+   Ajuste 5: crear sticker vertical y buscador corto
+   ========================================================= */
+.wa-sticker-grid.wa-sticker-grid-whatsapp .wa-sticker-create {
+  display: inline-flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 4px !important;
+  text-align: center !important;
+}
+
+.wa-sticker-grid.wa-sticker-grid-whatsapp .wa-sticker-create i,
+.wa-sticker-grid.wa-sticker-grid-whatsapp .wa-sticker-create span {
+  display: block !important;
+  flex: 0 0 auto !important;
+}
+
+.wa-sticker-grid.wa-sticker-grid-whatsapp .wa-sticker-create span {
+  width: 100% !important;
+  margin-top: 0 !important;
+}
+
+/* =========================================================
+   AJUSTE 6: separacion inicial del input tipo WhatsApp
+   ========================================================= */
+.wa-chat-form.chat-form .input-group {
+  box-sizing: border-box !important;
+  padding-left: 10px !important;
+  padding-right: 8px !important;
+}
+
+.wa-chat-form .wa-attach-trigger.btn.btn-icon.btn-link {
+  margin-left: 0 !important;
+  margin-right: 1px !important;
+}
+
+.wa-chat-form .wa-media-trigger.input-group-text {
+  margin-left: 1px !important;
+  margin-right: 4px !important;
+}
+
+@media (max-width: 700px) {
+  .wa-chat-form.chat-form .input-group {
+    padding-left: 8px !important;
+    padding-right: 7px !important;
+  }
+}
+
+/* =========================================================
+   AJUSTE 7: Info. del grupo ocupa el espacio del chat en ventana reducida
+   ========================================================= */
+.wa-chat-shell {
+  position: relative !important;
+}
+
+@media (max-width: 1199px) {
+  .wa-chat-shell .wa-group-info-panel {
+    position: absolute !important;
+    inset: 0 !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: none !important;
+    height: 100% !important;
+    flex: 0 0 100% !important;
+    transform: translateX(100%) !important;
+    border-left: 0 !important;
+    box-shadow: none !important;
+    z-index: 60 !important;
+  }
+
+  .wa-chat-shell .wa-group-info-panel.is-open {
+    transform: translateX(0) !important;
+  }
+
+  .wa-chat-shell .wa-group-info-inner {
+    width: 100% !important;
+    max-width: none !important;
+    min-width: 0 !important;
+    transform: none !important;
+    opacity: 1 !important;
+  }
+
+  .wa-chat-shell.is-info-open .wa-chat-conversation {
+    flex: 1 1 100% !important;
+    width: 100% !important;
+    min-width: 0 !important;
+  }
+}
+
+/* =========================================================
+   AJUSTE 8: Info. del grupo ocupa TODO el espacio del chat
+   cuando la ventana esta reducida, como WhatsApp.
+   ========================================================= */
+@media (max-width: 1199px) {
+  .wa-chat-shell,
+  .wa-chat-shell.is-info-open {
+    display: block !important;
+    grid-template-columns: none !important;
+    position: relative !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    overflow: hidden !important;
+  }
+
+  .wa-chat-shell > .wa-chat-conversation {
+    grid-column: 1 / -1 !important;
+    grid-row: 1 / -1 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+  }
+
+  .wa-chat-shell.is-info-open > .wa-chat-conversation {
+    opacity: 0 !important;
+    visibility: hidden !important;
+    pointer-events: none !important;
+  }
+
+  .wa-chat-shell > .wa-group-info-panel {
+    grid-column: 1 / -1 !important;
+    grid-row: 1 / -1 !important;
+    position: absolute !important;
+    top: 0 !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    left: 0 !important;
+    inset: 0 !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: none !important;
+    height: 100% !important;
+    flex: none !important;
+    transform: translateX(100%) !important;
+    border-left: 0 !important;
+    box-shadow: none !important;
+    visibility: hidden !important;
+    pointer-events: none !important;
+    z-index: 80 !important;
+    overflow: hidden !important;
+  }
+
+  .wa-chat-shell.is-info-open > .wa-group-info-panel.is-open {
+    transform: translateX(0) !important;
+    visibility: visible !important;
+    pointer-events: auto !important;
+  }
+
+  .wa-chat-shell > .wa-group-info-panel .wa-group-info-inner,
+  .wa-chat-shell.is-info-open > .wa-group-info-panel.is-open .wa-group-info-inner {
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: none !important;
+    height: 100% !important;
+    transform: none !important;
+    opacity: 1 !important;
+  }
+}
+
+/* ===== AJUSTE 9: Info de contacto + listas personalizadas tipo WhatsApp ===== */
+.wa-contact-info-panel .wa-group-info-inner,
+.wa-contact-info-inner {
+  background: var(--wa-panel-bg, #ffffff);
+}
+
+.wa-contact-info-topbar {
+  gap: 14px;
+}
+
+.wa-contact-profile-card {
+  padding: 26px 24px 22px !important;
+}
+
+.wa-contact-info-avatar {
+  width: 156px;
+  height: 156px;
+  border-radius: 50%;
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+  margin-bottom: 16px;
+}
+
+.wa-contact-info-avatar-img {
+  border-radius: 50%;
+  object-fit: cover;
+  display: block;
+}
+
+.wa-contact-info-avatar-fallback {
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  color: #fff;
+  font-size: 54px;
+  font-weight: 700;
+}
+
+.wa-contact-profile-card h2 {
+  margin: 0 0 4px;
+  font-size: 26px;
+  font-weight: 500;
+  color: var(--wa-panel-title, #111827);
+}
+
+.wa-contact-loading {
+  display: inline-block;
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--wa-muted, #667781);
+}
+
+.wa-contact-actions-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+}
+
+.wa-contact-info-label {
+  margin-bottom: 8px;
+  font-size: 14px;
+  color: var(--wa-muted, #667781);
+}
+
+.wa-contact-bio,
+.wa-contact-empty-text {
+  margin: 0;
+  color: var(--wa-panel-text, #1f2937);
+  overflow-wrap: anywhere;
+}
+
+.wa-contact-empty-text {
+  color: var(--wa-muted, #667781);
+  font-size: 13px;
+  padding-top: 10px;
+}
+
+.wa-contact-option-list,
+.wa-contact-danger-list,
+.wa-common-groups-card {
+  padding: 0 !important;
+  overflow: hidden;
+}
+
+.wa-contact-option-row {
+  width: 100%;
+  min-height: 56px;
+  border: 0;
+  background: transparent;
+  color: var(--wa-panel-text, #111827);
+  display: grid;
+  grid-template-columns: 46px minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+  padding: 12px 22px;
+  text-align: left;
+}
+
+.wa-contact-option-row:hover {
+  background: rgba(0, 0, 0, 0.045);
+}
+
+.wa-contact-option-row i {
+  color: var(--wa-muted, #667781);
+  font-size: 19px;
+  justify-self: center;
+}
+
+.wa-contact-option-row span,
+.wa-contact-option-row small {
+  grid-column: 2;
+}
+
+.wa-contact-option-row span {
+  font-size: 16px;
+  line-height: 1.25;
+}
+
+.wa-contact-option-row small {
+  display: block;
+  margin-top: 2px;
+  color: var(--wa-muted, #667781);
+  font-size: 13px;
+  line-height: 1.25;
+}
+
+.wa-contact-option-row.danger,
+.wa-contact-option-row.danger i {
+  color: #d7193f;
+}
+
+.wa-common-groups-card h3 {
+  margin: 0;
+  padding: 18px 24px 10px;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--wa-muted, #667781);
+}
+
+.wa-common-groups-list {
+  list-style: none;
+  margin: 0;
+  padding: 0 0 8px;
+}
+
+.wa-common-groups-list li {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 10px 24px;
+}
+
+.wa-common-group-avatar {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  background: #f2dfb8;
+  color: #8a5c16;
+  flex: 0 0 auto;
+}
+
+.wa-common-group-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.wa-common-groups-list strong,
+.wa-common-groups-list span {
+  display: block;
+}
+
+.wa-common-groups-list strong {
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--wa-panel-text, #111827);
+}
+
+.wa-common-groups-list span {
+  font-size: 13px;
+  color: var(--wa-muted, #667781);
+}
+
+:root[data-theme="dark"] .wa-contact-info-panel,
+:root[data-theme="dark"] .wa-contact-info-inner,
+:root[data-theme="dark"] .wa-contact-profile-card,
+:root[data-theme="dark"] .wa-contact-option-list,
+:root[data-theme="dark"] .wa-contact-danger-list,
+:root[data-theme="dark"] .wa-common-groups-card {
+  --wa-panel-bg: #111b21;
+  --wa-panel-title: #e9edef;
+  --wa-panel-text: #e9edef;
+  --wa-muted: #8696a0;
+  background: #111b21;
+  color: #e9edef;
+}
+
+:root[data-theme="dark"] .wa-contact-option-row:hover,
+:root[data-theme="dark"] .wa-common-groups-list li:hover {
+  background: rgba(255, 255, 255, 0.045);
+}
+
+.wa-custom-list-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 8px 0 2px;
+  scrollbar-width: none;
+}
+
+.wa-custom-list-row::-webkit-scrollbar {
+  display: none;
+}
+
+.wa-custom-list-chip {
+  flex: 0 0 auto;
+  max-width: 150px;
+}
+
+.wa-custom-list-chip span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wa-custom-list-chip small {
+  margin-left: 6px;
+  font-size: 12px;
+  opacity: 0.8;
+}
+
+.wa-list-add-chip {
+  width: 36px;
+  min-width: 36px;
+  height: 36px;
+  padding: 0 !important;
+  justify-content: center;
+}
+
+.wa-filter-new-list {
+  border-top: 1px solid rgba(0, 0, 0, 0.08) !important;
+  margin-top: 4px;
+  padding-top: 12px !important;
+}
+
+.wa-filter-new-list i {
+  margin-right: 8px;
+}
+
+.wa-create-list-sidebar {
+  display: flex;
+  flex-direction: column;
+  background: #ffffff !important;
+}
+
+.wa-create-list-head {
+  height: 66px;
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  padding: 0 22px;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+  color: #111827;
+  font-weight: 500;
+}
+
+.wa-create-list-head button,
+.wa-list-modal-header button {
+  width: 38px;
+  height: 38px;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: inherit;
+  display: grid;
+  place-items: center;
+}
+
+.wa-create-list-head button:hover,
+.wa-list-modal-header button:hover {
+  background: rgba(0, 0, 0, 0.06);
+}
+
+.wa-create-list-body {
+  padding: 26px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+}
+
+.wa-create-list-label,
+.wa-create-list-section-title {
+  display: block;
+  color: #667781;
+  font-size: 13px;
+  margin-bottom: -12px;
+}
+
+.wa-create-list-input {
+  border-bottom: 2px solid #667781;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.wa-create-list-input:focus-within {
+  border-bottom-color: #00a884;
+}
+
+.wa-create-list-input input {
+  flex: 1;
+  min-width: 0;
+  height: 42px;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  font-size: 16px;
+}
+
+.wa-create-list-input i {
+  color: #667781;
+  font-size: 19px;
+}
+
+.wa-create-list-add-row {
+  border: 0;
+  background: transparent;
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  min-height: 56px;
+  padding: 0;
+  color: #111827;
+  font-size: 16px;
+  text-align: left;
+}
+
+.wa-create-list-add-row span {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: #00a884;
+  color: #fff;
+}
+
+.wa-create-list-selected {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.wa-create-list-selected button {
+  border: 0;
+  background: rgba(0, 0, 0, 0.04);
+  border-radius: 14px;
+  padding: 8px 12px;
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr) 20px;
+  align-items: center;
+  gap: 10px;
+  text-align: left;
+}
+
+.wa-create-list-selected-avatar {
+  width: 36px;
+  height: 36px;
+  display: block;
+  overflow: hidden;
+  border-radius: 50%;
+}
+
+.wa-create-list-selected-avatar .wa-presence-badge {
+  display: none;
+}
+
+.wa-create-list-submit {
+  width: fit-content;
+  border: 0;
+  border-radius: 18px;
+  padding: 9px 20px;
+  background: #00a884;
+  color: #fff;
+  font-weight: 600;
+}
+
+.wa-create-list-submit:disabled {
+  background: rgba(0, 0, 0, 0.07);
+  color: #aebac1;
+}
+
+.wa-list-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 2500;
+  background: rgba(0, 0, 0, 0.35);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 86px;
+}
+
+.wa-list-modal {
+  width: min(420px, calc(100vw - 32px));
+  max-height: min(720px, calc(100vh - 120px));
+  border-radius: 12px;
+  background: #ffffff;
+  box-shadow: 0 18px 70px rgba(0, 0, 0, 0.22);
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.wa-list-modal-header {
+  height: 58px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 0 16px;
+}
+
+.wa-list-modal-header strong {
+  font-size: 16px;
+  font-weight: 500;
+}
+
+.wa-list-modal-search {
+  margin: 0 18px 14px;
+  height: 42px;
+  border: 2px solid #00a884;
+  border-radius: 24px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 14px;
+  color: #667781;
+}
+
+.wa-list-modal-search input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  font-size: 14px;
+}
+
+.wa-list-modal-subtitle {
+  padding: 0 24px 10px;
+  color: #667781;
+  font-size: 13px;
+}
+
+.wa-list-modal-body {
+  overflow-y: auto;
+  padding: 0 0 78px;
+}
+
+.wa-list-modal-body.compact {
+  padding-bottom: 16px;
+}
+
+.wa-list-select-row,
+.wa-existing-list-row {
+  width: 100%;
+  min-height: 64px;
+  border: 0;
+  background: transparent;
+  display: grid;
+  grid-template-columns: 32px 48px minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+  padding: 8px 24px;
+  text-align: left;
+}
+
+.wa-list-select-row:hover,
+.wa-existing-list-row:hover {
+  background: rgba(0, 0, 0, 0.045);
+}
+
+.wa-list-check {
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  border: 2px solid #8696a0;
+  color: #00a884;
+  display: grid;
+  place-items: center;
+  font-size: 11px;
+}
+
+.wa-list-select-row.selected .wa-list-check {
+  border-color: #00a884;
+}
+
+.wa-list-select-avatar {
+  width: 44px;
+  height: 44px;
+  overflow: hidden;
+  border-radius: 50%;
+}
+
+.wa-list-select-avatar .wa-presence-badge {
+  display: none;
+}
+
+.wa-list-select-main strong,
+.wa-list-select-main small,
+.wa-existing-list-row strong,
+.wa-existing-list-row small {
+  display: block;
+}
+
+.wa-list-select-main strong,
+.wa-existing-list-row strong {
+  color: #111827;
+  font-size: 15px;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.wa-list-select-main small,
+.wa-existing-list-row small {
+  color: #667781;
+  font-size: 13px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.wa-list-modal-confirm {
+  position: absolute;
+  right: 28px;
+  bottom: 26px;
+  width: 58px;
+  height: 58px;
+  border: 0;
+  border-radius: 50%;
+  background: #00a884;
+  color: #fff;
+  box-shadow: 0 8px 22px rgba(0, 168, 132, 0.35);
+}
+
+.wa-list-modal-confirm:disabled {
+  opacity: 0.45;
+}
+
+.wa-add-list-modal {
+  max-height: 520px;
+}
+
+.wa-existing-list-row {
+  grid-template-columns: 44px minmax(0, 1fr);
+}
+
+.wa-existing-list-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: #e7fce3;
+  color: #00a884;
+}
+
+.wa-create-first-list-btn {
+  border: 0;
+  background: transparent;
+  color: #00a884;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 22px 20px;
+  text-align: left;
+}
+
+.wa-list-empty-box {
+  color: #667781;
+  padding: 24px;
+  text-align: center;
+}
+
+:root[data-theme="dark"] .wa-create-list-sidebar,
+:root[data-theme="dark"] .wa-list-modal {
+  background: #111b21 !important;
+  color: #e9edef;
+}
+
+:root[data-theme="dark"] .wa-create-list-head,
+:root[data-theme="dark"] .wa-create-list-add-row,
+:root[data-theme="dark"] .wa-list-select-main strong,
+:root[data-theme="dark"] .wa-existing-list-row strong {
+  color: #e9edef;
+}
+
+:root[data-theme="dark"] .wa-create-list-input input,
+:root[data-theme="dark"] .wa-list-modal-search input {
+  color: #e9edef;
+}
+
+:root[data-theme="dark"] .wa-create-list-selected button,
+:root[data-theme="dark"] .wa-list-select-row:hover,
+:root[data-theme="dark"] .wa-existing-list-row:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+@media (max-width: 1199px) {
+  .wa-chat-shell.is-info-open .wa-contact-info-panel.is-open {
+    inset: 0 !important;
+    width: 100% !important;
+    max-width: none !important;
+    flex-basis: 100% !important;
+  }
+}
+
+/* Ajuste 10: listas personalizadas tipo WhatsApp */
+.wa-custom-list-row {
+  padding-top: 6px !important;
+  padding-bottom: 8px !important;
+}
+
+.wa-custom-list-chip-wrap {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  min-height: 34px;
+  border: 1px solid #d7dde3;
+  border-radius: 999px;
+  background: #ffffff;
+  overflow: hidden;
+  transition: background-color 0.18s ease, border-color 0.18s ease;
+}
+
+.wa-custom-list-chip-wrap.active {
+  background: #d9fdd3;
+  border-color: #9fe39b;
+}
+
+.wa-custom-list-chip-wrap .wa-custom-list-chip {
+  border: 0 !important;
+  background: transparent !important;
+  min-height: 32px;
+  max-width: 128px;
+  padding: 6px 8px 6px 14px !important;
+  border-radius: 999px 0 0 999px !important;
+}
+
+.wa-custom-list-chip-wrap .wa-custom-list-chip.active {
+  color: #008069;
+}
+
+.wa-list-chip-action {
+  width: 29px;
+  height: 29px;
+  border: 0;
+  background: transparent;
+  color: #667781;
+  display: inline-grid;
+  place-items: center;
+  font-size: 12px;
+  opacity: 0.72;
+  transition: background-color 0.18s ease, color 0.18s ease, opacity 0.18s ease;
+}
+
+.wa-list-chip-action:hover {
+  background: rgba(0, 168, 132, 0.12);
+  color: #008069;
+  opacity: 1;
+}
+
+.wa-list-chip-action.danger:hover {
+  background: rgba(223, 51, 84, 0.12);
+  color: #d7193f;
+}
+
+:root[data-theme="dark"] .wa-custom-list-chip-wrap {
+  background: #111b21;
+  border-color: rgba(134, 150, 160, 0.35);
+}
+
+:root[data-theme="dark"] .wa-custom-list-chip-wrap.active {
+  background: rgba(0, 168, 132, 0.18);
+  border-color: rgba(0, 168, 132, 0.45);
+}
+
+:root[data-theme="dark"] .wa-list-chip-action {
+  color: #aebac1;
+}
+
+/* Ajuste 11: listas personalizadas compactas con menu de desborde */
+.wa-custom-list-row {
+  max-width: 100% !important;
+  min-width: 0 !important;
+  overflow: visible !important;
+  flex-wrap: nowrap !important;
+  margin-bottom: 4px !important;
+}
+
+.wa-custom-list-chip-wrap {
+  flex: 1 1 0 !important;
+  min-width: 0 !important;
+  max-width: calc((100% - 48px) / 2) !important;
+}
+
+.wa-custom-list-chip-wrap .wa-custom-list-chip {
+  flex: 1 1 auto !important;
+  min-width: 0 !important;
+  max-width: none !important;
+}
+
+.wa-custom-list-more {
+  flex: 0 0 auto !important;
+  min-width: 36px !important;
+  max-width: 128px !important;
+  padding-inline: 11px !important;
+}
+
+.wa-custom-list-more span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wa-custom-list-dropdown {
+  width: 260px !important;
+  padding: 8px 0 !important;
+}
+
+.wa-custom-list-menu-row {
+  display: flex;
+  align-items: center;
+  min-height: 48px;
+  color: #111b21;
+}
+
+.wa-custom-list-menu-row:hover,
+.wa-custom-list-menu-row.active {
+  background: #f0f2f5;
+}
+
+.wa-custom-list-menu-row.active .wa-custom-list-menu-main {
+  color: #008069;
+}
+
+.wa-custom-list-dropdown .wa-custom-list-menu-main {
+  flex: 1 1 auto !important;
+  min-width: 0 !important;
+  width: auto !important;
+  padding: 12px 10px 12px 16px !important;
+  justify-content: space-between !important;
+  border: 0 !important;
+  background: transparent !important;
+  color: inherit !important;
+  font-size: 0.92rem !important;
+  font-weight: 600 !important;
+  text-align: left !important;
+}
+
+.wa-custom-list-dropdown .wa-custom-list-menu-main span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wa-custom-list-dropdown .wa-custom-list-menu-main strong {
+  flex: 0 0 auto;
+  margin-left: 12px;
+  color: #00a884;
+  font-size: 0.88rem;
+}
+
+.wa-custom-list-dropdown .wa-custom-list-menu-action {
+  flex: 0 0 34px !important;
+  width: 34px !important;
+  height: 34px !important;
+  padding: 0 !important;
+  margin-right: 4px;
+  display: inline-grid !important;
+  place-items: center !important;
+  justify-content: center !important;
+  border: 0 !important;
+  border-radius: 50% !important;
+  background: transparent !important;
+  color: #667781 !important;
+  font-size: 12px !important;
+}
+
+.wa-custom-list-dropdown .wa-custom-list-menu-action:hover {
+  background: rgba(0, 168, 132, 0.12) !important;
+  color: #008069 !important;
+}
+
+.wa-custom-list-dropdown .wa-custom-list-menu-action.danger:hover {
+  background: rgba(223, 51, 84, 0.12) !important;
+  color: #d7193f !important;
+}
+
+:root[data-theme="dark"] .wa-custom-list-menu-row {
+  color: #e9edef;
+}
+
+:root[data-theme="dark"] .wa-custom-list-menu-row:hover,
+:root[data-theme="dark"] .wa-custom-list-menu-row.active {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+:root[data-theme="dark"] .wa-custom-list-dropdown .wa-custom-list-menu-action {
+  color: #aebac1 !important;
+}
+
+.wa-custom-list-row:not(.has-overflow) .wa-custom-list-chip-wrap {
+  max-width: calc((100% - 8px) / 2) !important;
+}
+
+.wa-custom-list-row.has-overflow .wa-custom-list-chip-wrap {
+  max-width: calc((100% - 56px) / 2) !important;
+}
+
+.wa-custom-list-menu-row.active .wa-custom-list-menu-main {
+  color: #008069 !important;
+}

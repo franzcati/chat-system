@@ -17,6 +17,7 @@ const Messenger = () => {
   const [activeTab, setActiveTab] = useState("chat");
   const [perfilSeleccionado, setPerfilSeleccionado] = useState(null);
   const [showModal, setShowModal] = useState(false);
+  const [addToListTarget, setAddToListTarget] = useState(null);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -160,6 +161,8 @@ const Messenger = () => {
           selectedChat={selectedChat}
           setSelectedChat={setSelectedChat}
           userId={usuario?.id}
+          addToListTarget={addToListTarget}
+          onAddToListHandled={() => setAddToListTarget(null)}
         />
       )}
       {activeTab === "edit" && (
@@ -189,17 +192,17 @@ const Messenger = () => {
         📌 5. CHATBOX (solo si activeTab === "chat")
         =========================== */}
       {activeTab === "chat" && (
-        <div className="flex-1">
+        <div className="wa-chat-stage flex-1">
           {selectedChat ? (
             <ChatBox
               chat={selectedChat}
               user={usuario}
               setChat={setSelectedChat}  // 👈 Agregamos esto
-              onOpenMembers={() => setIsMembersOpen(true)}
               onVerPerfil={(u) => {
                 setPerfilSeleccionado(u);
                 setShowModal(true);
               }}
+              onAddToList={(chatToAdd) => setAddToListTarget(chatToAdd)}
             />
           ) : (
             <div className="d-flex flex-column h-100 justify-content-center text-center">

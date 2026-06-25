@@ -13,7 +13,7 @@ import GroupAvatar from "../components/GroupAvatar";
 
 
 
-const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat }) => {
+const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat, addToListTarget, onAddToListHandled }) => {
   
   logDev("🔥 ChatList renderizado", { userId });
   const [mensajes, setMensajes] = useState([]);
@@ -29,6 +29,19 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat }) => {
   const [menuChatPosition, setMenuChatPosition] = useState(null);
   const [activeFilter, setActiveFilter] = useState("todos");
   const [filterMenuOpen, setFilterMenuOpen] = useState(false);
+  const [filterMenuPosition, setFilterMenuPosition] = useState(null);
+  const [customListMenuOpen, setCustomListMenuOpen] = useState(false);
+  const [customListMenuPosition, setCustomListMenuPosition] = useState(null);
+  const [chatLists, setChatLists] = useState([]);
+  const [showCreateList, setShowCreateList] = useState(false);
+  const [newListName, setNewListName] = useState("");
+  const [selectedListItems, setSelectedListItems] = useState([]);
+  const [showListPeopleModal, setShowListPeopleModal] = useState(false);
+  const [listPeopleSearch, setListPeopleSearch] = useState("");
+  const [creatingList, setCreatingList] = useState(false);
+  const [editingList, setEditingList] = useState(null);
+  const [addToListTargetLocal, setAddToListTargetLocal] = useState(null);
+  const [showAddToExistingList, setShowAddToExistingList] = useState(false);
   const [typingByChat, setTypingByChat] = useState({});
   const typingPreviewTimersRef = useRef({});
 
@@ -266,6 +279,9 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat }) => {
       setMenuChatAbierto(null);
       setMenuChatPosition(null);
       setFilterMenuOpen(false);
+      setFilterMenuPosition(null);
+      setCustomListMenuOpen(false);
+      setCustomListMenuPosition(null);
     };
 
     document.addEventListener("click", cerrarMenusFlotantes);
@@ -503,12 +519,13 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat }) => {
 
     const fetchData = async () => {
       try {
-        const [resMensajes, resGrupos, resFavoritos, resSilenciados, resEstados] = await Promise.all([
+        const [resMensajes, resGrupos, resFavoritos, resSilenciados, resEstados, resListas] = await Promise.all([
           axios.get(`/api/chats/${userId}`),
           axios.get(`/api/grupos/usuario/${userId}`),
           axios.get(`/api/chats/favoritos/${userId}`),
           axios.get(`/api/notificaciones/silenciados/${userId}`),
           axios.get(`/api/chats/estados/${userId}`),
+          axios.get(`/api/chats/listas/${userId}`),
         ]);
 
         setMensajes(resMensajes.data);
@@ -516,6 +533,7 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat }) => {
         setFavoritos(resFavoritos.data);
         setSilenciados(resSilenciados.data || []);
         setChatEstados(resEstados.data || []);
+        setChatLists(resListas.data || []);
 
         console.group("📋 Chats cargados al inicio");
         logDev("🗨️ Mensajes privados:", resMensajes.data);
@@ -523,6 +541,7 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat }) => {
         logDev("⭐ Favoritos:", resFavoritos.data);
         logDev("🔕 Silenciados:", resSilenciados.data);
         logDev("📦 Estados de chats:", resEstados.data);
+        logDev("📋 Listas personalizadas:", resListas.data);
         console.groupEnd();
 
       } catch (error) {
@@ -1309,6 +1328,156 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat }) => {
     onSelectChat(nuevoChat);
   };
 
+  const getChatId = (chat) => (chat.tipo === "grupo" ? chat.grupo_id : chat.usuario_id);
+  const getListItemKey = (chat) => `${chat.tipo}-${getChatId(chat)}`;
+  const getItemKeyFromListItem = (item) => `${item.tipo}-${item.chat_id}`;
+
+  const refreshChatLists = async () => {
+    if (!userId) return;
+    const res = await axios.get(`/api/chats/listas/${userId}`);
+    setChatLists(res.data || []);
+  };
+
+  useEffect(() => {
+    if (!addToListTarget) return;
+    setAddToListTargetLocal(addToListTarget);
+    setShowAddToExistingList(true);
+    onAddToListHandled?.();
+  }, [addToListTarget, onAddToListHandled]);
+
+  const resetCreateList = () => {
+    setShowCreateList(false);
+    setEditingList(null);
+    setNewListName("");
+    setSelectedListItems([]);
+    setShowListPeopleModal(false);
+    setListPeopleSearch("");
+  };
+
+  const toggleListSelection = (chat) => {
+    const key = getListItemKey(chat);
+    setSelectedListItems((prev) =>
+      prev.includes(key) ? prev.filter((item) => item !== key) : [...prev, key]
+    );
+  };
+
+  const createListPayloadItems = () =>
+    selectedListItems
+      .map((key) => {
+        const [tipo, rawId] = key.split("-");
+        return { tipo, chatId: Number(rawId) };
+      })
+      .filter((item) => item.tipo && item.chatId);
+
+  const abrirCrearLista = (initialKeys = []) => {
+    setEditingList(null);
+    setNewListName("");
+    setSelectedListItems(initialKeys);
+    setShowCreateList(true);
+    setFilterMenuOpen(false);
+    setFilterMenuPosition(null);
+    setCustomListMenuOpen(false);
+    setCustomListMenuPosition(null);
+  };
+
+  const editarListaChat = (lista) => {
+    if (!lista) return;
+    setEditingList(lista);
+    setNewListName(lista.nombre || "");
+    setSelectedListItems((lista.items || []).map(getItemKeyFromListItem));
+    setShowCreateList(true);
+    setFilterMenuOpen(false);
+    setFilterMenuPosition(null);
+    setCustomListMenuOpen(false);
+    setCustomListMenuPosition(null);
+  };
+
+  const guardarListaChat = async () => {
+    const nombre = newListName.trim();
+    if (!nombre) {
+      toast.error("Escribe un nombre para la lista");
+      return;
+    }
+
+    setCreatingList(true);
+    try {
+      const payload = {
+        usuarioId: userId,
+        nombre,
+        items: createListPayloadItems(),
+      };
+
+      const res = editingList
+        ? await axios.put(`/api/chats/listas/${editingList.id}`, payload)
+        : await axios.post("/api/chats/listas", payload);
+
+      setChatLists(res.data?.listas || []);
+      const nextId = editingList?.id || res.data?.lista?.id;
+      if (nextId) setActiveFilter(`lista-${nextId}`);
+      resetCreateList();
+      toast.success(editingList ? "Lista actualizada" : "Lista creada");
+    } catch (err) {
+      console.error("❌ Error guardando lista:", err);
+      toast.error(editingList ? "No se pudo actualizar la lista" : "No se pudo crear la lista");
+    } finally {
+      setCreatingList(false);
+    }
+  };
+
+  const eliminarListaChat = async (lista) => {
+    if (!lista) return;
+    const ok = window.confirm(`¿Eliminar la lista "${lista.nombre}"?`);
+    if (!ok) return;
+
+    try {
+      const res = await axios.delete(`/api/chats/listas/${lista.id}`, {
+        data: { usuarioId: userId },
+      });
+
+      setChatLists(res.data?.listas || []);
+      if (activeFilter === `lista-${lista.id}`) setActiveFilter("todos");
+      toast.success("Lista eliminada");
+    } catch (err) {
+      console.error("❌ Error eliminando lista:", err);
+      toast.error("No se pudo eliminar la lista");
+    }
+  };
+
+  const chatIsInCustomList = (chat, lista) => {
+    if (!lista) return false;
+    const key = getListItemKey(chat);
+    return (lista.items || []).some((item) => getItemKeyFromListItem(item) === key);
+  };
+
+  const addChatToExistingList = async (lista) => {
+    const target = addToListTargetLocal;
+    if (!lista || !target) return;
+
+    const existingKeys = new Set((lista.items || []).map(getItemKeyFromListItem));
+    existingKeys.add(getListItemKey(target));
+
+    try {
+      const items = Array.from(existingKeys).map((key) => {
+        const [tipo, rawId] = key.split("-");
+        return { tipo, chatId: Number(rawId) };
+      });
+
+      const res = await axios.put(`/api/chats/listas/${lista.id}`, {
+        usuarioId: userId,
+        items,
+      });
+
+      setChatLists(res.data?.listas || []);
+      setShowAddToExistingList(false);
+      setAddToListTargetLocal(null);
+      toast.success("Chat añadido a la lista");
+    } catch (err) {
+      console.error("❌ Error agregando chat a lista:", err);
+      toast.error("No se pudo agregar a la lista");
+    }
+  };
+
+
   // -------------------------------
   // 🔹 Filtrar chats por búsqueda y chips tipo WhatsApp
   const isFavoriteChat = (chat) =>
@@ -1360,6 +1529,15 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat }) => {
 
   const activeChats = searchedChats.filter((chat) => !estaArchivado(chat));
   const archivedChats = searchedChats.filter((chat) => estaArchivado(chat));
+  const activeCustomListId = activeFilter.startsWith("lista-")
+    ? Number(activeFilter.replace("lista-", ""))
+    : null;
+  const activeCustomList = activeCustomListId
+    ? chatLists.find((lista) => Number(lista.id) === activeCustomListId)
+    : null;
+  const chatsForListPicker = sortChatsVisual(
+    activeChats.filter((chat) => chatMatchesSearch(chat, listPeopleSearch))
+  );
 
   const filterCounts = {
     todos: activeChats.length,
@@ -1371,6 +1549,7 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat }) => {
   };
 
   const filteredChats = (activeFilter === "archivados" ? archivedChats : activeChats).filter((chat) => {
+    if (activeCustomList) return chatIsInCustomList(chat, activeCustomList);
     if (activeFilter === "unread") return isUnreadChat(chat);
     if (activeFilter === "favoritos") return isFavoriteChat(chat);
     if (activeFilter === "grupos") return chat.tipo === "grupo";
@@ -1422,8 +1601,6 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat }) => {
       console.error("❌ Error al marcar mensajes como vistos:", err);
     }
   };
-
-  const getChatId = (chat) => (chat.tipo === "grupo" ? chat.grupo_id : chat.usuario_id);
 
   const getChatTitle = (chat) => getDisplayChatTitle(chat);
 
@@ -1769,7 +1946,7 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat }) => {
     );
   };
 
-  const filterLabel = {
+  const filterLabel = activeCustomList?.nombre || {
     todos: "Todos",
     unread: "No leídos",
     favoritos: "Favoritos",
@@ -1778,7 +1955,338 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat }) => {
     archivados: "Archivados",
   }[activeFilter];
 
+  const selectedCreateChats = chats.filter((chat) => selectedListItems.includes(getListItemKey(chat)));
+
+  const closeFilterMenu = () => {
+    setFilterMenuOpen(false);
+    setFilterMenuPosition(null);
+  };
+
+  const closeCustomListMenu = () => {
+    setCustomListMenuOpen(false);
+    setCustomListMenuPosition(null);
+  };
+
+  const getFloatingMenuPosition = (buttonEl, menuWidth = 230, menuHeight = 236) => {
+    const rect = buttonEl.getBoundingClientRect();
+    const margin = 8;
+    const left = Math.max(
+      margin,
+      Math.min(window.innerWidth - menuWidth - margin, rect.right - menuWidth)
+    );
+    let top = rect.bottom + margin;
+    if (top + menuHeight > window.innerHeight - margin) {
+      top = Math.max(margin, rect.top - menuHeight - margin);
+    }
+    return { top, left };
+  };
+
+  const visibleCustomLists = chatLists.slice(0, 2);
+  const hiddenCustomLists = chatLists.slice(2);
+  const activeHiddenCustomList = activeCustomListId
+    ? hiddenCustomLists.find((lista) => Number(lista.id) === Number(activeCustomListId))
+    : null;
+
+  const renderCustomListMenu = () =>
+    customListMenuOpen &&
+    customListMenuPosition &&
+    typeof document !== "undefined" &&
+    createPortal(
+      <div
+        className="wa-filter-dropdown wa-filter-dropdown-portal wa-custom-list-dropdown shadow-sm"
+        style={{ top: `${customListMenuPosition.top}px`, left: `${customListMenuPosition.left}px` }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        {hiddenCustomLists.map((lista) => (
+          <div
+            key={lista.id}
+            className={`wa-custom-list-menu-row ${activeFilter === `lista-${lista.id}` ? "active" : ""}`}
+          >
+            <button
+              type="button"
+              className="wa-custom-list-menu-main"
+              onClick={() => {
+                setActiveFilter(`lista-${lista.id}`);
+                closeCustomListMenu();
+              }}
+              title={lista.nombre}
+            >
+              <span>{lista.emoji || ""}{lista.nombre}</span>
+              <strong>{lista.items?.length || 0}</strong>
+            </button>
+            <button
+              type="button"
+              className="wa-custom-list-menu-action"
+              onClick={(e) => {
+                e.stopPropagation();
+                closeCustomListMenu();
+                editarListaChat(lista);
+              }}
+              title="Editar lista"
+              aria-label="Editar lista"
+            >
+              <i className="fa-solid fa-pen" aria-hidden="true" />
+            </button>
+            <button
+              type="button"
+              className="wa-custom-list-menu-action danger"
+              onClick={(e) => {
+                e.stopPropagation();
+                closeCustomListMenu();
+                eliminarListaChat(lista);
+              }}
+              title="Eliminar lista"
+              aria-label="Eliminar lista"
+            >
+              <i className="fa-solid fa-trash" aria-hidden="true" />
+            </button>
+          </div>
+        ))}
+        <button
+          type="button"
+          className="wa-filter-new-list"
+          onClick={() => {
+            closeCustomListMenu();
+            abrirCrearLista();
+          }}
+        >
+          <span><i className="fa-solid fa-plus" aria-hidden="true" /> Nueva lista</span>
+        </button>
+      </div>,
+      document.body
+    );
+
+  const renderFilterDropdown = () =>
+    filterMenuOpen &&
+    filterMenuPosition &&
+    typeof document !== "undefined" &&
+    createPortal(
+      <div
+        className="wa-filter-dropdown wa-filter-dropdown-portal shadow-sm"
+        style={{ top: `${filterMenuPosition.top}px`, left: `${filterMenuPosition.left}px` }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <button
+          type="button"
+          className={activeFilter === "favoritos" ? "active" : ""}
+          onClick={() => {
+            setActiveFilter("favoritos");
+            closeFilterMenu();
+          }}
+        >
+          <span>Favoritos</span>
+          <span>{filterCounts.favoritos}</span>
+        </button>
+        <button
+          type="button"
+          className={activeFilter === "grupos" ? "active" : ""}
+          onClick={() => {
+            setActiveFilter("grupos");
+            closeFilterMenu();
+          }}
+        >
+          <span>Grupos</span>
+          <span>{filterCounts.grupos}</span>
+        </button>
+        <button
+          type="button"
+          className={activeFilter === "privados" ? "active" : ""}
+          onClick={() => {
+            setActiveFilter("privados");
+            closeFilterMenu();
+          }}
+        >
+          <span>Chats individuales</span>
+          <span>{filterCounts.privados}</span>
+        </button>
+        <button
+          type="button"
+          className="wa-filter-new-list"
+          onClick={() => abrirCrearLista()}
+        >
+          <span><i className="fa-solid fa-plus" aria-hidden="true" /> Nueva lista</span>
+        </button>
+      </div>,
+      document.body
+    );
+
+  const renderListPickerModal = () =>
+    showListPeopleModal &&
+    typeof document !== "undefined" &&
+    createPortal(
+      <div className="wa-list-modal-backdrop" onClick={() => setShowListPeopleModal(false)}>
+        <div className="wa-list-modal" onClick={(e) => e.stopPropagation()}>
+          <div className="wa-list-modal-header">
+            <button type="button" onClick={() => setShowListPeopleModal(false)} aria-label="Cerrar">
+              <i className="fa-solid fa-xmark" aria-hidden="true" />
+            </button>
+            <strong>Añadir a la lista</strong>
+          </div>
+          <div className="wa-list-modal-search">
+            <i className="fa-solid fa-magnifying-glass" aria-hidden="true" />
+            <input
+              type="text"
+              value={listPeopleSearch}
+              onChange={(e) => setListPeopleSearch(e.target.value)}
+              placeholder="Buscar un nombre o número"
+              autoFocus
+            />
+          </div>
+          <div className="wa-list-modal-subtitle">Chats recientes</div>
+          <div className="wa-list-modal-body">
+            {chatsForListPicker.map((chat) => {
+              const checked = selectedListItems.includes(getListItemKey(chat));
+              return (
+                <button
+                  type="button"
+                  key={getListItemKey(chat)}
+                  className={`wa-list-select-row ${checked ? "selected" : ""}`}
+                  onClick={() => toggleListSelection(chat)}
+                >
+                  <span className="wa-list-check">{checked && <i className="fa-solid fa-check" aria-hidden="true" />}</span>
+                  <span className="wa-list-select-avatar">{renderAvatar(chat)}</span>
+                  <span className="wa-list-select-main">
+                    <strong>{getChatTitle(chat)}</strong>
+                    <small>{chat.tipo === "grupo" ? "Grupo" : chat.usuario_correo || chat.correo || "Chat individual"}</small>
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+          <button
+            type="button"
+            className="wa-list-modal-confirm"
+            onClick={() => setShowListPeopleModal(false)}
+            disabled={!selectedListItems.length}
+            aria-label="Confirmar selección"
+          >
+            <i className="fa-solid fa-check" aria-hidden="true" />
+          </button>
+        </div>
+      </div>,
+      document.body
+    );
+
+  const renderAddToExistingListModal = () =>
+    showAddToExistingList &&
+    typeof document !== "undefined" &&
+    createPortal(
+      <div className="wa-list-modal-backdrop" onClick={() => setShowAddToExistingList(false)}>
+        <div className="wa-list-modal wa-add-list-modal" onClick={(e) => e.stopPropagation()}>
+          <div className="wa-list-modal-header">
+            <button type="button" onClick={() => setShowAddToExistingList(false)} aria-label="Cerrar">
+              <i className="fa-solid fa-xmark" aria-hidden="true" />
+            </button>
+            <strong>Añadir a la lista</strong>
+          </div>
+          <div className="wa-list-modal-body compact">
+            {chatLists.length > 0 ? (
+              chatLists.map((lista) => (
+                <button
+                  type="button"
+                  key={lista.id}
+                  className="wa-existing-list-row"
+                  onClick={() => addChatToExistingList(lista)}
+                >
+                  <span className="wa-existing-list-icon">{lista.emoji || <i className="fa-solid fa-list" aria-hidden="true" />}</span>
+                  <span>
+                    <strong>{lista.nombre}</strong>
+                    <small>{lista.items?.length || 0} chats</small>
+                  </span>
+                </button>
+              ))
+            ) : (
+              <div className="wa-list-empty-box">Primero crea una lista desde el botón + de filtros.</div>
+            )}
+          </div>
+          <button
+            type="button"
+            className="wa-create-first-list-btn"
+            onClick={() => {
+              setShowAddToExistingList(false);
+              setSelectedListItems(addToListTargetLocal ? [getListItemKey(addToListTargetLocal)] : []);
+              abrirCrearLista(addToListTargetLocal ? [getListItemKey(addToListTargetLocal)] : []);
+            }}
+          >
+            <i className="fa-solid fa-plus" aria-hidden="true" />
+            Nueva lista
+          </button>
+        </div>
+      </div>,
+      document.body
+    );
+
+  if (showCreateList) {
+    return (
+      <>
+        <aside className="sidebar bg-light wa-create-list-sidebar">
+          <div className="wa-create-list-head">
+            <button type="button" onClick={resetCreateList} aria-label="Volver">
+              <i className="fa-solid fa-arrow-left" aria-hidden="true" />
+            </button>
+            <span>{editingList ? "Edita la lista" : "Crea una nueva lista"}</span>
+          </div>
+
+          <div className="wa-create-list-body">
+            <label className="wa-create-list-label">Nombre de la lista</label>
+            <div className="wa-create-list-input">
+              <input
+                type="text"
+                value={newListName}
+                onChange={(e) => setNewListName(e.target.value)}
+                placeholder="Nombre de la lista"
+                maxLength={80}
+                autoFocus
+              />
+              <i className="fa-regular fa-face-smile" aria-hidden="true" />
+            </div>
+
+            <div className="wa-create-list-section-title">Incluido</div>
+            <button
+              type="button"
+              className="wa-create-list-add-row"
+              onClick={() => setShowListPeopleModal(true)}
+            >
+              <span>
+                <i className="fa-solid fa-plus" aria-hidden="true" />
+              </span>
+              Añadir personas o grupos
+            </button>
+
+            {selectedCreateChats.length > 0 && (
+              <div className="wa-create-list-selected">
+                {selectedCreateChats.map((chat) => (
+                  <button
+                    type="button"
+                    key={getListItemKey(chat)}
+                    onClick={() => toggleListSelection(chat)}
+                    title="Quitar de la lista"
+                  >
+                    <span className="wa-create-list-selected-avatar">{renderAvatar(chat)}</span>
+                    <span>{getChatTitle(chat)}</span>
+                    <i className="fa-solid fa-xmark" aria-hidden="true" />
+                  </button>
+                ))}
+              </div>
+            )}
+
+            <button
+              type="button"
+              className="wa-create-list-submit"
+              disabled={!newListName.trim() || creatingList}
+              onClick={guardarListaChat}
+            >
+              {creatingList ? (editingList ? "Guardando..." : "Creando...") : (editingList ? "Guardar lista" : "Crear lista")}
+            </button>
+          </div>
+        </aside>
+        {renderListPickerModal()}
+      </>
+    );
+  }
+
   return (
+    <>
     <aside className="sidebar bg-light">
       <div className="tab-pane fade h-100 active show" id="tab-content-chats" role="tabpanel">
         <div className="d-flex flex-column h-100 position-relative">
@@ -1834,55 +2342,103 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat }) => {
                 >
                   No leídos{filterCounts.unread > 0 ? ` ${filterCounts.unread}` : ""}
                 </button>
-                <button
-                  type="button"
-                  className={`wa-filter-chip ${activeFilter === "favoritos" ? "active" : ""}`}
-                  onClick={() => setActiveFilter("favoritos")}
-                >
-                  Favoritos
-                </button>
                 <div className="wa-filter-more-wrap">
                   <button
                     type="button"
-                    className={`wa-filter-chip wa-filter-more ${["grupos", "privados"].includes(activeFilter) ? "active" : ""}`}
+                    className={`wa-filter-chip wa-filter-more ${["favoritos", "grupos", "privados"].includes(activeFilter) ? "active" : ""}`}
                     onClick={(e) => {
                       e.stopPropagation();
-                      setFilterMenuOpen((prev) => !prev);
+
+                      if (filterMenuOpen) {
+                        setFilterMenuOpen(false);
+                        setFilterMenuPosition(null);
+                        return;
+                      }
+
+                      setCustomListMenuOpen(false);
+                      setCustomListMenuPosition(null);
+                      setFilterMenuPosition(getFloatingMenuPosition(e.currentTarget, 230, 236));
+                      setFilterMenuOpen(true);
                     }}
                     title="Más filtros"
                   >
-                    <span>{["grupos", "privados"].includes(activeFilter) ? filterLabel : ""}</span>
+                    <span>{["favoritos", "grupos", "privados"].includes(activeFilter) ? filterLabel : ""}</span>
                     <i className="fa-solid fa-chevron-down" aria-hidden="true" />
                   </button>
 
-                  {filterMenuOpen && (
-                    <div className="wa-filter-dropdown shadow-sm">
-                      <button
-                        type="button"
-                        className={activeFilter === "grupos" ? "active" : ""}
-                        onClick={() => {
-                          setActiveFilter("grupos");
-                          setFilterMenuOpen(false);
-                        }}
-                      >
-                        <span>Grupos</span>
-                        <span>{filterCounts.grupos}</span>
-                      </button>
-                      <button
-                        type="button"
-                        className={activeFilter === "privados" ? "active" : ""}
-                        onClick={() => {
-                          setActiveFilter("privados");
-                          setFilterMenuOpen(false);
-                        }}
-                      >
-                        <span>Chats individuales</span>
-                        <span>{filterCounts.privados}</span>
-                      </button>
-                    </div>
-                  )}
                 </div>
               </div>
+
+              {chatLists.length > 0 && (
+                <div className={`wa-custom-list-row ${hiddenCustomLists.length > 0 ? "has-overflow" : ""}`} onClick={(e) => e.stopPropagation()}>
+                  {visibleCustomLists.map((lista) => (
+                    <div
+                      key={lista.id}
+                      className={`wa-custom-list-chip-wrap ${activeFilter === `lista-${lista.id}` ? "active" : ""}`}
+                    >
+                      <button
+                        type="button"
+                        className={`wa-filter-chip wa-custom-list-chip ${activeFilter === `lista-${lista.id}` ? "active" : ""}`}
+                        onClick={() => setActiveFilter(`lista-${lista.id}`)}
+                        title={lista.nombre}
+                      >
+                        <span>{lista.emoji || ""}{lista.nombre}</span>
+                        {lista.items?.length ? <small>{lista.items.length}</small> : null}
+                      </button>
+                      <button
+                        type="button"
+                        className="wa-list-chip-action"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          editarListaChat(lista);
+                        }}
+                        title="Editar lista"
+                        aria-label="Editar lista"
+                      >
+                        <i className="fa-solid fa-pen" aria-hidden="true" />
+                      </button>
+                      <button
+                        type="button"
+                        className="wa-list-chip-action danger"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          eliminarListaChat(lista);
+                        }}
+                        title="Eliminar lista"
+                        aria-label="Eliminar lista"
+                      >
+                        <i className="fa-solid fa-trash" aria-hidden="true" />
+                      </button>
+                    </div>
+                  ))}
+
+                  {hiddenCustomLists.length > 0 && (
+                    <button
+                      type="button"
+                      className={`wa-filter-chip wa-custom-list-more ${activeHiddenCustomList ? "active" : ""}`}
+                      onClick={(e) => {
+                        e.stopPropagation();
+
+                        if (customListMenuOpen) {
+                          closeCustomListMenu();
+                          return;
+                        }
+
+                        setFilterMenuOpen(false);
+                        setFilterMenuPosition(null);
+                        setCustomListMenuPosition(getFloatingMenuPosition(e.currentTarget, 230, 236));
+                        setCustomListMenuOpen(true);
+                      }}
+                      title="Más listas"
+                    >
+                      {activeHiddenCustomList && (
+                        <span>{activeHiddenCustomList.emoji || ""}{activeHiddenCustomList.nombre}</span>
+                      )}
+                      <i className="fa-solid fa-chevron-down" aria-hidden="true" />
+                    </button>
+                  )}
+                </div>
+              )}
 
               {filterCounts.archivados > 0 && (
                 <button
@@ -1967,6 +2523,10 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat }) => {
         </div>
       </div>
     </aside>
+    {renderFilterDropdown()}
+    {renderCustomListMenu()}
+    {renderAddToExistingListModal()}
+    </>
   );
 };
 

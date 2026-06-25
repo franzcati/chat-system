@@ -13333,3 +13333,134 @@ body > .wa-profile-crop-layer > .wa-profile-crop-modal {
 :root[data-theme="dark"] .wa-app-rail .wa-rail-logo img {
   filter: drop-shadow(0 0 10px rgba(14, 165, 255, 0.28)) !important;
 }
+
+/* =========================================================
+   FIX: layout adaptable tipo WhatsApp Web
+   - La lista de chats baja de 410px cuando no hay mucho ancho.
+   - El área del chat mantiene un mínimo para que el input no se rompa.
+   - En escritorio aparece scroll horizontal antes de aplastar el composer.
+   ========================================================= */
+:root {
+  --wa-app-rail-width: 64px;
+  --wa-chat-list-min: 280px;
+  --wa-chat-list-max: 410px;
+  --wa-chat-list-fluid: 30vw;
+  --wa-chat-main-min: 420px;
+  --wa-chat-list-width: clamp(var(--wa-chat-list-min), var(--wa-chat-list-fluid), var(--wa-chat-list-max));
+  --wa-app-min-width: calc(var(--wa-app-rail-width) + var(--wa-chat-list-min) + var(--wa-chat-main-min));
+}
+
+@media (min-width: 768px) {
+  html,
+  body,
+  #root {
+    min-width: var(--wa-app-min-width) !important;
+    overflow-x: auto !important;
+  }
+
+  #root > .flex.h-screen,
+  body > #root > .flex.h-screen {
+    width: max(100vw, var(--wa-app-min-width)) !important;
+    min-width: var(--wa-app-min-width) !important;
+    max-width: none !important;
+    overflow: hidden !important;
+  }
+
+  #root > .flex.h-screen > .sidebar,
+  body > #root > .flex.h-screen > .sidebar {
+    flex: 0 0 var(--wa-chat-list-width) !important;
+    width: var(--wa-chat-list-width) !important;
+    min-width: var(--wa-chat-list-min) !important;
+    max-width: var(--wa-chat-list-max) !important;
+  }
+
+  #root > .flex.h-screen > .wa-chat-stage,
+  body > #root > .flex.h-screen > .wa-chat-stage,
+  #root > .flex.h-screen > .main,
+  body > #root > .flex.h-screen > .main {
+    flex: 1 1 auto !important;
+    min-width: var(--wa-chat-main-min) !important;
+    width: auto !important;
+    max-width: none !important;
+    overflow: hidden !important;
+  }
+
+  .wa-chat-stage > .main,
+  .wa-chat-stage .wa-chat-shell,
+  .wa-chat-stage .wa-chat-conversation {
+    min-width: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+}
+
+@media (min-width: 768px) and (max-width: 1100px) {
+  :root {
+    --wa-chat-list-fluid: 26vw;
+  }
+}
+
+@media (max-width: 900px) and (min-width: 768px) {
+  :root {
+    --wa-chat-list-min: 260px;
+    --wa-chat-main-min: 400px;
+  }
+}
+
+/* =========================================================
+   AJUSTE 2: filtros del ChatList compactos + ancho adaptable
+   - Favoritos pasa al botón con flecha, como WhatsApp.
+   - El sidebar puede reducir un poco más sin romper el input.
+   ========================================================= */
+:root {
+  --wa-chat-list-min: 250px;
+  --wa-chat-main-min: 360px;
+  --wa-app-min-width: calc(var(--wa-app-rail-width) + var(--wa-chat-list-min) + var(--wa-chat-main-min));
+}
+
+@media (min-width: 768px) and (max-width: 900px) {
+  :root {
+    --wa-chat-list-min: 240px;
+    --wa-chat-main-min: 360px;
+  }
+}
+
+.wa-filter-row {
+  min-width: 0;
+  overflow: visible;
+  gap: 7px;
+}
+
+.wa-filter-row .wa-filter-chip {
+  flex: 0 0 auto;
+}
+
+.wa-filter-more {
+  max-width: 118px;
+}
+
+.wa-filter-more span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (max-width: 1060px) and (min-width: 768px) {
+  .wa-filter-chip {
+    padding-inline: 12px;
+    font-size: 0.84rem;
+  }
+
+  .wa-filter-more {
+    min-width: 34px;
+    padding-inline: 10px;
+  }
+}
+
+/* Ajuste 10: el menú de filtros va por portal para no quedar debajo de las tarjetas */
+.wa-filter-dropdown-portal {
+  position: fixed !important;
+  right: auto !important;
+  z-index: 10000 !important;
+}

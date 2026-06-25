@@ -885,7 +885,7 @@ const ChatInput = forwardRef(({
   onValueChange,
   mentionOptions = [],
   initialValue = "",
-  placeholder = "Escribe un mensaje... Usa @ para mencionar",
+  placeholder = "Escribe un mensaje...",
   autoFocus = false,
   variant = "default",
 }, ref) => {

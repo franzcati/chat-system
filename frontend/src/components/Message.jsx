@@ -702,6 +702,54 @@ const Message = ({
     return finalUrl;
   };
 
+  const normalizeComparableMediaUrl = (value = "") => {
+    const text = String(value || "").trim().replace(/^(\[sticker\])+/i, "");
+    if (!text) return "";
+
+    try {
+      const url = new URL(text);
+      url.hash = "";
+      if (url.protocol === "http:") url.protocol = "https:";
+      return `${url.protocol}//${url.host}${url.pathname}${url.search}`;
+    } catch {
+      return text.replace(/^http:\/\//i, "https://");
+    }
+  };
+
+  const looksLikeMediaOnlyUrl = (value = "") => {
+    const text = String(value || "").trim();
+    return /\.(jpe?g|png|webp|gif|mp4|webm|ogg|mov)(\?.*)?$/i.test(text) ||
+      /\/giphy\.gif(?:\?.*)?$/i.test(text);
+  };
+
+  const isOnlyMediaUrlText = (value = "", mediaUrl = "") => {
+    const cleaned = String(value || "")
+      .replace(/[\u200B-\u200D\uFEFF]/g, "")
+      .trim();
+
+    if (!cleaned) return false;
+
+    const normalizedMediaUrl = normalizeComparableMediaUrl(mediaUrl);
+    const normalizedText = normalizeComparableMediaUrl(cleaned);
+
+    if (normalizedMediaUrl && normalizedText === normalizedMediaUrl) return true;
+
+    const urls = cleaned.match(/https?:\/\/[^\s]+/gi) || [];
+    if (!urls.length) return looksLikeMediaOnlyUrl(cleaned);
+
+    const textWithoutUrls = cleaned
+      .replace(/https?:\/\/[^\s]+/gi, "")
+      .replace(/[\s.,;:()<>[\]{}¡!¿?"'`]+/g, "")
+      .trim();
+
+    if (textWithoutUrls) return false;
+
+    return urls.every((url) => {
+      const normalizedUrl = normalizeComparableMediaUrl(url);
+      return (normalizedMediaUrl && normalizedUrl === normalizedMediaUrl) || looksLikeMediaOnlyUrl(url);
+    });
+  };
+
   const normalizarUrlStickerParaAccion = (rawUrl) => {
     let finalUrl = String(rawUrl || "").trim().replace(/^(\[sticker\])+/i, "");
 
@@ -2294,7 +2342,11 @@ const Message = ({
                         );
 
                     const caption =
-                      mensajeData.mensaje && !esSoloIds ? mensajeData.mensaje : "";
+                      mensajeData.mensaje &&
+                      !esSoloIds &&
+                      !isOnlyMediaUrlText(mensajeData.mensaje, todasNormalizadas[0])
+                        ? mensajeData.mensaje
+                        : "";
 
                     return (
                       <div className="wa-message-media-stack">
@@ -2548,13 +2600,16 @@ const Message = ({
                       const estado = mensajeData.estado;
                       const progreso = mensajeData.progreso;
 
+                      const textoCaptionImagen = typeof mensajeData.mensaje === "string"
+                        ? mensajeData.mensaje.trim()
+                        : "";
+
                       const captionImagen =
                         mensajeData.archivo_url &&
-                        typeof mensajeData.mensaje === "string" &&
-                        mensajeData.mensaje.trim() !== "" &&
+                        textoCaptionImagen &&
                         mensajeData.mensaje !== mensajeData.archivo_url &&
-                        !/^https?:\/\//i.test(mensajeData.mensaje.trim())
-                          ? mensajeData.mensaje.trim()
+                        !isOnlyMediaUrlText(textoCaptionImagen, urlArchivo)
+                          ? textoCaptionImagen
                           : "";
 
                       return (
@@ -2778,13 +2833,16 @@ const Message = ({
                     }
 
                     if (esVideo) {
+                      const textoCaptionVideo = typeof mensajeData.mensaje === "string"
+                        ? mensajeData.mensaje.trim()
+                        : "";
+
                       const captionVideo =
                         mensajeData.archivo_url &&
-                        typeof mensajeData.mensaje === "string" &&
-                        mensajeData.mensaje.trim() !== "" &&
+                        textoCaptionVideo &&
                         mensajeData.mensaje !== mensajeData.archivo_url &&
-                        !/^https?:\/\//i.test(mensajeData.mensaje.trim())
-                          ? mensajeData.mensaje.trim()
+                        !isOnlyMediaUrlText(textoCaptionVideo, urlArchivo)
+                          ? textoCaptionVideo
                           : "";
 
                       return (
