@@ -506,7 +506,45 @@ router.get("/usuario/:userId", async (req, res) => {
       };
     });
 
-    res.json(gruposConExtras);
+    // Seguridad adicional: una combinación de JOINs o datos históricos duplicados
+    // no debe producir varias tarjetas para el mismo grupo en el frontend.
+    const gruposUnicos = Array.from(
+      gruposConExtras.reduce((map, grupo) => {
+        const key = String(Number(grupo.grupo_id) || grupo.grupo_id);
+        const actual = map.get(key);
+
+        if (!actual) {
+          map.set(key, grupo);
+          return map;
+        }
+
+        const fechaActual = actual.fecha_envio
+          ? new Date(actual.fecha_envio).getTime()
+          : 0;
+        const fechaNueva = grupo.fecha_envio
+          ? new Date(grupo.fecha_envio).getTime()
+          : 0;
+        const masReciente = fechaNueva >= fechaActual ? grupo : actual;
+        const anterior = masReciente === grupo ? actual : grupo;
+
+        map.set(key, {
+          ...anterior,
+          ...masReciente,
+          mensajes_no_leidos: Math.max(
+            Number(actual.mensajes_no_leidos || 0),
+            Number(grupo.mensajes_no_leidos || 0)
+          ),
+          miembros:
+            Array.isArray(masReciente.miembros) && masReciente.miembros.length
+              ? masReciente.miembros
+              : anterior.miembros || [],
+        });
+
+        return map;
+      }, new Map()).values()
+    );
+
+    res.json(gruposUnicos);
   } catch (err) {
     console.error("❌ Error al obtener grupos:", err);
     res.status(500).json({ error: "Error en el servidor" });

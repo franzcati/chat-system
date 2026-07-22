@@ -11,6 +11,125 @@ import toast from "react-hot-toast";
 import GroupAvatar from "../components/GroupAvatar";
 
 
+const getRecordTime = (record = {}) => {
+  const explicit = Number(record.lastTime);
+  if (Number.isFinite(explicit) && explicit > 0) return explicit;
+
+  const raw = record.fecha_envio || record.fecha_creacion || null;
+  const parsed = raw ? Date.parse(raw) : 0;
+  return Number.isFinite(parsed) ? parsed : 0;
+};
+
+const getStableChatIdentity = (chat = {}) => {
+  const tipo = chat.tipo === "grupo" ? "grupo" : "privado";
+  const rawId = tipo === "grupo" ? chat.grupo_id ?? chat.usuario_id : chat.usuario_id;
+  if (rawId === undefined || rawId === null || String(rawId).trim() === "") return null;
+  return `${tipo}-${Number(rawId) || String(rawId)}`;
+};
+
+const mergeDuplicateChat = (current = {}, incoming = {}) => {
+  const currentTime = getRecordTime(current);
+  const incomingTime = getRecordTime(incoming);
+  const newer = incomingTime >= currentTime ? incoming : current;
+  const older = newer === incoming ? current : incoming;
+
+  return {
+    ...older,
+    ...newer,
+    mensajes_no_leidos: Math.max(
+      Number(current.mensajes_no_leidos || 0),
+      Number(incoming.mensajes_no_leidos || 0)
+    ),
+    miembros:
+      Array.isArray(newer.miembros) && newer.miembros.length
+        ? newer.miembros
+        : older.miembros || [],
+    lastTime: Math.max(currentTime, incomingTime),
+  };
+};
+
+const dedupeChatsByIdentity = (items = []) => {
+  const unique = new Map();
+  const withoutIdentity = [];
+
+  (Array.isArray(items) ? items : []).forEach((chat) => {
+    const key = getStableChatIdentity(chat);
+    if (!key) {
+      withoutIdentity.push(chat);
+      return;
+    }
+
+    unique.set(
+      key,
+      unique.has(key) ? mergeDuplicateChat(unique.get(key), chat) : chat
+    );
+  });
+
+  return [...unique.values(), ...withoutIdentity].sort(
+    (a, b) => getRecordTime(b) - getRecordTime(a)
+  );
+};
+
+const dedupeGroupsById = (items = []) => {
+  const unique = new Map();
+
+  (Array.isArray(items) ? items : []).forEach((group) => {
+    const rawId = group?.grupo_id ?? group?.id;
+    if (rawId === undefined || rawId === null) return;
+
+    const key = String(Number(rawId) || rawId);
+    const normalized = {
+      ...group,
+      grupo_id: Number(rawId) || rawId,
+    };
+
+    if (!unique.has(key)) {
+      unique.set(key, normalized);
+      return;
+    }
+
+    const current = unique.get(key);
+    const currentTime = getRecordTime(current);
+    const incomingTime = getRecordTime(normalized);
+    const newer = incomingTime >= currentTime ? normalized : current;
+    const older = newer === normalized ? current : normalized;
+
+    unique.set(key, {
+      ...older,
+      ...newer,
+      mensajes_no_leidos: Math.max(
+        Number(current.mensajes_no_leidos || 0),
+        Number(normalized.mensajes_no_leidos || 0)
+      ),
+      miembros:
+        Array.isArray(newer.miembros) && newer.miembros.length
+          ? newer.miembros
+          : older.miembros || [],
+    });
+  });
+
+  return Array.from(unique.values());
+};
+
+const dedupeMessagesById = (items = []) => {
+  const unique = new Map();
+  const withoutId = [];
+
+  (Array.isArray(items) ? items : []).forEach((message) => {
+    if (message?.id === undefined || message?.id === null) {
+      withoutId.push(message);
+      return;
+    }
+
+    const key = String(message.id);
+    unique.set(key, unique.has(key) ? { ...unique.get(key), ...message } : message);
+  });
+
+  return [...unique.values(), ...withoutId];
+};
+
+
+
 
 
 const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat, addToListTarget, onAddToListHandled }) => {
@@ -44,6 +163,22 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat, addToLi
   const [showAddToExistingList, setShowAddToExistingList] = useState(false);
   const [typingByChat, setTypingByChat] = useState({});
   const typingPreviewTimersRef = useRef({});
+  const processedSocketMessagesRef = useRef(new Set());
+
+  const shouldProcessSocketMessage = (eventName, message) => {
+    const id = message?.id;
+    if (id === undefined || id === null) return true;
+
+    const key = `${eventName}:${id}`;
+    const seen = processedSocketMessagesRef.current;
+    if (seen.has(key)) return false;
+
+    seen.add(key);
+    if (seen.size > 2500) {
+      Array.from(seen).slice(0, 500).forEach((oldKey) => seen.delete(oldKey));
+    }
+    return true;
+  };
 
  // ----------------------------
  // SILENCIAR NOTIFICACIONES
@@ -448,70 +583,6 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat, addToLi
     return Object.values(grouped);
   };
 
-  useEffect(() => {
-    logDev("🟢 useEffect ChatList sockets montado", {
-      userId,
-      connected: socket.connected,
-      socketId: socket.id,
-    });
-
-    if (!userId) return;
-
-    const handleNuevoMensaje = (msg) => {
-      logDev("📩 ChatList recibió nuevoMensaje:", msg);
-
-      const miId = Number(userId);
-      const enviaId = Number(msg.usuario_envia_id);
-      const recibeId = Number(msg.usuario_recibe_id);
-
-      if (enviaId !== miId && recibeId !== miId) return;
-
-      setMensajes((prev) => {
-        const yaExiste = prev.some((m) => Number(m.id) === Number(msg.id));
-        if (yaExiste) {
-          return prev.map((m) =>
-            Number(m.id) === Number(msg.id) ? { ...m, ...msg } : m
-          );
-        }
-        return [...prev, msg];
-      });
-
-      const otherUserId = enviaId === miId ? recibeId : enviaId;
-      const esMio = enviaId === miId;
-
-      const chatAbiertoEsEste =
-        selectedChat?.tipo === "privado" &&
-        Number(selectedChat?.usuario_id) === Number(otherUserId);
-
-      const silenciado = estaSilenciado("privado", otherUserId);
-
-      if (!esMio && !chatAbiertoEsEste && !silenciado && !estaEnNoMolestarUsuario(userId)) {
-        mostrarNotificacion({
-          titulo: `${msg.emisor_nombre || "Usuario"} ${msg.emisor_apellido || ""}`.trim(),
-          cuerpo:
-            msg.eliminado === 1
-              ? "Se eliminó este mensaje"
-              : getPreviewText(msg),
-          uniqueId: msg.id,
-          chat: {
-            tipo: "privado",
-            usuario_id: otherUserId,
-            usuario_nombre: `${msg.emisor_nombre || ""} ${msg.emisor_apellido || ""}`.trim(),
-            usuario_correo: msg.emisor_correo || "",
-            url_imagen: msg.emisor_avatar || null,
-            background: msg.emisor_background || "#6c757d",
-          },
-        });
-      }
-    };
-
-    socket.on("nuevoMensaje", handleNuevoMensaje);
-
-    return () => {
-      socket.off("nuevoMensaje", handleNuevoMensaje);
-    };
-  }, [userId, selectedChat, silenciados, estadosUsuarios]);
-
   // -------------------------------
   // 🔹 Cargar privados, grupos y favoritos
   useEffect(() => {
@@ -528,8 +599,8 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat, addToLi
           axios.get(`/api/chats/listas/${userId}`),
         ]);
 
-        setMensajes(resMensajes.data);
-        setGrupos(resGrupos.data);
+        setMensajes(dedupeMessagesById(resMensajes.data));
+        setGrupos(dedupeGroupsById(resGrupos.data));
         setFavoritos(resFavoritos.data);
         setSilenciados(resSilenciados.data || []);
         setChatEstados(resEstados.data || []);
@@ -609,7 +680,7 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat, addToLi
       };
     });
 
-    setChats([...privados, ...gruposAdaptados].sort((a, b) => b.lastTime - a.lastTime));
+    setChats(dedupeChatsByIdentity([...privados, ...gruposAdaptados]));
   }, [mensajes, grupos, userId]);
 
   // -------------------------------
@@ -618,6 +689,8 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat, addToLi
     if (!userId) return;
 
     const handleNuevoMensaje = (msg) => {
+      if (!shouldProcessSocketMessage("privado", msg)) return;
+
       const miId = Number(userId);
       const enviaId = Number(msg.usuario_envia_id);
       const recibeId = Number(msg.usuario_recibe_id);
@@ -645,7 +718,7 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat, addToLi
         );
 
         if (!yaExiste) {
-          return [
+          return dedupeChatsByIdentity([
             {
               tipo: "privado",
               usuario_id: otherUserId,
@@ -670,11 +743,11 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat, addToLi
               lastTime: getTimestamp(msg.fecha_envio),
             },
             ...prevChats,
-          ].sort((a, b) => b.lastTime - a.lastTime);
+          ]);
         }
 
-        return prevChats
-          .map((chat) => {
+        return dedupeChatsByIdentity(
+          prevChats.map((chat) => {
             if (
               chat.tipo === "privado" &&
               Number(chat.usuario_id) === Number(otherUserId)
@@ -682,6 +755,9 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat, addToLi
               return {
                 ...chat,
                 ultimo_mensaje: msg.eliminado ? "Se eliminó este mensaje" : msg.mensaje,
+                ultimo_archivo_url: msg.archivo_url || null,
+                ultimo_tipo_archivo: msg.tipo_archivo || "",
+                ultimo_nombre_archivo: msg.nombre_archivo || "",
                 ultimo_mensaje_id: msg.id,
                 fecha_envio: msg.fecha_envio,
                 tipo_mensaje: esEmisor ? "enviado" : "recibido",
@@ -694,11 +770,36 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat, addToLi
             }
             return chat;
           })
-          .sort((a, b) => b.lastTime - a.lastTime);
+        );
       });
+
+      const otherUserId = enviaId === miId ? recibeId : enviaId;
+      const esMio = enviaId === miId;
+      const chatAbiertoEsEste =
+        selectedChat?.tipo === "privado" &&
+        Number(selectedChat?.usuario_id) === Number(otherUserId);
+      const silenciado = estaSilenciado("privado", otherUserId);
+
+      if (!esMio && !chatAbiertoEsEste && !silenciado && !estaEnNoMolestarUsuario(userId)) {
+        mostrarNotificacion({
+          titulo: `${msg.emisor_nombre || "Usuario"} ${msg.emisor_apellido || ""}`.trim(),
+          cuerpo: msg.eliminado === 1 ? "Se eliminó este mensaje" : getPreviewText(msg),
+          uniqueId: msg.id,
+          chat: {
+            tipo: "privado",
+            usuario_id: otherUserId,
+            usuario_nombre: `${msg.emisor_nombre || ""} ${msg.emisor_apellido || ""}`.trim(),
+            usuario_correo: msg.emisor_correo || "",
+            url_imagen: msg.emisor_avatar || null,
+            background: msg.emisor_background || "#6c757d",
+          },
+        });
+      }
     };
 
     const handleNuevoMensajeGrupo = (msg) => {
+      if (!shouldProcessSocketMessage("grupo", msg)) return;
+
       setMensajes((prev) => {
         const yaExiste = prev.some((m) => Number(m.id) === Number(msg.id));
         if (yaExiste) return prev;
@@ -708,64 +809,82 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat, addToLi
         ];
       });
 
-      setGrupos((prev) => {
-        const updatedGrupos = prev.map((g) => {
-          if (Number(g.grupo_id) === Number(msg.grupo_id)) {
-            const soyRemitente = Number(msg.usuario_id) === Number(userId);
-            const nuevosNoVistos = soyRemitente
-              ? g.mensajes_no_leidos || 0
-              : (g.mensajes_no_leidos || 0) + 1;
+      const soyRemitente = Number(msg.usuario_id) === Number(userId);
+      const actualizarGrupoConMensaje = (grupo) => ({
+        ...grupo,
+        eliminado: 0,
+        ultimo_mensaje: msg.mensaje,
+        ultimo_archivo_url: msg.archivo_url || null,
+        ultimo_tipo_archivo: msg.tipo_archivo || "",
+        ultimo_nombre_archivo: msg.nombre_archivo || "",
+        ultimo_mensaje_id: msg.id,
+        ultimo_remitente: `${msg.nombre || ""} ${msg.apellido || ""}`.trim() || "Usuario",
+        ultimo_remitente_id: msg.usuario_id,
+        ultimo_remitente_avatar: msg.url_imagen,
+        ultimo_remitente_background: msg.background,
+        fecha_envio: msg.fecha_envio,
+        tipo_mensaje: soyRemitente ? "enviado" : "recibido",
+        lastTime: getTimestamp(msg.fecha_envio),
+        mensajes_no_leidos: soyRemitente
+          ? Number(grupo.mensajes_no_leidos || 0)
+          : Number(grupo.mensajes_no_leidos || 0) + 1,
+        visto: soyRemitente ? 0 : grupo.visto,
+      });
 
-            return {
-              ...g,
-              eliminado: 0,
-              ultimo_mensaje: msg.mensaje,
-              ultimo_archivo_url: msg.archivo_url || null,
-              ultimo_tipo_archivo: msg.tipo_archivo || "",
-              ultimo_nombre_archivo: msg.nombre_archivo || "",
-              ultimo_mensaje_id: msg.id,
-              ultimo_remitente: `${msg.nombre} ${msg.apellido}`,
-              ultimo_remitente_id: msg.usuario_id,
-              ultimo_remitente_avatar: msg.url_imagen,
-              ultimo_remitente_background: msg.background,
-              fecha_envio: msg.fecha_envio,
-              tipo_mensaje: soyRemitente ? "enviado" : "recibido",
-              lastTime: getTimestamp(msg.fecha_envio),
-              mensajes_no_leidos: nuevosNoVistos,
-              visto: soyRemitente ? 0 : g.visto,
-            };
-          }
-          return g;
+      // No llamar setChats dentro del actualizador de setGrupos:
+      // React StrictMode puede ejecutar un actualizador más de una vez.
+      setGrupos((prev) =>
+        dedupeGroupsById(
+          prev.map((grupo) =>
+            Number(grupo.grupo_id) === Number(msg.grupo_id)
+              ? actualizarGrupoConMensaje(grupo)
+              : grupo
+          )
+        )
+      );
+
+      setChats((prevChats) => {
+        const grupoActual =
+          prevChats.find(
+            (chatActual) =>
+              chatActual.tipo === "grupo" &&
+              Number(chatActual.grupo_id) === Number(msg.grupo_id)
+          ) ||
+          grupos.find(
+            (grupo) => Number(grupo.grupo_id) === Number(msg.grupo_id)
+          ) ||
+          {};
+
+        const grupoActualizado = actualizarGrupoConMensaje({
+          tipo: "grupo",
+          grupo_id: Number(msg.grupo_id),
+          usuario_id: Number(msg.grupo_id),
+          usuario_nombre: grupoActual.usuario_nombre || grupoActual.nombre || "Grupo",
+          nombre: grupoActual.nombre || grupoActual.usuario_nombre || "Grupo",
+          imagen_url: grupoActual.imagen_url || null,
+          background: grupoActual.background || "#6c757d",
+          miembros: grupoActual.miembros || [],
+          descripcion: grupoActual.descripcion || "",
+          fecha_creacion: grupoActual.fecha_creacion,
+          privacidad: grupoActual.privacidad,
+          propietario: grupoActual.propietario || null,
+          admins: grupoActual.admins || [],
+          archivos: grupoActual.archivos || [],
+          es_favorito: grupoActual.es_favorito || false,
+          mensajes_no_leidos: grupoActual.mensajes_no_leidos || 0,
+          visto: grupoActual.visto,
         });
 
-        setChats((prevChats) => {
-          const privadoChats = prevChats.filter((c) => c.tipo === "privado");
-          const grupoChats = updatedGrupos.map((g) => ({
-            tipo: "grupo",
-            grupo_id: g.grupo_id,
-            usuario_id: g.grupo_id,
-            usuario_nombre: g.nombre,
-            imagen_url: g.imagen_url,
-            background: "#6c757d",
-            mensajes_no_leidos: g.mensajes_no_leidos || 0,
-            eliminado: g.eliminado,
-            ultimo_mensaje: g.ultimo_mensaje,
-            ultimo_archivo_url: g.ultimo_archivo_url || g.archivo_url || null,
-            ultimo_tipo_archivo: g.ultimo_tipo_archivo || g.tipo_archivo || "",
-            ultimo_nombre_archivo: g.ultimo_nombre_archivo || g.nombre_archivo || "",
-            ultimo_mensaje_id: g.ultimo_mensaje_id,
-            ultimo_remitente: g.ultimo_remitente,
-            ultimo_remitente_avatar: g.ultimo_remitente_avatar,
-            fecha_envio: g.fecha_envio,
-            tipo_mensaje: g.tipo_mensaje,
-            visto: g.visto,
-            lastTime: g.lastTime,
-            miembros: g.miembros || [],
-          }));
-          return [...privadoChats, ...grupoChats].sort((a, b) => b.lastTime - a.lastTime);
-        });
-
-        return updatedGrupos;
+        return dedupeChatsByIdentity([
+          grupoActualizado,
+          ...prevChats.filter(
+            (chatActual) =>
+              !(
+                chatActual.tipo === "grupo" &&
+                Number(chatActual.grupo_id) === Number(msg.grupo_id)
+              )
+          ),
+        ]);
       });
 
       const soyYo = Number(msg.usuario_id) === Number(userId);
@@ -801,12 +920,16 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat, addToLi
     // 🧩 Grupo nuevo (cuando te agregan a uno)
     const handleGrupoCreado = (nuevoGrupo) => {
       logDev("🟢 NUEVO GRUPO CREADO (socket):", nuevoGrupo);
-      setGrupos((prev) => [...prev, nuevoGrupo]);
+      setGrupos((prev) => dedupeGroupsById([...prev, nuevoGrupo]));
 
       setChats((prevChats) => {
         const privadoChats = prevChats.filter((c) => c.tipo === "privado");
         const grupoChats = [
-          ...prevChats.filter((c) => c.tipo === "grupo"),
+          ...prevChats.filter(
+            (c) =>
+              c.tipo === "grupo" &&
+              Number(c.grupo_id) !== Number(nuevoGrupo.grupo_id)
+          ),
           {
             tipo: "grupo",
             grupo_id: nuevoGrupo.grupo_id,
@@ -820,7 +943,7 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat, addToLi
             lastTime: getTimestamp(nuevoGrupo.fecha_creacion),
           },
         ];
-        return [...privadoChats, ...grupoChats].sort((a, b) => b.lastTime - a.lastTime);
+        return dedupeChatsByIdentity([...privadoChats, ...grupoChats]);
       });
     };
 
@@ -1523,8 +1646,10 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat, addToLi
       return (b.lastTime || 0) - (a.lastTime || 0);
     });
 
+  const uniqueChats = dedupeChatsByIdentity(chats);
+
   const searchedChats = sortChatsVisual(
-    chats.filter((chat) => chatMatchesSearch(chat, searchTerm))
+    uniqueChats.filter((chat) => chatMatchesSearch(chat, searchTerm))
   );
 
   const activeChats = searchedChats.filter((chat) => !estaArchivado(chat));
@@ -1955,7 +2080,7 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat, addToLi
     archivados: "Archivados",
   }[activeFilter];
 
-  const selectedCreateChats = chats.filter((chat) => selectedListItems.includes(getListItemKey(chat)));
+  const selectedCreateChats = uniqueChats.filter((chat) => selectedListItems.includes(getListItemKey(chat)));
 
   const closeFilterMenu = () => {
     setFilterMenuOpen(false);
