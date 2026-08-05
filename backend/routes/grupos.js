@@ -298,6 +298,161 @@ router.post("/", upload.single("imagen"), async (req, res) => {
 // =======================
 // Obtener los grupos de un usuario con último mensaje + archivos + favoritos + admins
 // =======================
+// Resumen liviano para la lista inicial de chats.
+// No incluye el historial completo de archivos ni mensajes fijados de cada grupo.
+// Esos datos se consultan únicamente cuando el usuario abre el grupo.
+// =======================
+router.get("/usuario-resumen/:userId", async (req, res) => {
+  const userId = Number(req.params.userId);
+
+  if (!Number.isInteger(userId) || userId <= 0) {
+    return res.status(400).json({ error: "Usuario inválido" });
+  }
+
+  try {
+    const [grupos] = await db.query(
+      `SELECT
+        g.id AS grupo_id,
+        g.nombre,
+        g.descripcion,
+        g.imagen_url,
+        g.propietario_id,
+        g.privacidad,
+        g.fecha_creacion,
+        ug.rol,
+
+        m.id AS ultimo_mensaje_id,
+        m.mensaje AS ultimo_mensaje,
+        m.eliminado,
+        m.editado,
+        m.fecha_envio,
+        COALESCE(mga_direct.archivo_url, mga_lote.archivo_url) AS ultimo_archivo_url,
+        COALESCE(mga_direct.tipo_archivo, mga_lote.tipo_archivo) AS ultimo_tipo_archivo,
+        COALESCE(mga_direct.nombre_archivo, mga_lote.nombre_archivo) AS ultimo_nombre_archivo,
+        COALESCE(mga_direct.tamano, mga_lote.tamano) AS ultimo_tamano,
+
+        u.id AS ultimo_remitente_id,
+        CONCAT(u.nombre, ' ', u.apellido) AS ultimo_remitente,
+        u.correo AS ultimo_remitente_correo,
+        u.url_imagen AS ultimo_remitente_avatar,
+        u.background AS ultimo_remitente_background,
+        CASE WHEN u.id = ? THEN 'enviado' ELSE 'recibido' END AS tipo_mensaje,
+        CASE WHEN cf.id IS NOT NULL THEN 1 ELSE 0 END AS es_favorito,
+        COALESCE(nl.total, 0) AS mensajes_no_leidos,
+
+        CASE
+          WHEN m.id IS NULL THEN 1
+          WHEN (
+            SELECT COUNT(*)
+            FROM usuario_grupo ug_total
+            WHERE ug_total.grupo_id = g.id
+              AND ug_total.usuario_id <> m.usuario_id
+          ) <= (
+            SELECT COUNT(DISTINCT mgv_total.usuario_id)
+            FROM mensajes_grupo_vistos mgv_total
+            WHERE mgv_total.mensaje_id = m.id
+              AND mgv_total.usuario_id <> m.usuario_id
+          ) THEN 1
+          ELSE 0
+        END AS visto,
+
+        (
+          SELECT JSON_ARRAYAGG(
+            JSON_OBJECT(
+              'id', u2.id,
+              'nombre', u2.nombre,
+              'apellido', u2.apellido,
+              'url_imagen', u2.url_imagen,
+              'background', u2.background,
+              'correo', u2.correo,
+              'rol', ug2.rol
+            )
+          )
+          FROM usuario_grupo ug2
+          JOIN usuario u2 ON u2.id = ug2.usuario_id
+          WHERE ug2.grupo_id = g.id
+        ) AS miembros
+
+      FROM grupos g
+      JOIN usuario_grupo ug
+        ON ug.grupo_id = g.id
+       AND ug.usuario_id = ?
+      LEFT JOIN (
+        SELECT mg.*
+        FROM mensajes_grupo mg
+        JOIN (
+          SELECT grupo_id, MAX(id) AS ultimo_id
+          FROM mensajes_grupo
+          GROUP BY grupo_id
+        ) ult ON ult.ultimo_id = mg.id
+      ) m ON m.grupo_id = g.id
+      LEFT JOIN usuario u ON u.id = m.usuario_id
+      LEFT JOIN chats_favoritos cf
+        ON cf.chat_id = g.id
+       AND cf.usuario_id = ?
+       AND cf.tipo = 'grupo'
+      LEFT JOIN (
+        SELECT mg_nl.grupo_id, COUNT(*) AS total
+        FROM mensajes_grupo mg_nl
+        LEFT JOIN mensajes_grupo_vistos mgv_nl
+          ON mgv_nl.mensaje_id = mg_nl.id
+         AND mgv_nl.usuario_id = ?
+        WHERE mg_nl.usuario_id <> ?
+          AND mgv_nl.mensaje_id IS NULL
+        GROUP BY mg_nl.grupo_id
+      ) nl ON nl.grupo_id = g.id
+      LEFT JOIN mensajes_grupo_archivos mga_direct
+        ON mga_direct.id = (
+          SELECT MIN(mga_d.id)
+          FROM mensajes_grupo_archivos mga_d
+          WHERE mga_d.grupo_id = m.grupo_id
+            AND mga_d.usuario_id = m.usuario_id
+            AND mga_d.archivo_url = m.mensaje
+        )
+      LEFT JOIN mensajes_grupo_archivos mga_lote
+        ON mga_lote.id = (
+          SELECT MIN(mga_l.id)
+          FROM mensajes_grupo_archivos mga_l
+          WHERE m.lote_id IS NOT NULL
+            AND mga_l.grupo_id = m.grupo_id
+            AND mga_l.lote_id = m.lote_id
+        )
+      ORDER BY m.id IS NULL, m.id DESC, g.fecha_creacion DESC`,
+      [userId, userId, userId, userId, userId]
+    );
+
+    const toAbsolute = (url) => toAbsoluteUploadUrl(url, req);
+    const payload = grupos.map((grupo) => {
+      const miembros = grupo.miembros
+        ? (typeof grupo.miembros === 'string' ? JSON.parse(grupo.miembros) : grupo.miembros)
+        : [];
+      const admins = miembros.filter((miembro) => miembro.rol === 'admin');
+      const propietario = miembros.find(
+        (miembro) => Number(miembro.id) === Number(grupo.propietario_id)
+      ) || null;
+
+      return {
+        ...grupo,
+        imagen_url: toAbsolute(grupo.imagen_url),
+        ultimo_remitente_avatar: toAbsolute(grupo.ultimo_remitente_avatar),
+        miembros,
+        admins,
+        propietario,
+        fijados: [],
+        archivos: [],
+        es_favorito: Number(grupo.es_favorito) === 1,
+        es_resumen_grupo: 1,
+      };
+    });
+
+    res.json(payload);
+  } catch (err) {
+    console.error("❌ Error obteniendo resumen de grupos:", err);
+    res.status(500).json({ error: "Error obteniendo resumen de grupos" });
+  }
+});
+
+// =======================
 router.get("/usuario/:userId", async (req, res) => {
   const { userId } = req.params;
 

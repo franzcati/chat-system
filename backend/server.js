@@ -4,7 +4,6 @@ const db = require("./db"); // 👈 agrega esto
 const { logDev } = require('./utils/logger');
 const app = require('./app');
 const sequelize = require('./config/database');
-const cors = require('cors');
 const http = require('http');
 const { initSocket, enviarEventoAlUsuario, getUsuariosConectados, setEstadoManualUsuario } = require("./utils/socketUtils");
 
@@ -13,41 +12,6 @@ const { initSocket, enviarEventoAlUsuario, getUsuariosConectados, setEstadoManua
 const mensajesRoutes = require("./routes/mensajes");
 const mensajesGruposRoutes = require("./routes/mensajesGrupo");
 
-// 🔹 Configuración CORS para producción
-const defaultAllowedOrigins = [
-  "http://quickchat.click",
-  "https://quickchat.click",
-  "http://www.quickchat.click",
-  "https://www.quickchat.click",
-  "http://chatvista.click",
-  "https://chatvista.click",
-  "http://www.chatvista.click",
-  "https://www.chatvista.click",
-];
-
-const envAllowedOrigins = String(
-  process.env.ALLOWED_ORIGINS ||
-  process.env.FRONTEND_URLS ||
-  ""
-)
-  .split(",")
-  .map((origin) => origin.trim())
-  .filter(Boolean);
-
-const allowedOrigins = Array.from(new Set([...defaultAllowedOrigins, ...envAllowedOrigins]));
-
-app.use(cors({
-  origin(origin, callback) {
-    if (!origin || allowedOrigins.includes("*") || allowedOrigins.includes(origin)) {
-      callback(null, true);
-      return;
-    }
-    callback(null, false);
-  },
-  methods: ["GET", "POST", "PUT", "PATCH", "DELETE"],
-  credentials: true
-}));
-
 const PORT = process.env.PORT || 5000;
 
 // Crear servidor HTTP con Express
@@ -55,9 +19,6 @@ const server = http.createServer(app);
 
 // 🔹 Inicializar Socket y capturar io y usuariosConectados
 const { io, usuariosConectados } = initSocket(server);
-app.set("io", io);
-
-
 app.set("io", io);
 app.set("socketUtils", { usuariosConectados, enviarEventoAlUsuario, getUsuariosConectados, setEstadoManualUsuario });
 
@@ -74,23 +35,16 @@ app.use("/api/mensajes", mensajesRoutes);
 
 app.use("/api/mensajes/grupo", mensajesGruposRoutes);
 
-// Otras rutas
-app.use('/api/registro', require('./routes/signup'));
-app.use('/api/sedes', require('./routes/sedes'));
-app.use('/api/usuario', require('./routes/usuario'));
-app.use('/api/chats', require('./routes/chats'));
-
-app.get('/', (req, res) => {
-  res.send('API Chat funcionando');
-});
-
 // Conectar a la base de datos y levantar servidor
 async function startServer() {
   try {
     await sequelize.authenticate();
     logDev('✅ Conexión a MariaDB exitosa.');
 
-    await sequelize.sync({ alter: true });
+    // En producción no ejecutar ALTER automático en cada reinicio: puede tomar
+    // metadata locks y bloquear temporalmente las tablas del chat.
+    const allowSchemaAlter = String(process.env.DB_SYNC_ALTER || "false").toLowerCase() === "true";
+    await sequelize.sync(allowSchemaAlter ? { alter: true } : {});
 
     server.listen(PORT, () => {
       logDev(`🚀 Servidor corriendo en puerto ${PORT}`);

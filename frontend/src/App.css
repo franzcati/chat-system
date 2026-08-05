@@ -13464,3 +13464,86 @@ body > .wa-profile-crop-layer > .wa-profile-crop-modal {
   right: auto !important;
   z-index: 10000 !important;
 }
+
+/* =========================================================
+   Optimización visual de la lista de chats
+   ========================================================= */
+.wa-chat-list-card {
+  will-change: transform;
+  contain: layout paint;
+  backface-visibility: hidden;
+}
+
+.wa-chat-list-skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: 2px 0;
+}
+
+.wa-chat-skeleton-row {
+  min-height: 66px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--wa-panel, #fff);
+  overflow: hidden;
+}
+
+.wa-chat-skeleton-avatar,
+.wa-chat-skeleton-lines > span {
+  position: relative;
+  overflow: hidden;
+  background: rgba(134, 150, 160, 0.18);
+}
+
+.wa-chat-skeleton-avatar::after,
+.wa-chat-skeleton-lines > span::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.42), transparent);
+  animation: wa-chat-skeleton-shimmer 1.2s infinite;
+}
+
+.wa-chat-skeleton-avatar {
+  width: 44px;
+  height: 44px;
+  flex: 0 0 44px;
+  border-radius: 50%;
+}
+
+.wa-chat-skeleton-lines {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+
+.wa-chat-skeleton-lines > span {
+  display: block;
+  height: 10px;
+  border-radius: 999px;
+}
+
+.wa-chat-skeleton-lines > span:first-child {
+  width: 58%;
+}
+
+.wa-chat-skeleton-lines > span:last-child {
+  width: 82%;
+}
+
+@keyframes wa-chat-skeleton-shimmer {
+  to { transform: translateX(100%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wa-chat-skeleton-avatar::after,
+  .wa-chat-skeleton-lines > span::after {
+    animation: none;
+  }
+}

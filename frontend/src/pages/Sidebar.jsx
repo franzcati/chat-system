@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { UserPlus, Edit3, Users, MessageSquare, Sun, Moon, Settings } from "feather-icons-react";
 import { logDev } from "../utils/logger";
 import SidebarProfilePanel from "../components/SidebarProfilePanel";
@@ -6,27 +6,11 @@ import { getAvatarUrl } from "../utils/url";
 import { useTheme } from "../context/ThemeContext.jsx";
 import socket from "../socket";
 
-const Sidebar = ({ usuario, active, setActive, onUsuarioUpdate }) => {
+const Sidebar = ({ usuario, active, setActive, onUsuarioUpdate, unreadTotal = 0, estadosUsuarios = {} }) => {
   const [showModal, setShowModal] = useState(false);
   const [sidebarExpanded, setSidebarExpanded] = useState(false);
   const { isDark, toggleTheme } = useTheme();
-  const [estadosUsuarios, setEstadosUsuarios] = useState({});
 
-  useEffect(() => {
-    const handleEstados = (estados = {}) => {
-      setEstadosUsuarios(estados || {});
-    };
-
-    socket.on("actualizarUsuarios", handleEstados);
-    fetch("/api/usuarios/estados/presencia")
-      .then((res) => (res.ok ? res.json() : {}))
-      .then((data) => setEstadosUsuarios(data || {}))
-      .catch(() => {});
-
-    return () => {
-      socket.off("actualizarUsuarios", handleEstados);
-    };
-  }, []);
 
   const getPresenceInfo = () => {
     const estado = estadosUsuarios?.[String(usuario?.id)] || estadosUsuarios?.[Number(usuario?.id)] || null;
@@ -59,8 +43,10 @@ const Sidebar = ({ usuario, active, setActive, onUsuarioUpdate }) => {
   const canEditarUsuarios = usuario?.rol_permisos?.includes("editar_usuarios");
   const canCrearProyectos = usuario?.rol_permisos?.includes("crear_proyectos");
 
+  const unreadBadge = Number(unreadTotal) > 999 ? "999+" : Number(unreadTotal) || null;
+
   const icons = [
-    { id: "chat", label: "Mensajes", icon: <MessageSquare /> },
+    { id: "chat", label: "Mensajes", icon: <MessageSquare />, badge: unreadBadge },
     ...(canEditarUsuarios ? [{ id: "edit-user", label: "Usuarios", icon: <Users /> }] : []),
     ...(canCrearUsuarios ? [{ id: "add-user", label: "Nuevo usuario", icon: <UserPlus /> }] : []),
     ...(canCrearGrupo ? [{ id: "edit", label: "Proyectos", icon: <Edit3 /> }] : []),

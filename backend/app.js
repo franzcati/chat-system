@@ -6,9 +6,39 @@ const app = express();
 
 app.set("trust proxy", true);
 
+const defaultAllowedOrigins = [
+  "http://quickchat.click",
+  "https://quickchat.click",
+  "http://www.quickchat.click",
+  "https://www.quickchat.click",
+  "http://chatvista.click",
+  "https://chatvista.click",
+  "http://www.chatvista.click",
+  "https://www.chatvista.click",
+  "http://localhost:5173",
+  "http://127.0.0.1:5173",
+];
+
+const envAllowedOrigins = String(process.env.ALLOWED_ORIGINS || process.env.FRONTEND_URLS || "")
+  .split(",")
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+
+const allowedOrigins = Array.from(new Set([...defaultAllowedOrigins, ...envAllowedOrigins]));
+
 const signupRoutes = require('./routes/signup'); // ⬅️ Importa las rutas
 
-app.use(cors());
+app.use(cors({
+  origin(origin, callback) {
+    if (!origin || allowedOrigins.includes("*") || allowedOrigins.includes(origin)) {
+      callback(null, true);
+      return;
+    }
+    callback(new Error("Origen no permitido por CORS"));
+  },
+  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+  credentials: true,
+}));
 app.use(express.json());
 
 // REGISTRO (SIGNUP)

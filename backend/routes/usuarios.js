@@ -64,7 +64,7 @@ function normalizarPermisosChat(value) {
 }
 
 
-let columnasPerfilVerificadas = false;
+let columnasPerfilPromise = null;
 
 async function columnaExiste(nombre) {
   const [rows] = await pool.query(
@@ -80,27 +80,32 @@ async function columnaExiste(nombre) {
 }
 
 async function asegurarColumnasPerfil() {
-  if (columnasPerfilVerificadas) return;
+  if (!columnasPerfilPromise) {
+    columnasPerfilPromise = (async () => {
+      const columnas = [
+        ["perfil_cartel", "VARCHAR(255) NULL"],
+        ["perfil_avatar_transform", "TEXT NULL"],
+        ["perfil_cartel_transform", "TEXT NULL"],
+        ["perfil_biografia", "TEXT NULL"],
+        ["perfil_estado_mensaje", "VARCHAR(255) NULL"],
+        ["perfil_estado_expira", "DATETIME NULL"],
+        ["perfil_tema_principal", "VARCHAR(20) NULL DEFAULT NULL"],
+        ["perfil_tema_secundario", "VARCHAR(20) NULL DEFAULT NULL"],
+        ["perfil_avatares_recientes", "TEXT NULL"],
+      ];
 
-  const columnas = [
-    ["perfil_cartel", "VARCHAR(255) NULL"],
-    ["perfil_avatar_transform", "TEXT NULL"],
-    ["perfil_cartel_transform", "TEXT NULL"],
-    ["perfil_biografia", "TEXT NULL"],
-    ["perfil_estado_mensaje", "VARCHAR(255) NULL"],
-    ["perfil_estado_expira", "DATETIME NULL"],
-    ["perfil_tema_principal", "VARCHAR(20) NULL DEFAULT NULL"],
-    ["perfil_tema_secundario", "VARCHAR(20) NULL DEFAULT NULL"],
-    ["perfil_avatares_recientes", "TEXT NULL"],
-  ];
-
-  for (const [nombre, definicion] of columnas) {
-    if (!(await columnaExiste(nombre))) {
-      await pool.query(`ALTER TABLE usuario ADD COLUMN ${nombre} ${definicion}`);
-    }
+      for (const [nombre, definicion] of columnas) {
+        if (!(await columnaExiste(nombre))) {
+          await pool.query(`ALTER TABLE usuario ADD COLUMN ${nombre} ${definicion}`);
+        }
+      }
+    })().catch((err) => {
+      columnasPerfilPromise = null;
+      throw err;
+    });
   }
 
-  columnasPerfilVerificadas = true;
+  return columnasPerfilPromise;
 }
 
 function limpiarExpiracionEstado(value) {

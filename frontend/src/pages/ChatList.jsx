@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import axios from "axios";
 import socket from "../socket";
@@ -132,7 +132,7 @@ const dedupeMessagesById = (items = []) => {
 
 
 
-const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat, addToListTarget, onAddToListHandled }) => {
+const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat, addToListTarget, onAddToListHandled, onUnreadTotalChange, estadosUsuarios = {} }) => {
   
   logDev("🔥 ChatList renderizado", { userId });
   const [mensajes, setMensajes] = useState([]);
@@ -143,7 +143,6 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat, addToLi
   const [usuariosComunes, setUsuariosComunes] = useState([]);
   const [silenciados, setSilenciados] = useState([]);
   const [chatEstados, setChatEstados] = useState([]);
-  const [estadosUsuarios, setEstadosUsuarios] = useState({});
   const [menuChatAbierto, setMenuChatAbierto] = useState(null);
   const [menuChatPosition, setMenuChatPosition] = useState(null);
   const [activeFilter, setActiveFilter] = useState("todos");
@@ -162,8 +161,13 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat, addToLi
   const [addToListTargetLocal, setAddToListTargetLocal] = useState(null);
   const [showAddToExistingList, setShowAddToExistingList] = useState(false);
   const [typingByChat, setTypingByChat] = useState({});
+  const [isInitialLoading, setIsInitialLoading] = useState(true);
   const typingPreviewTimersRef = useRef({});
   const processedSocketMessagesRef = useRef(new Set());
+  const chatItemRefs = useRef(new Map());
+  const previousChatPositionsRef = useRef(new Map());
+  const refreshInFlightRef = useRef(null);
+  const lastRefreshAtRef = useRef(0);
 
   const shouldProcessSocketMessage = (eventName, message) => {
     const id = message?.id;
@@ -431,25 +435,7 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat, addToLi
   }, []);
 
 
-  useEffect(() => {
-    const cargarEstados = async () => {
-      try {
-        const res = await axios.get("/api/usuarios/estados/presencia");
-        setEstadosUsuarios(res.data || {});
-      } catch (err) {
-        console.error("❌ Error cargando estados de presencia:", err);
-      }
-    };
 
-    cargarEstados();
-
-    const handleActualizarUsuarios = (payload) => {
-      setEstadosUsuarios(payload || {});
-    };
-
-    socket.on("actualizarUsuarios", handleActualizarUsuarios);
-    return () => socket.off("actualizarUsuarios", handleActualizarUsuarios);
-  }, []);
 
   useEffect(() => {
     if (!userId) return;
@@ -542,7 +528,9 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat, addToLi
           usuario_correo: otherUserCorreo,
           url_imagen: otherUserAvatar,
           background: otherUserBackground,
-          mensajes_no_leidos: !esChatPropio && Number(msg.usuario_recibe_id) === Number(userId) && Number(msg.visto) === 0 ? 1 : 0,
+          mensajes_no_leidos: Number(msg.es_resumen_chat) === 1
+            ? Number(msg.mensajes_no_leidos || 0)
+            : (!esChatPropio && Number(msg.usuario_recibe_id) === Number(userId) && Number(msg.visto) === 0 ? 1 : 0),
           eliminado,
           ultimo_mensaje: mensajeMostrado,
           ultimo_archivo_url: msg.archivo_url || null,
@@ -574,7 +562,12 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat, addToLi
           grouped[otherUserId].lastTime = msgTime;
         }
 
-        if (!esChatPropio && Number(msg.usuario_recibe_id) === Number(userId) && Number(msg.visto) === 0) {
+        if (
+          Number(msg.es_resumen_chat) !== 1 &&
+          !esChatPropio &&
+          Number(msg.usuario_recibe_id) === Number(userId) &&
+          Number(msg.visto) === 0
+        ) {
           grouped[otherUserId].mensajes_no_leidos += 1;
         }
       }
@@ -584,43 +577,70 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat, addToLi
   };
 
   // -------------------------------
-  // 🔹 Cargar privados, grupos y favoritos
+  // 🔹 Cargar resúmenes privados, grupos y preferencias.
+  // La versión anterior descargaba todo el historial privado y todos los archivos
+  // de cada grupo al iniciar sesión. Ahora sólo se trae una fila por conversación.
   useEffect(() => {
     if (!userId) return;
+    let cancelled = false;
 
-    const fetchData = async () => {
+    const fetchData = async ({ showLoading = false, force = false } = {}) => {
+      const now = Date.now();
+      if (!force && now - lastRefreshAtRef.current < 1500) return;
+      if (refreshInFlightRef.current) return refreshInFlightRef.current;
+
+      if (showLoading) setIsInitialLoading(true);
+
+      const task = (async () => {
+        try {
+          const [resMensajes, resGrupos, resFavoritos, resSilenciados, resEstados, resListas] = await Promise.all([
+            axios.get(`/api/chats/resumen/${userId}`),
+            axios.get(`/api/grupos/usuario-resumen/${userId}`),
+            axios.get(`/api/chats/favoritos/${userId}`),
+            axios.get(`/api/notificaciones/silenciados/${userId}`),
+            axios.get(`/api/chats/estados/${userId}`),
+            axios.get(`/api/chats/listas/${userId}`),
+          ]);
+
+          if (cancelled) return;
+          setMensajes(dedupeMessagesById(resMensajes.data));
+          setGrupos(dedupeGroupsById(resGrupos.data));
+          setFavoritos(resFavoritos.data);
+          setSilenciados(resSilenciados.data || []);
+          setChatEstados(resEstados.data || []);
+          setChatLists(resListas.data || []);
+          lastRefreshAtRef.current = Date.now();
+
+          logDev("📋 Resumen de chats cargado", {
+            privados: resMensajes.data?.length || 0,
+            grupos: resGrupos.data?.length || 0,
+          });
+        } catch (error) {
+          if (!cancelled) console.error("❌ Error cargando datos iniciales del ChatList:", error);
+        } finally {
+          if (!cancelled) setIsInitialLoading(false);
+        }
+      })();
+
+      refreshInFlightRef.current = task;
       try {
-        const [resMensajes, resGrupos, resFavoritos, resSilenciados, resEstados, resListas] = await Promise.all([
-          axios.get(`/api/chats/${userId}`),
-          axios.get(`/api/grupos/usuario/${userId}`),
-          axios.get(`/api/chats/favoritos/${userId}`),
-          axios.get(`/api/notificaciones/silenciados/${userId}`),
-          axios.get(`/api/chats/estados/${userId}`),
-          axios.get(`/api/chats/listas/${userId}`),
-        ]);
-
-        setMensajes(dedupeMessagesById(resMensajes.data));
-        setGrupos(dedupeGroupsById(resGrupos.data));
-        setFavoritos(resFavoritos.data);
-        setSilenciados(resSilenciados.data || []);
-        setChatEstados(resEstados.data || []);
-        setChatLists(resListas.data || []);
-
-        console.group("📋 Chats cargados al inicio");
-        logDev("🗨️ Mensajes privados:", resMensajes.data);
-        logDev("👥 Grupos:", resGrupos.data);
-        logDev("⭐ Favoritos:", resFavoritos.data);
-        logDev("🔕 Silenciados:", resSilenciados.data);
-        logDev("📦 Estados de chats:", resEstados.data);
-        logDev("📋 Listas personalizadas:", resListas.data);
-        console.groupEnd();
-
-      } catch (error) {
-        console.error("❌ Error cargando datos iniciales del ChatList:", error);
+        await task;
+      } finally {
+        if (refreshInFlightRef.current === task) refreshInFlightRef.current = null;
       }
     };
 
-    fetchData();
+    fetchData({ showLoading: true, force: true });
+
+    // Recuperar lo ocurrido mientras el socket estuvo desconectado, sin disparar
+    // varias cargas simultáneas durante una ráfaga de reconexiones.
+    const handleReconnect = () => fetchData();
+    socket.on("connect", handleReconnect);
+
+    return () => {
+      cancelled = true;
+      socket.off("connect", handleReconnect);
+    };
   }, [userId]);
 
   // -------------------------------
@@ -950,8 +970,9 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat, addToLi
     const handleMensajesVistos = ({ emisorId, receptorId }) =>
       setMensajes((prev) =>
         prev.map((msg) =>
-          msg.usuario_envia_id === emisorId && msg.usuario_recibe_id === receptorId
-            ? { ...msg, visto: 1 }
+          Number(msg.usuario_envia_id) === Number(emisorId) &&
+          Number(msg.usuario_recibe_id) === Number(receptorId)
+            ? { ...msg, visto: 1, mensajes_no_leidos: 0 }
             : msg
         )
     );
@@ -1682,6 +1703,51 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat, addToLi
     return true;
   });
 
+  const unreadTotal = uniqueChats.reduce(
+    (total, chat) => total + Math.max(0, Number(chat.mensajes_no_leidos || 0)),
+    0
+  );
+
+  useEffect(() => {
+    onUnreadTotalChange?.(unreadTotal);
+  }, [onUnreadTotalChange, unreadTotal]);
+
+  // Animación FLIP: al llegar un mensaje, la tarjeta conserva su posición anterior
+  // y se desplaza suavemente hasta su nueva ubicación. Los fijados continúan arriba.
+  useLayoutEffect(() => {
+    const reduceMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches;
+    const nextPositions = new Map();
+
+    chatItemRefs.current.forEach((element, key) => {
+      if (element?.isConnected) nextPositions.set(key, element.getBoundingClientRect());
+    });
+
+    if (!reduceMotion && previousChatPositionsRef.current.size) {
+      nextPositions.forEach((nextRect, key) => {
+        const previousRect = previousChatPositionsRef.current.get(key);
+        const element = chatItemRefs.current.get(key);
+        if (!previousRect || !element) return;
+
+        const deltaY = previousRect.top - nextRect.top;
+        if (Math.abs(deltaY) < 1) return;
+
+        element.getAnimations?.().forEach((animation) => animation.cancel());
+        element.animate(
+          [
+            { transform: `translateY(${deltaY}px)` },
+            { transform: "translateY(0)" },
+          ],
+          {
+            duration: 260,
+            easing: "cubic-bezier(0.22, 1, 0.36, 1)",
+          }
+        );
+      });
+    }
+
+    previousChatPositionsRef.current = nextPositions;
+  });
+
   const handleSelectChat = async (chat) => {
     onSelectChat(chat);
     if (estaMarcadoNoLeido(chat)) {
@@ -1715,11 +1781,12 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat, addToLi
         });
 
         setMensajes((prev) =>
-          prev.map((msg) =>
-            msg.usuario_envia_id === chat.usuario_id && msg.usuario_recibe_id === userId
-              ? { ...msg, visto: 1 }
-              : msg
-          )
+          prev.map((msg) => {
+            const belongsToChat =
+              (Number(msg.usuario_envia_id) === Number(chat.usuario_id) && Number(msg.usuario_recibe_id) === Number(userId)) ||
+              (Number(msg.usuario_envia_id) === Number(userId) && Number(msg.usuario_recibe_id) === Number(chat.usuario_id));
+            return belongsToChat ? { ...msg, visto: 1, mensajes_no_leidos: 0 } : msg;
+          })
         );
       }
     } catch (err) {
@@ -2006,6 +2073,12 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat, addToLi
     return (
       <a
         key={`${chat.tipo}-${getChatId(chat)}`}
+        ref={(element) => {
+          const key = getStableChatIdentity(chat);
+          if (!key) return;
+          if (element) chatItemRefs.current.set(key, element);
+          else chatItemRefs.current.delete(key);
+        }}
         href="#"
         className={`card border-0 text-reset chat-card-hover wa-chat-list-card ${isSelected ? "active" : ""} ${estaArchivado(chat) ? "is-archived" : ""}`}
         onClick={(e) => {
@@ -2627,7 +2700,19 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat, addToLi
               )}
 
               <div className="card-list wa-chat-list">
-                {filteredChats.length > 0 ? (
+                {isInitialLoading && uniqueChats.length === 0 ? (
+                  <div className="wa-chat-list-skeleton" aria-label="Cargando conversaciones">
+                    {Array.from({ length: 7 }).map((_, index) => (
+                      <div className="wa-chat-skeleton-row" key={index}>
+                        <span className="wa-chat-skeleton-avatar" />
+                        <span className="wa-chat-skeleton-lines">
+                          <span />
+                          <span />
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                ) : filteredChats.length > 0 ? (
                   filteredChats.map(renderChatItem)
                 ) : (
                   <div className="wa-empty-filter">

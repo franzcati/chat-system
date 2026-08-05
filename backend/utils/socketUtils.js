@@ -1,4 +1,5 @@
 const db = require("../db");
+const { logDev } = require("./logger");
 let usuariosConectados = {};
 let ioGlobal = null;
 const socketsPorUsuario = new Map();
@@ -264,7 +265,7 @@ async function unirUsuarioASusSalas(socket, userId) {
 
     grupos.forEach((g) => {
       socket.join(`grupo_${g.grupo_id}`);
-      console.log(`✅ Usuario ${userId} unido a sala grupo_${g.grupo_id}`);
+      logDev(`✅ Usuario ${userId} unido a sala grupo_${g.grupo_id}`);
     });
   } catch (err) {
     console.error("❌ Error obteniendo grupos del usuario:", err);
@@ -296,11 +297,16 @@ function agregarSocketAUsuario(userId, socketId, meta = {}) {
 
 function marcarActividadUsuario(userId, socketId, meta = {}) {
   const id = normalizarId(userId);
-  if (!id) return;
+  if (!id) return false;
 
   const detalles = detallesSocketsPorUsuario.get(id);
   const detalle = detalles?.get(socketId);
-  if (!detalle) return;
+  if (!detalle) return false;
+
+  const anterior = usuariosConectados[id];
+  const firmaAnterior = anterior
+    ? `${anterior.estado}|${anterior.dispositivo}|${JSON.stringify(anterior.dispositivos || {})}`
+    : "";
 
   detalles.set(socketId, {
     ...detalle,
@@ -309,7 +315,14 @@ function marcarActividadUsuario(userId, socketId, meta = {}) {
     lastActivity: Date.now(),
   });
 
-  recalcularEstadoUsuario(id);
+  const siguiente = recalcularEstadoUsuario(id);
+  const firmaSiguiente = siguiente
+    ? `${siguiente.estado}|${siguiente.dispositivo}|${JSON.stringify(siguiente.dispositivos || {})}`
+    : "";
+
+  // La actividad normal no cambia el estado visible. Sólo hace falta emitir cuando
+  // el usuario vuelve de inactivo o cambia de dispositivo/estado.
+  return firmaAnterior !== firmaSiguiente;
 }
 
 function quitarSocketDeUsuario(userId, socketId) {
@@ -386,38 +399,76 @@ function initSocket(server) {
   ioGlobal = io;
 
   io.on("connection", (socket) => {
-    console.log("🔌 Usuario conectado:", socket.id);
+    logDev("🔌 Usuario conectado:", socket.id);
 
     const registrarUsuario = async (payload) => {
       const { userId: rawUserId, deviceType, userAgent } = obtenerPayloadRegistro(payload);
       const userId = normalizarId(rawUserId);
       if (!userId) return;
 
-      if (socket.userId && socket.userId !== userId) {
-        quitarSocketDeUsuario(socket.userId, socket.id);
+      // El frontend puede disparar el registro desde el handshake y desde el evento
+      // connect casi simultáneamente. Unificamos esas llamadas para no consultar grupos
+      // ni unir salas tres veces por cada reconexión.
+      if (socket.data?.registeredUserId === userId) {
+        marcarActividadUsuario(userId, socket.id, {
+          deviceType: deviceType || socket.deviceType,
+          userAgent: userAgent || socket.userAgent,
+        });
+        return;
       }
 
-      socket.userId = userId;
-      socket.deviceType = normalizarDispositivo(deviceType || socket.deviceType || socket.handshake.auth?.deviceType || socket.handshake.query?.deviceType);
-      socket.userAgent = userAgent || socket.handshake.headers?.["user-agent"] || "";
+      if (socket.data?.registrationUserId === userId && socket.data?.registrationPromise) {
+        return socket.data.registrationPromise;
+      }
 
-      await unirUsuarioASusSalas(socket, userId);
-      agregarSocketAUsuario(userId, socket.id, {
-        deviceType: socket.deviceType,
-        userAgent: socket.userAgent,
-      });
-      programarPublicarEstadoUsuarios(io, { immediate: true });
+      const registrationTask = (async () => {
+        if (socket.userId && socket.userId !== userId) {
+          quitarSocketDeUsuario(socket.userId, socket.id);
+        }
+
+        socket.userId = userId;
+        socket.deviceType = normalizarDispositivo(
+          deviceType || socket.deviceType || socket.handshake.auth?.deviceType || socket.handshake.query?.deviceType
+        );
+        socket.userAgent = userAgent || socket.handshake.headers?.["user-agent"] || "";
+
+        await unirUsuarioASusSalas(socket, userId);
+        agregarSocketAUsuario(userId, socket.id, {
+          deviceType: socket.deviceType,
+          userAgent: socket.userAgent,
+        });
+        socket.data.registeredUserId = userId;
+        programarPublicarEstadoUsuarios(io, { immediate: true });
+      })();
+
+      socket.data.registrationUserId = userId;
+      socket.data.registrationPromise = registrationTask;
+
+      try {
+        return await registrationTask;
+      } finally {
+        if (socket.data.registrationPromise === registrationTask) {
+          socket.data.registrationPromise = null;
+          socket.data.registrationUserId = null;
+        }
+      }
     };
 
-    socket.on("registrarUsuario", registrarUsuario);
+    socket.on("registrarUsuario", (payload) => {
+      registrarUsuario(payload).catch((err) => {
+        console.error("❌ Error registrando usuario en Socket.IO:", err);
+      });
+    });
 
     socket.on("usuarioActividad", (payload = {}) => {
       if (!socket.userId) return;
-      marcarActividadUsuario(socket.userId, socket.id, {
+      const estadoVisibleCambio = marcarActividadUsuario(socket.userId, socket.id, {
         deviceType: payload.deviceType || socket.deviceType,
         userAgent: payload.userAgent || socket.userAgent,
       });
-      programarPublicarEstadoUsuarios(io);
+      if (estadoVisibleCambio) {
+        programarPublicarEstadoUsuarios(io, { immediate: true });
+      }
     });
 
     socket.on("cambiarEstadoUsuario", (payload = {}) => {
@@ -427,16 +478,18 @@ function initSocket(server) {
     });
 
     socket.on("joinGrupo", (grupoId) => {
-      if (!grupoId) return;
-      socket.join(`grupo_${grupoId}`);
-      console.log(`✅ Socket ${socket.id} unido manualmente a grupo_${grupoId}`);
+      const id = normalizarId(grupoId);
+      if (!id) return;
+      const room = `grupo_${id}`;
+      if (socket.rooms.has(room)) return;
+      socket.join(room);
+      logDev(`✅ Socket ${socket.id} unido manualmente a ${room}`);
     });
 
-    socket.on("leaveGrupo", (grupoId) => {
-      if (!grupoId) return;
-      socket.leave(`grupo_${grupoId}`);
-      console.log(`↩️ Socket ${socket.id} salió de grupo_${grupoId}`);
-    });
+    // Los sockets se unen a todos sus grupos al registrarse. Cambiar de conversación
+    // no debe sacarlos de la sala, porque dejarían de recibir nuevos mensajes y sus
+    // contadores. Se conserva el evento por compatibilidad con frontends antiguos.
+    socket.on("leaveGrupo", () => {});
 
 
     // Indicador de escritura tipo WhatsApp.
@@ -445,7 +498,7 @@ function initSocket(server) {
     socket.on("typing:stop", (payload = {}) => detenerTyping(io, socket, payload));
 
     socket.on("disconnect", (reason) => {
-      console.log("🔴 Usuario desconectado:", socket.id, reason);
+      logDev("🔴 Usuario desconectado:", socket.id, reason);
 
       detenerTypingDeSocket(io, socket);
 
@@ -461,11 +514,14 @@ function initSocket(server) {
         userId: userIdHandshake,
         deviceType: socket.handshake.auth?.deviceType || socket.handshake.query?.deviceType,
         userAgent: socket.handshake.headers?.["user-agent"],
+      }).catch((err) => {
+        console.error("❌ Error registrando usuario desde handshake:", err);
       });
     }
   });
 
-  setInterval(() => publicarEstadoUsuarios(io), 30000);
+  const presenceInterval = setInterval(() => publicarEstadoUsuarios(io), 30000);
+  presenceInterval.unref?.();
 
   return { io, usuariosConectados };
 }

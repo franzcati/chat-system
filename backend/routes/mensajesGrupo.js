@@ -16,11 +16,12 @@ function formatDateToMySQL(date) {
 }
 
 
-const MARK_GROUP_BATCH_SIZE = 500;
-const MARK_GROUP_MAX_BATCHES = 20;
+const MARK_GROUP_BATCH_SIZE = 250;
+const MARK_GROUP_MAX_BATCHES = 8;
+const groupSeenInFlight = new Map();
 const MAX_GROUP_SEEN_EVENTS = 500;
 
-async function markGroupMessagesAsSeen(grupoId, userId) {
+async function runMarkGroupMessagesAsSeen(grupoId, userId) {
   const idsMarcados = [];
   let totalActualizados = 0;
 
@@ -60,6 +61,18 @@ async function markGroupMessagesAsSeen(grupoId, userId) {
   }
 
   return { idsMarcados, totalActualizados };
+}
+
+async function markGroupMessagesAsSeen(grupoId, userId) {
+  const key = `${Number(userId)}:${Number(grupoId)}`;
+  const current = groupSeenInFlight.get(key);
+  if (current) return current;
+
+  const task = runMarkGroupMessagesAsSeen(grupoId, userId)
+    .finally(() => groupSeenInFlight.delete(key));
+
+  groupSeenInFlight.set(key, task);
+  return task;
 }
 
 function getPaginationOptions(query) {
@@ -645,15 +658,23 @@ router.get("/:grupoId", async (req, res) => {
     );
     const miembroIds = miembros.map(m => m.usuario_id);
 
-    // 4️⃣ Traer vistos sólo de los mensajes cargados
-    const [vistos] = ids.length
+    // 4️⃣ Contar vistos por mensaje en SQL. Antes se descargaba una fila por
+    // usuario y mensaje (hasta miembros × 50), lo que crecía mucho en grupos grandes.
+    const [vistosAgregados] = ids.length
       ? await db.query(
-          `SELECT mensaje_id, usuario_id 
-             FROM mensajes_grupo_vistos 
-            WHERE mensaje_id IN (?)`,
+          `SELECT mgv.mensaje_id, COUNT(DISTINCT mgv.usuario_id) AS total_vistos
+             FROM mensajes_grupo_vistos mgv
+             JOIN mensajes_grupo mg ON mg.id = mgv.mensaje_id
+            WHERE mgv.mensaje_id IN (?)
+              AND mgv.usuario_id <> mg.usuario_id
+            GROUP BY mgv.mensaje_id`,
           [ids]
         )
       : [[]];
+
+    const vistosPorMensaje = new Map(
+      vistosAgregados.map((row) => [Number(row.mensaje_id), Number(row.total_vistos || 0)])
+    );
 
     // 5️⃣ Traer mensajes fijados (máximo 3). Esto siempre se carga completo,
     // aunque el mensaje fijado no esté dentro de la página actual.
@@ -704,14 +725,21 @@ router.get("/:grupoId", async (req, res) => {
 
     const replyMap = await getReplyMessagesByIds(mensajes.map((m) => m.reply_to_id));
 
+    const reaccionesPorMensaje = new Map();
+    reacciones.forEach((reaccion) => {
+      const key = Number(reaccion.mensaje_grupo_id);
+      if (!reaccionesPorMensaje.has(key)) reaccionesPorMensaje.set(key, []);
+      reaccionesPorMensaje.get(key).push(reaccion);
+    });
+
     // 6️⃣ Armar los mensajes con reacciones y vistos
     const mensajesConReacciones = mensajes.map(m => {
-      const vistosMensaje = vistos
-        .filter(v => v.mensaje_id === m.id)
-        .map(v => v.usuario_id);
-
-      const otrosMiembros = miembroIds.filter(id => id !== m.usuario_id);
-      const visto = otrosMiembros.every(id => vistosMensaje.includes(id)) ? 1 : 0;
+      const totalOtrosMiembros = miembroIds.reduce(
+        (total, id) => total + (Number(id) !== Number(m.usuario_id) ? 1 : 0),
+        0
+      );
+      const totalVistos = vistosPorMensaje.get(Number(m.id)) || 0;
+      const visto = totalVistos >= totalOtrosMiembros ? 1 : 0;
 
       return {
         ...m,
@@ -720,8 +748,7 @@ router.get("/:grupoId", async (req, res) => {
           : null,
         reply_to: m.reply_to_id ? replyMap.get(Number(m.reply_to_id)) || null : null,
         visto,
-        reacciones: reacciones
-          .filter(r => r.mensaje_grupo_id === m.id)
+        reacciones: (reaccionesPorMensaje.get(Number(m.id)) || [])
           .map(r => ({
             mensaje_id: r.mensaje_grupo_id,
             usuario_id: r.usuario_id,

@@ -17,17 +17,7 @@ const getPresencePayload = (userId) => ({
   userAgent: navigator.userAgent || "",
 });
 
-const getStoredUserId = () => {
-  try {
-    const storedUser = localStorage.getItem("usuario");
-    if (!storedUser) return null;
 
-    const user = JSON.parse(storedUser);
-    return user?.id || null;
-  } catch (error) {
-    return null;
-  }
-};
 
 export const socket = io(socketUrl, {
   autoConnect: false,
@@ -42,12 +32,8 @@ export const socket = io(socketUrl, {
 
 socket.on("connect", () => {
   logDev("✅ Conectado al servidor Socket.io con ID:", socket.id);
-
-  const userId = socket.auth?.userId || getStoredUserId();
-  if (userId) {
-    socket.emit("registrarUsuario", getPresencePayload(userId));
-    logDev("📡 Usuario registrado/reconectado en socket:", userId);
-  }
+  // El servidor registra al usuario usando socket.auth durante el handshake.
+  // No emitimos registrarUsuario otra vez para evitar registros y joins duplicados.
 });
 
 socket.on("disconnect", (reason) => {
@@ -69,6 +55,7 @@ socket.on("connect_error", (err) => {
 export const conectarUsuarioSocket = (userId) => {
   if (!userId) return;
 
+  const previousUserId = socket.auth?.userId || null;
   socket.auth = {
     ...(socket.auth || {}),
     userId,
@@ -80,8 +67,9 @@ export const conectarUsuarioSocket = (userId) => {
     return;
   }
 
-  socket.emit("registrarUsuario", getPresencePayload(userId));
-  logDev("📡 Usuario registrado en socket:", userId);
+  if (previousUserId && String(previousUserId) !== String(userId)) {
+    socket.emit("registrarUsuario", getPresencePayload(userId));
+  }
 };
 
 export default socket;

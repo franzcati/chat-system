@@ -3,69 +3,78 @@ const router = express.Router();
 const db = require('../db');
 
 
-let chatEstadosSchemaReady = false;
+let chatEstadosSchemaPromise = null;
 
 const ensureChatEstadosSchema = async () => {
-  if (chatEstadosSchemaReady) return;
+  if (!chatEstadosSchemaPromise) {
+    chatEstadosSchemaPromise = (async () => {
+      await db.query(`
+        CREATE TABLE IF NOT EXISTS chats_estados (
+          id INT AUTO_INCREMENT PRIMARY KEY,
+          usuario_id INT NOT NULL,
+          tipo VARCHAR(20) NOT NULL,
+          chat_id INT NOT NULL,
+          archivado TINYINT(1) DEFAULT 0,
+          marcado_no_leido TINYINT(1) DEFAULT 0,
+          fijado TINYINT(1) DEFAULT 0,
+          creado_en TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          actualizado_en TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+          UNIQUE KEY unique_chat_estado (usuario_id, tipo, chat_id)
+        )
+      `);
 
-  await db.query(`
-    CREATE TABLE IF NOT EXISTS chats_estados (
-      id INT AUTO_INCREMENT PRIMARY KEY,
-      usuario_id INT NOT NULL,
-      tipo VARCHAR(20) NOT NULL,
-      chat_id INT NOT NULL,
-      archivado TINYINT(1) DEFAULT 0,
-      marcado_no_leido TINYINT(1) DEFAULT 0,
-      fijado TINYINT(1) DEFAULT 0,
-      creado_en TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-      actualizado_en TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-      UNIQUE KEY unique_chat_estado (usuario_id, tipo, chat_id)
-    )
-  `);
-
-
-  const [fijadoColumns] = await db.query("SHOW COLUMNS FROM chats_estados LIKE 'fijado'");
-  if (!fijadoColumns.length) {
-    await db.query("ALTER TABLE chats_estados ADD COLUMN fijado TINYINT(1) DEFAULT 0 AFTER marcado_no_leido");
+      const [fijadoColumns] = await db.query("SHOW COLUMNS FROM chats_estados LIKE 'fijado'");
+      if (!fijadoColumns.length) {
+        await db.query("ALTER TABLE chats_estados ADD COLUMN fijado TINYINT(1) DEFAULT 0 AFTER marcado_no_leido");
+      }
+    })().catch((err) => {
+      chatEstadosSchemaPromise = null;
+      throw err;
+    });
   }
 
-  chatEstadosSchemaReady = true;
+  return chatEstadosSchemaPromise;
 };
 
-let chatListasSchemaReady = false;
+let chatListasSchemaPromise = null;
 
 const ensureChatListasSchema = async () => {
-  if (chatListasSchemaReady) return;
+  if (!chatListasSchemaPromise) {
+    chatListasSchemaPromise = (async () => {
+      await db.query(`
+        CREATE TABLE IF NOT EXISTS chat_listas (
+          id INT AUTO_INCREMENT PRIMARY KEY,
+          usuario_id INT NOT NULL,
+          nombre VARCHAR(80) NOT NULL,
+          emoji VARCHAR(16) DEFAULT NULL,
+          creado_en TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          actualizado_en TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+          INDEX idx_chat_listas_usuario (usuario_id)
+        )
+      `);
 
-  await db.query(`
-    CREATE TABLE IF NOT EXISTS chat_listas (
-      id INT AUTO_INCREMENT PRIMARY KEY,
-      usuario_id INT NOT NULL,
-      nombre VARCHAR(80) NOT NULL,
-      emoji VARCHAR(16) DEFAULT NULL,
-      creado_en TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-      actualizado_en TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-      INDEX idx_chat_listas_usuario (usuario_id)
-    )
-  `);
+      await db.query(`
+        CREATE TABLE IF NOT EXISTS chat_lista_items (
+          id INT AUTO_INCREMENT PRIMARY KEY,
+          lista_id INT NOT NULL,
+          usuario_id INT NOT NULL,
+          tipo VARCHAR(20) NOT NULL,
+          chat_id INT NOT NULL,
+          creado_en TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          UNIQUE KEY unique_lista_chat (lista_id, tipo, chat_id),
+          INDEX idx_chat_lista_items_usuario (usuario_id),
+          CONSTRAINT fk_chat_lista_items_lista
+            FOREIGN KEY (lista_id) REFERENCES chat_listas(id)
+            ON DELETE CASCADE
+        )
+      `);
+    })().catch((err) => {
+      chatListasSchemaPromise = null;
+      throw err;
+    });
+  }
 
-  await db.query(`
-    CREATE TABLE IF NOT EXISTS chat_lista_items (
-      id INT AUTO_INCREMENT PRIMARY KEY,
-      lista_id INT NOT NULL,
-      usuario_id INT NOT NULL,
-      tipo VARCHAR(20) NOT NULL,
-      chat_id INT NOT NULL,
-      creado_en TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-      UNIQUE KEY unique_lista_chat (lista_id, tipo, chat_id),
-      INDEX idx_chat_lista_items_usuario (usuario_id),
-      CONSTRAINT fk_chat_lista_items_lista
-        FOREIGN KEY (lista_id) REFERENCES chat_listas(id)
-        ON DELETE CASCADE
-    )
-  `);
-
-  chatListasSchemaReady = true;
+  return chatListasSchemaPromise;
 };
 
 const normalizeChatListName = (value = '') => String(value || '').trim().slice(0, 80);
@@ -359,7 +368,108 @@ router.post('/estado', async (req, res) => {
   }
 });
 
-// Obtener la lista de chats de un usuario
+// Resumen optimizado: devuelve una sola fila por conversación privada.
+// Evita enviar al navegador todo el historial del usuario durante el inicio de sesión.
+router.get('/resumen/:userId', async (req, res) => {
+  const userId = Number(req.params.userId);
+
+  if (!Number.isInteger(userId) || userId <= 0) {
+    return res.status(400).json({ error: 'Usuario inválido' });
+  }
+
+  try {
+    const [rows] = await db.query(
+      `SELECT
+          m.id,
+          m.mensaje,
+          m.fecha_envio,
+          m.usuario_envia_id,
+          m.usuario_recibe_id,
+          m.eliminado,
+          m.editado,
+          m.visto,
+          m.lote_id,
+
+          COALESCE(ma_direct.archivo_url, ma_lote.archivo_url) AS archivo_url,
+          COALESCE(ma_direct.tipo_archivo, ma_lote.tipo_archivo) AS tipo_archivo,
+          COALESCE(ma_direct.nombre_archivo, ma_lote.nombre_archivo) AS nombre_archivo,
+          COALESCE(ma_direct.tamano, ma_lote.tamano) AS tamano,
+
+          u_env.id AS emisor_id,
+          u_env.nombre AS emisor_nombre,
+          u_env.apellido AS emisor_apellido,
+          u_env.correo AS emisor_correo,
+          u_env.url_imagen AS emisor_avatar,
+          u_env.background AS emisor_background,
+
+          u_rec.id AS receptor_id,
+          u_rec.nombre AS receptor_nombre,
+          u_rec.apellido AS receptor_apellido,
+          u_rec.correo AS receptor_correo,
+          u_rec.url_imagen AS receptor_avatar,
+          u_rec.background AS receptor_background,
+
+          CASE WHEN m.usuario_envia_id = ? THEN 'enviado' ELSE 'recibido' END AS tipo_mensaje,
+          CASE
+            WHEN resumen.other_user_id = ? THEN 0
+            ELSE COALESCE(no_leidos.total, 0)
+          END AS mensajes_no_leidos,
+          1 AS es_resumen_chat
+       FROM (
+         SELECT
+           CASE
+             WHEN usuario_envia_id = ? THEN usuario_recibe_id
+             ELSE usuario_envia_id
+           END AS other_user_id,
+           MAX(id) AS ultimo_id
+         FROM mensajes
+         WHERE usuario_envia_id = ? OR usuario_recibe_id = ?
+         GROUP BY CASE
+           WHEN usuario_envia_id = ? THEN usuario_recibe_id
+           ELSE usuario_envia_id
+         END
+       ) resumen
+       JOIN mensajes m ON m.id = resumen.ultimo_id
+       JOIN usuario u_env ON u_env.id = m.usuario_envia_id
+       JOIN usuario u_rec ON u_rec.id = m.usuario_recibe_id
+       LEFT JOIN (
+         SELECT usuario_envia_id AS other_user_id, COUNT(*) AS total
+         FROM mensajes
+         WHERE usuario_recibe_id = ?
+           AND usuario_envia_id <> ?
+           AND visto = 0
+         GROUP BY usuario_envia_id
+       ) no_leidos ON no_leidos.other_user_id = resumen.other_user_id
+       LEFT JOIN mensajes_archivos ma_direct
+         ON ma_direct.id = (
+           SELECT MIN(ma_d.id)
+           FROM mensajes_archivos ma_d
+           WHERE ma_d.sender_id = m.usuario_envia_id
+             AND ma_d.receiver_id = m.usuario_recibe_id
+             AND ma_d.archivo_url = m.mensaje
+         )
+       LEFT JOIN mensajes_archivos ma_lote
+         ON ma_lote.id = (
+           SELECT MIN(ma_l.id)
+           FROM mensajes_archivos ma_l
+           WHERE m.lote_id IS NOT NULL
+             AND ma_l.lote_id = m.lote_id
+             AND ma_l.sender_id = m.usuario_envia_id
+             AND ma_l.receiver_id = m.usuario_recibe_id
+         )
+       ORDER BY m.id DESC`,
+      [userId, userId, userId, userId, userId, userId, userId, userId]
+    );
+
+    res.json(rows);
+  } catch (error) {
+    console.error('❌ Error obteniendo resumen de chats:', error);
+    res.status(500).json({ error: 'Error obteniendo resumen de chats' });
+  }
+});
+
+// Obtener la lista completa de mensajes de un usuario (compatibilidad).
+// El frontend principal usa /resumen/:userId para evitar cargar todo el historial.
 router.get('/:userId', async (req, res) => {
   const { userId } = req.params;
 

@@ -18,6 +18,8 @@ const Messenger = () => {
   const [perfilSeleccionado, setPerfilSeleccionado] = useState(null);
   const [showModal, setShowModal] = useState(false);
   const [addToListTarget, setAddToListTarget] = useState(null);
+  const [unreadTotal, setUnreadTotal] = useState(0);
+  const [estadosUsuarios, setEstadosUsuarios] = useState({});
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -40,37 +42,64 @@ const Messenger = () => {
     }
   }, []);
 
+  // Los proyectos sólo son necesarios al abrir las pantallas administrativas.
+  // No bloqueamos la carga inicial del chat con estas consultas.
   useEffect(() => {
+    const necesitaProyectos = ["edit", "add-user", "edit-user"].includes(activeTab);
+    if (!necesitaProyectos || proyectos.length > 0) return;
+
     const cargarProyectos = async () => {
       try {
         const res = await fetch("/api/proyecto");
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json();
         setProyectos(data);
-        logDev("📌 Proyectos cargados:", data);
+        logDev("📌 Proyectos cargados:", data?.length || 0);
       } catch (err) {
         console.error("❌ Error cargando proyectos:", err);
       }
     };
 
     cargarProyectos();
-  }, []);
+  }, [activeTab, proyectos.length]);
 
   useEffect(() => {
-    if (usuario?.id) {
-      const fetchProyectoId = async () => {
-        try {
-          const res = await fetch(`/api/grupos/${usuario.id}/proyecto`);
-          const data = await res.json();
-          logDev("👉 proyectoId del usuario:", data.proyectoId);
-          logDev("📡 Proyecto cargado para usuario:", data);
-          setUsuario((prev) => ({ ...prev, proyectoId: data.proyectoId }));
-        } catch (err) {
-          console.error("❌ Error trayendo proyecto:", err);
-        }
-      };
+    if (activeTab !== "edit" || !usuario?.id || usuario?.proyectoId) return;
 
-      fetchProyectoId();
-    }
+    const fetchProyectoId = async () => {
+      try {
+        const res = await fetch(`/api/grupos/${usuario.id}/proyecto`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        setUsuario((prev) => ({ ...prev, proyectoId: data.proyectoId }));
+      } catch (err) {
+        console.error("❌ Error trayendo proyecto:", err);
+      }
+    };
+
+    fetchProyectoId();
+  }, [activeTab, usuario?.id, usuario?.proyectoId]);
+
+  useEffect(() => {
+    if (!usuario?.id) return;
+    let cancelled = false;
+
+    fetch("/api/usuarios/estados/presencia")
+      .then((res) => (res.ok ? res.json() : {}))
+      .then((data) => {
+        if (!cancelled) setEstadosUsuarios(data || {});
+      })
+      .catch(() => {});
+
+    const handleActualizarUsuarios = (payload = {}) => {
+      setEstadosUsuarios(payload || {});
+    };
+
+    socket.on("actualizarUsuarios", handleActualizarUsuarios);
+    return () => {
+      cancelled = true;
+      socket.off("actualizarUsuarios", handleActualizarUsuarios);
+    };
   }, [usuario?.id]);
 
   useEffect(() => {
@@ -120,7 +149,6 @@ const Messenger = () => {
 
     const onConnect = () => {
       logDev("✅ Socket conectado en Messenger:", socket.id);
-      conectarUsuarioSocket(usuario.id);
     };
 
     const onNuevoMensaje = (msg) => {
@@ -153,6 +181,8 @@ const Messenger = () => {
         active={activeTab}
         setActive={setActiveTab}
         onUsuarioUpdate={(nextUsuario) => setUsuario((prev) => ({ ...(prev || {}), ...(nextUsuario || {}) }))}
+        unreadTotal={unreadTotal}
+        estadosUsuarios={estadosUsuarios}
       />
 
       {activeTab === "chat" && (
@@ -163,6 +193,8 @@ const Messenger = () => {
           userId={usuario?.id}
           addToListTarget={addToListTarget}
           onAddToListHandled={() => setAddToListTarget(null)}
+          onUnreadTotalChange={setUnreadTotal}
+          estadosUsuarios={estadosUsuarios}
         />
       )}
       {activeTab === "edit" && (
@@ -203,6 +235,7 @@ const Messenger = () => {
                 setShowModal(true);
               }}
               onAddToList={(chatToAdd) => setAddToListTarget(chatToAdd)}
+              estadosUsuarios={estadosUsuarios}
             />
           ) : (
             <div className="d-flex flex-column h-100 justify-content-center text-center">

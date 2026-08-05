@@ -283,9 +283,10 @@ const STICKER_EDITOR_COLORS = [
 ];
 
 
-const ChatBox = ({ chat, user, setChat, onVerPerfil, onAddToList }) => {
+const ChatBox = ({ chat, user, setChat, onVerPerfil, onAddToList, estadosUsuarios = {} }) => {
 
   const [messages, setMessages] = useState([]);
+  const [socketReconnectToken, setSocketReconnectToken] = useState(0);
   const [hasMoreMessages, setHasMoreMessages] = useState(false);
   const [nextBeforeId, setNextBeforeId] = useState(null);
   const [isLoadingMessages, setIsLoadingMessages] = useState(false);
@@ -314,7 +315,6 @@ const ChatBox = ({ chat, user, setChat, onVerPerfil, onAddToList }) => {
   const [mostrarVerArchivos, setMostrarVerArchivos] = useState(false);
   const [mostrarMenuLlamada, setMostrarMenuLlamada] = useState(false);
   const [searchRequestToken, setSearchRequestToken] = useState(null);
-  const [estadosUsuarios, setEstadosUsuarios] = useState({});
   // 👇 referencia al último mensaje
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null); // ref para el ChatInput optimizado
@@ -435,25 +435,7 @@ const ChatBox = ({ chat, user, setChat, onVerPerfil, onAddToList }) => {
     return cleanUrl;
   }, [normalizeStickerMessageUrl]);
 
-  useEffect(() => {
-    const cargarEstados = async () => {
-      try {
-        const res = await axios.get("/api/usuarios/estados/presencia");
-        setEstadosUsuarios(res.data || {});
-      } catch (err) {
-        console.error("❌ Error cargando estados de presencia:", err);
-      }
-    };
 
-    cargarEstados();
-
-    const handleActualizarUsuarios = (payload) => {
-      setEstadosUsuarios(payload || {});
-    };
-
-    socket.on("actualizarUsuarios", handleActualizarUsuarios);
-    return () => socket.off("actualizarUsuarios", handleActualizarUsuarios);
-  }, []);
 
   useEffect(() => {
     return () => {
@@ -762,6 +744,12 @@ const ChatBox = ({ chat, user, setChat, onVerPerfil, onAddToList }) => {
   // El scroll principal lo controla ChatBody. Esto evita que al cargar
   // mensajes antiguos el chat salte otra vez al final.
 
+  useEffect(() => {
+    const handleReconnect = () => setSocketReconnectToken((value) => value + 1);
+    socket.on("connect", handleReconnect);
+    return () => socket.off("connect", handleReconnect);
+  }, []);
+
   // 🔹 Cargar sólo la última página del historial cuando cambia el chat.
   // Así el chat entra rápido, como WhatsApp, aunque la conversación sea larga.
   useEffect(() => {
@@ -890,7 +878,7 @@ const ChatBox = ({ chat, user, setChat, onVerPerfil, onAddToList }) => {
     return () => {
       cancelado = true;
     };
-  }, [chat?.tipo, chat?.grupo_id, chat?.usuario_id, chat?.__privateReplyDraft, chat?.__jumpToMessageId, chat?.__jumpToken, user?.id]);
+  }, [chat?.tipo, chat?.grupo_id, chat?.usuario_id, chat?.__privateReplyDraft, chat?.__jumpToMessageId, chat?.__jumpToken, user?.id, socketReconnectToken]);
 
   const cargarMensajesAnteriores = useCallback(async () => {
     if (!chat || !user?.id || !hasMoreMessages || !nextBeforeId || isLoadingOlderMessages) {
@@ -1026,8 +1014,8 @@ const ChatBox = ({ chat, user, setChat, onVerPerfil, onAddToList }) => {
     if (!chat || !user) return;
 
     if (chat.tipo === "grupo") {
-      // 👉 Unirse al grupo en socket.io
-      socket.emit("joinGrupo", chat.grupo_id);
+      // El backend ya mantiene este socket unido a todos sus grupos.
+      // Cambiar de conversación no debe crear ciclos join/leave.
 
       // Nuevo mensaje de grupo
       const handleNuevoMensajeGrupo = agregarMensajeGrupo;
@@ -1218,7 +1206,6 @@ const ChatBox = ({ chat, user, setChat, onVerPerfil, onAddToList }) => {
       socket.on("miembrosActualizados", handleMiembrosActualizados);
 
       return () => {
-        socket.emit("leaveGrupo", chat.grupo_id);
         socket.off("nuevoMensajeGrupo", handleNuevoMensajeGrupo);
         socket.off("todosMensajesVistosGrupo", handleTodosMensajesVistosGrupo);
         socket.off("mensajeEliminadoGrupo", handleMensajeEliminadoGrupo);
