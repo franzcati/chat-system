@@ -168,6 +168,18 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat, addToLi
   const previousChatPositionsRef = useRef(new Map());
   const refreshInFlightRef = useRef(null);
   const lastRefreshAtRef = useRef(0);
+  // El orden de la lista solo debe animarse cuando cambia por un mensaje nuevo,
+  // no al seleccionar un chat, marcarlo como visto o actualizar presencia.
+  const animateChatReorderRef = useRef(false);
+  const selectedChatRef = useRef(selectedChat);
+  const silenciadosRef = useRef(silenciados);
+  const gruposRef = useRef(grupos);
+  const estadosUsuariosRef = useRef(estadosUsuarios);
+
+  selectedChatRef.current = selectedChat;
+  silenciadosRef.current = silenciados;
+  gruposRef.current = grupos;
+  estadosUsuariosRef.current = estadosUsuarios;
 
   const shouldProcessSocketMessage = (eventName, message) => {
     const id = message?.id;
@@ -593,30 +605,105 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat, addToLi
 
       const task = (async () => {
         try {
-          const [resMensajes, resGrupos, resFavoritos, resSilenciados, resEstados, resListas] = await Promise.all([
-            axios.get(`/api/chats/resumen/${userId}`),
-            axios.get(`/api/grupos/usuario-resumen/${userId}`),
-            axios.get(`/api/chats/favoritos/${userId}`),
-            axios.get(`/api/notificaciones/silenciados/${userId}`),
-            axios.get(`/api/chats/estados/${userId}`),
-            axios.get(`/api/chats/listas/${userId}`),
+          // IMPORTANTE: la lista principal no debe quedar vacía porque falle una
+          // preferencia secundaria (silencios, favoritos, estados o listas).
+          // Cargamos privados y grupos de forma independiente y las preferencias
+          // con allSettled, como una app de mensajería real.
+          let [privadosResult, gruposResult, preferenciasResult] = await Promise.all([
+            axios
+              .get(`/api/chats/resumen/${userId}`)
+              .then((res) => ({ ok: true, data: Array.isArray(res.data) ? res.data : [] }))
+              .catch(async (error) => {
+                console.error("❌ Falló /api/chats/resumen. Usando compatibilidad:", error);
+                try {
+                  const legacy = await axios.get(`/api/chats/${userId}`);
+                  return { ok: false, fallback: true, data: Array.isArray(legacy.data) ? legacy.data : [] };
+                } catch (legacyError) {
+                  console.error("❌ También falló /api/chats/:userId:", legacyError);
+                  return { ok: false, data: [] };
+                }
+              }),
+            axios
+              .get(`/api/grupos/usuario-resumen/${userId}`)
+              .then((res) => ({ ok: true, data: Array.isArray(res.data) ? res.data : [] }))
+              .catch(async (error) => {
+                console.error("❌ Falló /api/grupos/usuario-resumen. Usando compatibilidad:", error);
+                try {
+                  const legacy = await axios.get(`/api/grupos/usuario/${userId}`);
+                  return { ok: false, fallback: true, data: Array.isArray(legacy.data) ? legacy.data : [] };
+                } catch (legacyError) {
+                  console.error("❌ También falló /api/grupos/usuario/:userId:", legacyError);
+                  return { ok: false, data: [] };
+                }
+              }),
+            Promise.allSettled([
+              axios.get(`/api/chats/favoritos/${userId}`),
+              axios.get(`/api/notificaciones/silenciados/${userId}`),
+              axios.get(`/api/chats/estados/${userId}`),
+              axios.get(`/api/chats/listas/${userId}`),
+            ]),
           ]);
 
+          // Si los dos endpoints optimizados responden 200 pero vacíos, comprobamos
+          // una sola vez con las rutas históricas. Esto evita mostrar falsamente
+          // "No hay chats" durante una migración o si el resumen aún no es compatible
+          // con alguna versión de la base de datos.
+          if (privadosResult.data.length === 0 && gruposResult.data.length === 0) {
+            const [legacyPrivados, legacyGrupos] = await Promise.allSettled([
+              axios.get(`/api/chats/${userId}`),
+              axios.get(`/api/grupos/usuario/${userId}`),
+            ]);
+
+            if (legacyPrivados.status === "fulfilled" && Array.isArray(legacyPrivados.value.data) && legacyPrivados.value.data.length) {
+              privadosResult = { ok: false, fallback: true, data: legacyPrivados.value.data };
+            }
+
+            if (legacyGrupos.status === "fulfilled" && Array.isArray(legacyGrupos.value.data) && legacyGrupos.value.data.length) {
+              gruposResult = { ok: false, fallback: true, data: legacyGrupos.value.data };
+            }
+          }
+
           if (cancelled) return;
-          setMensajes(dedupeMessagesById(resMensajes.data));
-          setGrupos(dedupeGroupsById(resGrupos.data));
-          setFavoritos(resFavoritos.data);
-          setSilenciados(resSilenciados.data || []);
-          setChatEstados(resEstados.data || []);
-          setChatLists(resListas.data || []);
+
+          const [favoritosResult, silenciadosResult, estadosResult, listasResult] = preferenciasResult;
+
+          setMensajes(dedupeMessagesById(privadosResult.data));
+          setGrupos(dedupeGroupsById(gruposResult.data));
+
+          if (favoritosResult.status === "fulfilled") {
+            setFavoritos(Array.isArray(favoritosResult.value.data) ? favoritosResult.value.data : []);
+          } else {
+            console.warn("⚠️ No se pudieron cargar favoritos; la lista principal continúa.", favoritosResult.reason);
+          }
+
+          if (silenciadosResult.status === "fulfilled") {
+            setSilenciados(Array.isArray(silenciadosResult.value.data) ? silenciadosResult.value.data : []);
+          } else {
+            console.warn("⚠️ No se pudieron cargar silencios; la lista principal continúa.", silenciadosResult.reason);
+          }
+
+          if (estadosResult.status === "fulfilled") {
+            setChatEstados(Array.isArray(estadosResult.value.data) ? estadosResult.value.data : []);
+          } else {
+            console.warn("⚠️ No se pudieron cargar estados de chat; la lista principal continúa.", estadosResult.reason);
+          }
+
+          if (listasResult.status === "fulfilled") {
+            setChatLists(Array.isArray(listasResult.value.data) ? listasResult.value.data : []);
+          } else {
+            console.warn("⚠️ No se pudieron cargar listas personalizadas; la lista principal continúa.", listasResult.reason);
+          }
+
           lastRefreshAtRef.current = Date.now();
 
-          logDev("📋 Resumen de chats cargado", {
-            privados: resMensajes.data?.length || 0,
-            grupos: resGrupos.data?.length || 0,
+          logDev("📋 Lista inicial cargada", {
+            privados: privadosResult.data.length,
+            grupos: gruposResult.data.length,
+            fallbackPrivados: Boolean(privadosResult.fallback),
+            fallbackGrupos: Boolean(gruposResult.fallback),
           });
         } catch (error) {
-          if (!cancelled) console.error("❌ Error cargando datos iniciales del ChatList:", error);
+          if (!cancelled) console.error("❌ Error inesperado cargando ChatList:", error);
         } finally {
           if (!cancelled) setIsInitialLoading(false);
         }
@@ -730,6 +817,13 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat, addToLi
       setChats((prevChats) => {
         const otherUserId = enviaId === miId ? recibeId : enviaId;
         const esEmisor = enviaId === miId;
+        const incomingTime = getTimestamp(msg.fecha_envio);
+        const existingChat = prevChats.find(
+          (chat) => chat.tipo === "privado" && Number(chat.usuario_id) === Number(otherUserId)
+        );
+        if (!existingChat || incomingTime > Number(existingChat.lastTime || 0)) {
+          animateChatReorderRef.current = true;
+        }
 
         const yaExiste = prevChats.some(
           (chat) =>
@@ -795,10 +889,16 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat, addToLi
 
       const otherUserId = enviaId === miId ? recibeId : enviaId;
       const esMio = enviaId === miId;
+      const currentSelectedChat = selectedChatRef.current;
       const chatAbiertoEsEste =
-        selectedChat?.tipo === "privado" &&
-        Number(selectedChat?.usuario_id) === Number(otherUserId);
-      const silenciado = estaSilenciado("privado", otherUserId);
+        currentSelectedChat?.tipo === "privado" &&
+        Number(currentSelectedChat?.usuario_id) === Number(otherUserId);
+      const silenciado = silenciadosRef.current.some((s) => {
+        if (s.tipo !== "privado" || Number(s.chat_id) !== Number(otherUserId)) return false;
+        if (Number(s.silenciado) !== 1) return false;
+        if (!s.silenciado_hasta) return true;
+        return new Date(s.silenciado_hasta).getTime() > Date.now();
+      });
 
       if (!esMio && !chatAbiertoEsEste && !silenciado && !estaEnNoMolestarUsuario(userId)) {
         mostrarNotificacion({
@@ -864,13 +964,23 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat, addToLi
       );
 
       setChats((prevChats) => {
+        const existingGroupChat = prevChats.find(
+          (chatActual) =>
+            chatActual.tipo === "grupo" &&
+            Number(chatActual.grupo_id) === Number(msg.grupo_id)
+        );
+        const incomingTime = getTimestamp(msg.fecha_envio);
+        if (!existingGroupChat || incomingTime > Number(existingGroupChat.lastTime || 0)) {
+          animateChatReorderRef.current = true;
+        }
+
         const grupoActual =
           prevChats.find(
             (chatActual) =>
               chatActual.tipo === "grupo" &&
               Number(chatActual.grupo_id) === Number(msg.grupo_id)
           ) ||
-          grupos.find(
+          gruposRef.current.find(
             (grupo) => Number(grupo.grupo_id) === Number(msg.grupo_id)
           ) ||
           {};
@@ -908,14 +1018,20 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat, addToLi
       });
 
       const soyYo = Number(msg.usuario_id) === Number(userId);
+      const currentSelectedChat = selectedChatRef.current;
       const chatAbiertoEsEsteGrupo =
-        selectedChat?.tipo === "grupo" &&
-        Number(selectedChat?.grupo_id) === Number(msg.grupo_id);
+        currentSelectedChat?.tipo === "grupo" &&
+        Number(currentSelectedChat?.grupo_id) === Number(msg.grupo_id);
 
-      const silenciado = estaSilenciado("grupo", msg.grupo_id);
+      const silenciado = silenciadosRef.current.some((s) => {
+        if (s.tipo !== "grupo" || Number(s.chat_id) !== Number(msg.grupo_id)) return false;
+        if (Number(s.silenciado) !== 1) return false;
+        if (!s.silenciado_hasta) return true;
+        return new Date(s.silenciado_hasta).getTime() > Date.now();
+      });
 
       if (!soyYo && !chatAbiertoEsEsteGrupo && !silenciado && !estaEnNoMolestarUsuario(userId)) {
-        const grupoActual = grupos.find(
+        const grupoActual = gruposRef.current.find(
           (g) => Number(g.grupo_id) === Number(msg.grupo_id)
         );
 
@@ -967,24 +1083,29 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat, addToLi
       });
     };
 
-    const handleMensajesVistos = ({ emisorId, receptorId }) =>
-      setMensajes((prev) =>
-        prev.map((msg) =>
-          Number(msg.usuario_envia_id) === Number(emisorId) &&
-          Number(msg.usuario_recibe_id) === Number(receptorId)
-            ? { ...msg, visto: 1, mensajes_no_leidos: 0 }
-            : msg
-        )
-    );
+    // Marcar como visto NO debe reconstruir todos los mensajes del chat.
+    // Solo actualizamos la fila afectada; así hacer click entre conversaciones
+    // no vuelve a ordenar ni animar toda la lista.
+    const handleMensajesVistos = ({ emisorId, receptorId }) => {
+      const miId = Number(userId);
+      const otherId = Number(emisorId) === miId ? Number(receptorId) : Number(emisorId);
 
-    const handleMensajesVistosGrupo = ({ userId: vistoPor, grupoId }) =>
-      setMensajes((prev) =>
-        prev.map((msg) =>
-          msg.grupo_id === grupoId && msg.usuario_id === vistoPor
-            ? { ...msg, visto: 1 }
-            : msg
-        )
-    );
+      setChats((prev) => prev.map((chat) => {
+        if (chat.tipo !== "privado" || Number(chat.usuario_id) !== otherId) return chat;
+        return { ...chat, mensajes_no_leidos: 0, visto: 1 };
+      }));
+    };
+
+    const handleMensajesVistosGrupo = ({ userId: vistoPor, grupoId }) => {
+      // El evento puede llegar por mensajes antiguos; la lista solo necesita
+      // reflejar el contador/estado, no tocar el historial completo.
+      if (Number(vistoPor) !== Number(userId)) return;
+      setChats((prev) => prev.map((chat) =>
+        chat.tipo === "grupo" && Number(chat.grupo_id) === Number(grupoId)
+          ? { ...chat, mensajes_no_leidos: 0, visto: 1 }
+          : chat
+      ));
+    };
 
      // 🟢 NUEVO: actualizar contador no vistos en tiempo real
     const handleActualizarNoVistosGrupo = ({ grupoId, incremento, reset }) => {
@@ -1018,23 +1139,10 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat, addToLi
     const handleTodosMensajesVistosGrupo = ({ grupoId, mensajeId }) => {
       logDev("🔹 Evento TODOS MENSAJES VISTOS recibido:", { grupoId, mensajeId });
 
-      // 1️⃣ Actualizar mensajes del grupo
-      setMensajes(prev => prev.map(msg =>
-        msg.grupo_id === grupoId && msg.id <= mensajeId
-          ? { ...msg, visto: 1 }
-          : msg
-      ));
-
-      // 2️⃣ Actualizar grupos
-      setGrupos(prev => prev.map(g =>
-        g.grupo_id === grupoId
-          ? { ...g, mensajes_no_leidos: 0, visto: 1 }
-          : g
-      ));
-
-      // 3️⃣ Actualizar chats
+      // Para la lista basta con actualizar el contador. El historial y sus
+      // checks los administra la conversación abierta. No reconstruimos ChatList.
       setChats(prev => prev.map(c =>
-        c.tipo === "grupo" && c.grupo_id === grupoId
+        c.tipo === "grupo" && Number(c.grupo_id) === Number(grupoId)
           ? { ...c, mensajes_no_leidos: 0, visto: 1 }
           : c
       ));
@@ -1140,10 +1248,11 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat, addToLi
         return prev.filter((c) => !(c.tipo === "grupo" && c.grupo_id === grupoId));
       });
 
-      logDev("🗑️ selectedChat actual:", selectedChat);
+      logDev("🗑️ selectedChat actual:", selectedChatRef.current);
 
       // 💡 Forzar limpieza del chat actual si corresponde
-      if (!selectedChat || (selectedChat.tipo === "grupo" && Number(selectedChat.grupo_id) === grupoId)) {
+      const currentSelectedChat = selectedChatRef.current;
+      if (!currentSelectedChat || (currentSelectedChat.tipo === "grupo" && Number(currentSelectedChat.grupo_id) === grupoId)) {
         logDev("🧹 Cerrando chat actual...");
         setSelectedChat(null);
       }
@@ -1176,7 +1285,7 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat, addToLi
       socket.off("miembrosActualizados", handleMiembrosActualizados);
       socket.off("grupoEliminado", handleGrupoEliminado);
     };
-  }, [userId, selectedChat, silenciados, grupos, estadosUsuarios]);
+  }, [userId]);
 
   // -------------------------------
   // 🔹 Socket.IO PARA ELIMINAR MENSAJES, DESHACER ELIMINADO, EDITAR MENSAJE
@@ -1722,7 +1831,10 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat, addToLi
       if (element?.isConnected) nextPositions.set(key, element.getBoundingClientRect());
     });
 
-    if (!reduceMotion && previousChatPositionsRef.current.size) {
+    const shouldAnimate = animateChatReorderRef.current;
+    animateChatReorderRef.current = false;
+
+    if (shouldAnimate && !reduceMotion && previousChatPositionsRef.current.size) {
       nextPositions.forEach((nextRect, key) => {
         const previousRect = previousChatPositionsRef.current.get(key);
         const element = chatItemRefs.current.get(key);
@@ -1749,29 +1861,35 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat, addToLi
   });
 
   const handleSelectChat = async (chat) => {
+    // La selección debe ser instantánea y estable. No tocamos el array completo
+    // de mensajes aquí porque eso reconstruía ChatList y provocaba el efecto
+    // de "sube/baja" al hacer click entre dos conversaciones.
     onSelectChat(chat);
+
     if (estaMarcadoNoLeido(chat)) {
       actualizarEstadoChat(chat, { marcadoNoLeido: false }).catch((err) =>
         console.error("❌ Error limpiando marcado como no leído:", err)
       );
     }
+
+    // Actualización optimista: solo cambia el contador de la fila seleccionada.
+    setChats((prev) => prev.map((item) => {
+      const sameChat =
+        item.tipo === chat.tipo &&
+        Number(getChatId(item)) === Number(getChatId(chat));
+      return sameChat
+        ? { ...item, mensajes_no_leidos: 0, visto: 1 }
+        : item;
+    }));
+
     try {
       if (chat.tipo === "grupo") {
-         logDev("📡 Chat grupo seleccionado:", chat);
         if (!chat.ultimo_mensaje) return;
 
         await axios.put("/api/mensajes/grupo/marcar-vistos-grupo", {
           userId,
           grupoId: chat.grupo_id,
         });
-
-        setMensajes((prev) =>
-          prev.map((msg) =>
-            msg.grupo_id === chat.grupo_id
-              ? { ...msg, vistos: [...(msg.vistos || []), userId] }
-              : msg
-          )
-        );
       } else {
         if (!chat.ultimo_mensaje) return;
 
@@ -1779,15 +1897,6 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat, addToLi
           userId,
           contactoId: chat.usuario_id,
         });
-
-        setMensajes((prev) =>
-          prev.map((msg) => {
-            const belongsToChat =
-              (Number(msg.usuario_envia_id) === Number(chat.usuario_id) && Number(msg.usuario_recibe_id) === Number(userId)) ||
-              (Number(msg.usuario_envia_id) === Number(userId) && Number(msg.usuario_recibe_id) === Number(chat.usuario_id));
-            return belongsToChat ? { ...msg, visto: 1, mensajes_no_leidos: 0 } : msg;
-          })
-        );
       }
     } catch (err) {
       console.error("❌ Error al marcar mensajes como vistos:", err);
