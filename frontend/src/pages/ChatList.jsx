@@ -1083,28 +1083,63 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat, addToLi
       });
     };
 
-    // Marcar como visto NO debe reconstruir todos los mensajes del chat.
-    // Solo actualizamos la fila afectada; así hacer click entre conversaciones
-    // no vuelve a ordenar ni animar toda la lista.
+    // Los vistos privados tienen dirección: emisorId -> receptorId.
+    // Si YO soy el receptor, solo se limpian mis no leídos; NO se pone azul
+    // mi último mensaje enviado. Si YO soy el emisor, entonces sí se actualiza
+    // el visto de mis mensajes porque el receptor acaba de leerlos.
     const handleMensajesVistos = ({ emisorId, receptorId }) => {
       const miId = Number(userId);
-      const otherId = Number(emisorId) === miId ? Number(receptorId) : Number(emisorId);
+      const emisor = Number(emisorId);
+      const receptor = Number(receptorId);
+      const otherId = emisor === miId ? receptor : emisor;
 
-      setChats((prev) => prev.map((chat) => {
-        if (chat.tipo !== "privado" || Number(chat.usuario_id) !== otherId) return chat;
-        return { ...chat, mensajes_no_leidos: 0, visto: 1 };
-      }));
-    };
+      if (!otherId) return;
 
-    const handleMensajesVistosGrupo = ({ userId: vistoPor, grupoId }) => {
-      // El evento puede llegar por mensajes antiguos; la lista solo necesita
-      // reflejar el contador/estado, no tocar el historial completo.
-      if (Number(vistoPor) !== Number(userId)) return;
-      setChats((prev) => prev.map((chat) =>
-        chat.tipo === "grupo" && Number(chat.grupo_id) === Number(grupoId)
-          ? { ...chat, mensajes_no_leidos: 0, visto: 1 }
-          : chat
-      ));
+      if (receptor === miId) {
+        // Yo acabo de leer mensajes del otro usuario. Mantener intacto
+        // el estado de lectura de mis propios mensajes.
+        setMensajes((prev) =>
+          prev.map((m) =>
+            Number(m.usuario_envia_id) === otherId &&
+            Number(m.usuario_recibe_id) === miId
+              ? { ...m, visto: 1, mensajes_no_leidos: 0 }
+              : m
+          )
+        );
+
+        setChats((prev) =>
+          prev.map((chat) =>
+            chat.tipo === "privado" && Number(chat.usuario_id) === otherId
+              ? { ...chat, mensajes_no_leidos: 0 }
+              : chat
+          )
+        );
+        return;
+      }
+
+      if (emisor === miId) {
+        // El otro usuario leyó mis mensajes. Ahora sí corresponde mostrar
+        // los dos checks azules en mi último mensaje enviado.
+        setMensajes((prev) =>
+          prev.map((m) =>
+            Number(m.usuario_envia_id) === miId &&
+            Number(m.usuario_recibe_id) === otherId
+              ? { ...m, visto: 1 }
+              : m
+          )
+        );
+
+        setChats((prev) =>
+          prev.map((chat) =>
+            chat.tipo === "privado" && Number(chat.usuario_id) === otherId
+              ? {
+                  ...chat,
+                  visto: chat.tipo_mensaje === "enviado" ? 1 : chat.visto,
+                }
+              : chat
+          )
+        );
+      }
     };
 
      // 🟢 NUEVO: actualizar contador no vistos en tiempo real
@@ -1139,13 +1174,41 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat, addToLi
     const handleTodosMensajesVistosGrupo = ({ grupoId, mensajeId }) => {
       logDev("🔹 Evento TODOS MENSAJES VISTOS recibido:", { grupoId, mensajeId });
 
-      // Para la lista basta con actualizar el contador. El historial y sus
-      // checks los administra la conversación abierta. No reconstruimos ChatList.
-      setChats(prev => prev.map(c =>
-        c.tipo === "grupo" && Number(c.grupo_id) === Number(grupoId)
-          ? { ...c, mensajes_no_leidos: 0, visto: 1 }
-          : c
-      ));
+      const groupId = Number(grupoId);
+      const seenThroughId = Number(mensajeId);
+
+      // En un grupo los checks azules significan que TODOS los demás
+      // participantes vieron el mensaje. Solo debe afectar a mensajes
+      // enviados por el usuario actual y no a cualquier chat/grupo abierto.
+      setGrupos((prev) =>
+        prev.map((g) => {
+          if (Number(g.grupo_id) !== groupId) return g;
+
+          const ultimoId = Number(g.ultimo_mensaje_id || 0);
+          const ultimoEsMio = Number(g.ultimo_remitente_id) === Number(userId);
+
+          return {
+            ...g,
+            mensajes_no_leidos: 0,
+            visto: ultimoEsMio && ultimoId > 0 && ultimoId <= seenThroughId ? 1 : g.visto,
+          };
+        })
+      );
+
+      setChats((prev) =>
+        prev.map((chat) => {
+          if (chat.tipo !== "grupo" || Number(chat.grupo_id) !== groupId) return chat;
+
+          const ultimoId = Number(chat.ultimo_mensaje_id || 0);
+          const ultimoEsMio = Number(chat.ultimo_remitente_id) === Number(userId);
+
+          return {
+            ...chat,
+            mensajes_no_leidos: 0,
+            visto: ultimoEsMio && ultimoId > 0 && ultimoId <= seenThroughId ? 1 : chat.visto,
+          };
+        })
+      );
     };
 
     // --- ⬇️ NUEVO: grupo actualizado ---
@@ -1264,7 +1327,6 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat, addToLi
     socket.on("nuevoMensajeGrupo", handleNuevoMensajeGrupo);
     socket.on("grupoCreado", handleGrupoCreado);
     socket.on("mensajesVistos", handleMensajesVistos);
-    socket.on("mensajesVistosGrupo", handleMensajesVistosGrupo);
     socket.on("actualizarNoVistosGrupo", handleActualizarNoVistosGrupo);
     socket.on("todosMensajesVistosGrupo", handleTodosMensajesVistosGrupo);
     socket.on("grupoActualizado", handleGrupoActualizado);
@@ -1277,7 +1339,6 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat, addToLi
       socket.off("nuevoMensajeGrupo", handleNuevoMensajeGrupo);
       socket.off("grupoCreado", handleGrupoCreado);
       socket.off("mensajesVistos", handleMensajesVistos);
-      socket.off("mensajesVistosGrupo", handleMensajesVistosGrupo);
       socket.off("actualizarNoVistosGrupo", handleActualizarNoVistosGrupo);
       socket.off("todosMensajesVistosGrupo", handleTodosMensajesVistosGrupo);
       socket.off("grupoActualizado", handleGrupoActualizado);
@@ -1860,46 +1921,17 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat, addToLi
     previousChatPositionsRef.current = nextPositions;
   });
 
-  const handleSelectChat = async (chat) => {
-    // La selección debe ser instantánea y estable. No tocamos el array completo
-    // de mensajes aquí porque eso reconstruía ChatList y provocaba el efecto
-    // de "sube/baja" al hacer click entre dos conversaciones.
+  const handleSelectChat = (chat) => {
+    // Seleccionar una conversación NO marca vistos aquí.
+    // ChatBody lo hace después de cargar los últimos mensajes y comprobar
+    // que el usuario realmente está viendo el final de la conversación.
+    // Esto evita dobles PUT, carreras y falsos checks azules.
     onSelectChat(chat);
 
     if (estaMarcadoNoLeido(chat)) {
       actualizarEstadoChat(chat, { marcadoNoLeido: false }).catch((err) =>
         console.error("❌ Error limpiando marcado como no leído:", err)
       );
-    }
-
-    // Actualización optimista: solo cambia el contador de la fila seleccionada.
-    setChats((prev) => prev.map((item) => {
-      const sameChat =
-        item.tipo === chat.tipo &&
-        Number(getChatId(item)) === Number(getChatId(chat));
-      return sameChat
-        ? { ...item, mensajes_no_leidos: 0, visto: 1 }
-        : item;
-    }));
-
-    try {
-      if (chat.tipo === "grupo") {
-        if (!chat.ultimo_mensaje) return;
-
-        await axios.put("/api/mensajes/grupo/marcar-vistos-grupo", {
-          userId,
-          grupoId: chat.grupo_id,
-        });
-      } else {
-        if (!chat.ultimo_mensaje) return;
-
-        await axios.put("/api/mensajes/marcar-vistos", {
-          userId,
-          contactoId: chat.usuario_id,
-        });
-      }
-    } catch (err) {
-      console.error("❌ Error al marcar mensajes como vistos:", err);
     }
   };
 

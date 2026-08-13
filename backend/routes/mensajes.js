@@ -945,10 +945,15 @@ router.put("/marcar-vistos", async (req, res) => {
 
     const { enviarEventoAlUsuario } = req.app.get("socketUtils");
 
-    const payload = { emisorId: contactoId, receptorId: userId };
-
-    enviarEventoAlUsuario(contactoId, "mensajesVistos", payload);
-    enviarEventoAlUsuario(userId, "mensajesVistos", payload);
+    // Solo notificar al emisor cuando realmente se marcaron mensajes.
+    // Si no hubo filas pendientes, emitir el evento igualmente podía hacer
+    // que el emisor mostrara checks azules aunque el receptor no hubiera
+    // leído ningún mensaje nuevo.
+    if (actualizados > 0) {
+      const payload = { emisorId: contactoId, receptorId: userId };
+      enviarEventoAlUsuario(contactoId, "mensajesVistos", payload);
+      enviarEventoAlUsuario(userId, "mensajesVistos", payload);
+    }
 
     res.json({ success: true, actualizados });
   } catch (err) {

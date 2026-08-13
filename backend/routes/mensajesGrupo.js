@@ -19,7 +19,6 @@ function formatDateToMySQL(date) {
 const MARK_GROUP_BATCH_SIZE = 250;
 const MARK_GROUP_MAX_BATCHES = 8;
 const groupSeenInFlight = new Map();
-const MAX_GROUP_SEEN_EVENTS = 500;
 
 async function runMarkGroupMessagesAsSeen(grupoId, userId) {
   const idsMarcados = [];
@@ -869,14 +868,6 @@ router.put("/marcar-vistos-grupo", async (req, res) => {
       return res.json({ success: true, actualizados: 0 });
     }
 
-    idsMarcados.slice(-MAX_GROUP_SEEN_EVENTS).forEach((mensajeId) => {
-      io.to(`grupo_${grupoId}`).emit("mensajesVistosGrupo", {
-        grupoId,
-        userId,
-        mensajeId,
-      });
-    });
-
     enviarEventoAlUsuario(userId, "actualizarNoVistosGrupo", {
       grupoId,
       reset: true,
@@ -905,8 +896,9 @@ router.put("/marcar-vistos-grupo", async (req, res) => {
         db,
         `SELECT COUNT(DISTINCT usuario_id) AS vistos 
          FROM mensajes_grupo_vistos 
-         WHERE mensaje_id = ?`,
-        [ultimoMensaje.id],
+         WHERE mensaje_id = ?
+           AND usuario_id <> ?`,
+        [ultimoMensaje.id, ultimoMensaje.creadorId],
         { attempts: 3, label: "contar vistos del ultimo mensaje de grupo" }
       );
 

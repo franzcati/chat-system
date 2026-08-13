@@ -1020,12 +1020,20 @@ const ChatBox = ({ chat, user, setChat, onVerPerfil, onAddToList, estadosUsuario
       // Nuevo mensaje de grupo
       const handleNuevoMensajeGrupo = agregarMensajeGrupo;
 
-      // Todos los miembros vieron hasta cierto mensaje
+      // En grupos, el check azul significa que TODOS los demás miembros
+      // vieron el mensaje. Solo cambiamos el estado de los mensajes enviados
+      // por el usuario actual; los mensajes entrantes no son "mis vistos".
       const handleTodosMensajesVistosGrupo = ({ grupoId, mensajeId }) => {
-        if (grupoId !== chat.grupo_id) return;
-        setMessages(prev =>
-          prev.map(msg =>
-            msg.id <= mensajeId && msg.grupo_id === grupoId
+        if (Number(grupoId) !== Number(chat.grupo_id)) return;
+
+        const limite = Number(mensajeId);
+        if (!Number.isFinite(limite) || limite <= 0) return;
+
+        setMessages((prev) =>
+          prev.map((msg) =>
+            Number(msg.grupo_id) === Number(grupoId) &&
+            Number(msg.usuario_id) === Number(user.id) &&
+            Number(msg.id) <= limite
               ? { ...msg, visto: 1 }
               : msg
           )
@@ -1318,23 +1326,23 @@ const ChatBox = ({ chat, user, setChat, onVerPerfil, onAddToList, estadosUsuario
         });
       };
 
-      // 👇 Nuevo: manejar cuando ambos han visto los mensajes
+      // Un evento de vistos tiene dirección: emisorId -> receptorId.
+      // Solo el emisor necesita actualizar sus checks azules. Si el usuario
+      // actual es el receptor, sus mensajes propios NO deben cambiar de color.
       const handleMensajesVistos = ({ emisorId, receptorId }) => {
-        // Solo si el evento corresponde a este chat actual
-        if (
-          (chat.usuario_id === emisorId && user.id === receptorId) ||
-          (chat.usuario_id === receptorId && user.id === emisorId)
-        ) {
-          logDev("🔹 Evento MENSAJES VISTOS recibido:", { emisorId, receptorId });
+        if (Number(emisorId) !== Number(user.id)) return;
+        if (Number(receptorId) !== Number(chat.usuario_id)) return;
 
-          setMessages(prev =>
-            prev.map(m =>
-              m.usuario_envia_id === emisorId && m.usuario_recibe_id === receptorId
-                ? { ...m, visto: 1 }
-                : m
-            )
-          );
-        }
+        logDev("🔹 Evento MENSAJES VISTOS recibido:", { emisorId, receptorId });
+
+        setMessages((prev) =>
+          prev.map((m) =>
+            Number(m.usuario_envia_id) === Number(emisorId) &&
+            Number(m.usuario_recibe_id) === Number(receptorId)
+              ? { ...m, visto: 1 }
+              : m
+          )
+        );
       };
 
       // Chat individual
@@ -3223,14 +3231,6 @@ const ChatBox = ({ chat, user, setChat, onVerPerfil, onAddToList, estadosUsuario
           userId: user.id,
           grupoId: chat.grupo_id,
         });
-
-        setMessages((prev) =>
-          prev.map((message) =>
-            Number(message.grupo_id) === Number(chat.grupo_id) && Number(message.usuario_id) !== Number(user.id)
-              ? { ...message, visto: 1 }
-              : message
-          )
-        );
         return;
       }
 
@@ -3238,14 +3238,6 @@ const ChatBox = ({ chat, user, setChat, onVerPerfil, onAddToList, estadosUsuario
         userId: user.id,
         contactoId: chat.usuario_id,
       });
-
-      setMessages((prev) =>
-        prev.map((message) =>
-          Number(message.usuario_envia_id) === Number(chat.usuario_id) && Number(message.usuario_recibe_id) === Number(user.id)
-            ? { ...message, visto: 1 }
-            : message
-        )
-      );
     } catch (err) {
       console.error("❌ Error marcando chat como visto desde el scroll:", err);
     }
