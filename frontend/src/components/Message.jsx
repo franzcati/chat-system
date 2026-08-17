@@ -24,6 +24,295 @@ const reactions = ["👍", "❤️", "😂", "😮", "😢", "🙏"];
 const AUDIO_MESSAGE_WAVE_BAR_COUNT = 44;
 const AUDIO_MESSAGE_WAVE_BAR_WIDTH = 3;
 
+const formatMediaBytes = (bytes = 0) => {
+  const size = Number(bytes || 0);
+  if (!Number.isFinite(size) || size <= 0) return "";
+  if (size < 1024) return `${Math.round(size)} B`;
+  if (size < 1024 * 1024) return `${Math.max(1, Math.round(size / 1024))} kB`;
+  const mb = size / (1024 * 1024);
+  return `${mb >= 10 ? Math.round(mb) : mb.toFixed(1)} MB`;
+};
+
+const addMediaRetryParam = (rawUrl, attempt) => {
+  if (!attempt) return rawUrl;
+  const value = String(rawUrl || "");
+  if (!value || value.startsWith("blob:") || value.startsWith("data:")) return value;
+
+  try {
+    const base = typeof window !== "undefined" ? window.location.origin : "https://quickchat.local";
+    const url = new URL(value, base);
+    url.searchParams.set("_media_retry", `${Date.now()}-${attempt}`);
+    return /^https?:\/\//i.test(value) ? url.toString() : `${url.pathname}${url.search}${url.hash}`;
+  } catch {
+    const separator = value.includes("?") ? "&" : "?";
+    return `${value}${separator}_media_retry=${Date.now()}-${attempt}`;
+  }
+};
+
+const MEDIA_SESSION_CACHE_KEY = "quickchat.media.loaded.v2";
+const MEDIA_SESSION_CACHE_LIMIT = 700;
+const MEDIA_MAX_PARALLEL_LOADS = 3;
+
+const loadedMediaSession = new Set();
+let loadedMediaSessionReady = false;
+let mediaActiveLoads = 0;
+const mediaLoadQueue = [];
+
+const getMediaCacheKey = (rawUrl = "") => {
+  const value = String(rawUrl || "").trim();
+  if (!value || /^(blob:|data:)/i.test(value)) return value;
+
+  try {
+    const base = typeof window !== "undefined" ? window.location.origin : "https://quickchat.local";
+    const url = new URL(value, base);
+    url.searchParams.delete("_media_retry");
+    return /^https?:\/\//i.test(value)
+      ? url.toString()
+      : `${url.pathname}${url.search}${url.hash}`;
+  } catch {
+    return value.replace(/([?&])_media_retry=[^&]*/g, "$1").replace(/[?&]$/, "");
+  }
+};
+
+const hydrateLoadedMediaSession = () => {
+  if (loadedMediaSessionReady || typeof window === "undefined") return;
+  loadedMediaSessionReady = true;
+
+  try {
+    const raw = window.sessionStorage.getItem(MEDIA_SESSION_CACHE_KEY);
+    const items = JSON.parse(raw || "[]");
+    if (Array.isArray(items)) {
+      items.slice(-MEDIA_SESSION_CACHE_LIMIT).forEach((item) => {
+        if (typeof item === "string" && item) loadedMediaSession.add(item);
+      });
+    }
+  } catch {
+    // Si sessionStorage no está disponible, seguimos con memoria de módulo.
+  }
+};
+
+const wasMediaLoadedThisSession = (rawUrl) => {
+  hydrateLoadedMediaSession();
+  const key = getMediaCacheKey(rawUrl);
+  return !!key && loadedMediaSession.has(key);
+};
+
+const rememberLoadedMedia = (rawUrl) => {
+  const key = getMediaCacheKey(rawUrl);
+  if (!key || /^(blob:|data:)/i.test(key)) return;
+
+  hydrateLoadedMediaSession();
+  if (loadedMediaSession.has(key)) return;
+
+  loadedMediaSession.add(key);
+
+  while (loadedMediaSession.size > MEDIA_SESSION_CACHE_LIMIT) {
+    const first = loadedMediaSession.values().next().value;
+    loadedMediaSession.delete(first);
+  }
+
+  try {
+    window.sessionStorage.setItem(
+      MEDIA_SESSION_CACHE_KEY,
+      JSON.stringify(Array.from(loadedMediaSession))
+    );
+  } catch {
+    // La memoria de módulo sigue funcionando aunque sessionStorage esté lleno.
+  }
+};
+
+const pumpMediaLoadQueue = () => {
+  while (mediaActiveLoads < MEDIA_MAX_PARALLEL_LOADS && mediaLoadQueue.length) {
+    const entry = mediaLoadQueue.shift();
+    if (!entry || entry.cancelled) continue;
+
+    mediaActiveLoads += 1;
+    let released = false;
+
+    const release = () => {
+      if (released) return;
+      released = true;
+      mediaActiveLoads = Math.max(0, mediaActiveLoads - 1);
+      pumpMediaLoadQueue();
+    };
+
+    entry.start(release);
+  }
+};
+
+const enqueueMediaLoad = (start) => {
+  const entry = { start, cancelled: false };
+  mediaLoadQueue.push(entry);
+  pumpMediaLoadQueue();
+
+  return () => {
+    entry.cancelled = true;
+  };
+};
+
+const ProgressiveChatImage = ({
+  src,
+  alt,
+  className = "",
+  style,
+  onClick,
+  sizeBytes = 0,
+  pendingUpload = false,
+}) => {
+  const imgRef = useRef(null);
+  const slotReleaseRef = useRef(null);
+  const previouslyLoaded = wasMediaLoadedThisSession(src);
+  const [status, setStatus] = useState(previouslyLoaded ? "loaded" : "loading");
+  const [attempt, setAttempt] = useState(0);
+  const [nearViewport, setNearViewport] = useState(
+    previouslyLoaded || /^(blob:|data:)/i.test(String(src || ""))
+  );
+  const [activeSrc, setActiveSrc] = useState(previouslyLoaded ? src : "");
+
+  const effectiveSrc = useMemo(() => addMediaRetryParam(src, attempt), [src, attempt]);
+
+  const releaseLoadSlot = () => {
+    const release = slotReleaseRef.current;
+    slotReleaseRef.current = null;
+    release?.();
+  };
+
+  useEffect(() => {
+    releaseLoadSlot();
+    const cached = wasMediaLoadedThisSession(src);
+    setStatus(cached ? "loaded" : "loading");
+    setAttempt(0);
+    setNearViewport(cached || /^(blob:|data:)/i.test(String(src || "")));
+    setActiveSrc(cached ? src : "");
+  }, [src]);
+
+  // Sólo iniciar medios que estén cerca de la zona visible del chat.
+  useEffect(() => {
+    if (nearViewport || typeof IntersectionObserver === "undefined") {
+      if (!nearViewport) setNearViewport(true);
+      return undefined;
+    }
+
+    const node = imgRef.current;
+    if (!node) return undefined;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) {
+          setNearViewport(true);
+          observer.disconnect();
+        }
+      },
+      { root: null, rootMargin: "700px 0px", threshold: 0.01 }
+    );
+
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [nearViewport, src]);
+
+  useEffect(() => {
+    if (!nearViewport || !effectiveSrc) return undefined;
+
+    // Si ya cargó durante esta sesión, dejar que Chrome lo pinte desde caché
+    // y no volver a enseñar el spinner por cambiar de chat.
+    if (wasMediaLoadedThisSession(src)) {
+      setActiveSrc(effectiveSrc);
+      setStatus("loaded");
+
+      const frame = window.requestAnimationFrame(() => {
+        const img = imgRef.current;
+        if (img && (!img.complete || !img.naturalWidth)) {
+          setStatus("loading");
+        }
+      });
+
+      return () => window.cancelAnimationFrame(frame);
+    }
+
+    let mounted = true;
+    const cancelQueued = enqueueMediaLoad((release) => {
+      if (!mounted) {
+        release();
+        return;
+      }
+
+      slotReleaseRef.current = release;
+      setStatus("loading");
+      setActiveSrc(effectiveSrc);
+    });
+
+    return () => {
+      mounted = false;
+      cancelQueued();
+      releaseLoadSlot();
+    };
+  }, [nearViewport, effectiveSrc, src]);
+
+  useEffect(() => () => releaseLoadSlot(), []);
+
+  const handleLoaded = () => {
+    rememberLoadedMedia(src);
+    setStatus("loaded");
+    releaseLoadSlot();
+  };
+
+  const handleError = () => {
+    setStatus("error");
+    releaseLoadSlot();
+  };
+
+  const retry = (event) => {
+    event?.preventDefault?.();
+    event?.stopPropagation?.();
+    releaseLoadSlot();
+    setStatus("loading");
+    setActiveSrc("");
+    setNearViewport(true);
+    setAttempt((value) => value + 1);
+  };
+
+  const sizeLabel = formatMediaBytes(sizeBytes);
+  const showLoadOverlay = !pendingUpload && status !== "loaded";
+
+  return (
+    <>
+      <img
+        ref={imgRef}
+        key={activeSrc || `pending-${getMediaCacheKey(src)}`}
+        src={activeSrc || undefined}
+        alt={alt}
+        loading="lazy"
+        decoding="async"
+        draggable="false"
+        className={`${className} ${status === "loaded" ? "is-media-loaded" : "is-media-loading"}`.trim()}
+        style={style}
+        onLoad={handleLoaded}
+        onError={handleError}
+        onClick={onClick}
+      />
+
+      {showLoadOverlay && (
+        <div className={`wa-media-load-overlay ${status === "error" ? "is-error" : ""}`}>
+          {status === "loading" ? (
+            <span className="wa-media-load-spinner" aria-label="Descargando imagen" />
+          ) : (
+            <button
+              type="button"
+              className="wa-media-download-btn"
+              onClick={retry}
+              aria-label="Reintentar descarga"
+              title="Reintentar descarga"
+            >
+              <i className="fa-solid fa-download" aria-hidden="true" />
+              {sizeLabel && <span>{sizeLabel}</span>}
+            </button>
+          )}
+        </div>
+      )}
+    </>
+  );
+};
+
 const COPY_BLOCK_TAGS = new Set([
   "address", "article", "aside", "blockquote", "br", "dd", "div",
   "dl", "dt", "fieldset", "figcaption", "figure", "footer", "form",
@@ -2368,11 +2657,9 @@ const Message = ({
                                   abrirGaleria(todasNormalizadas, idx)
                                 }
                               >
-                                <img
+                                <ProgressiveChatImage
                                   src={finalUrl}
                                   alt={`imagen-${idx}`}
-                                  loading="lazy"
-                                  decoding="async"
                                   className="wa-message-image"
                                   style={{
                                     height: total === 1 ? "auto" : 120,
@@ -2480,7 +2767,7 @@ const Message = ({
                               <span className="wa-media-upload-overlay wa-sticker-upload-overlay">
                                 <button
                                   type="button"
-                                  className="wa-upload-cancel-btn"
+                                  className="wa-upload-cancel-btn is-indeterminate"
                                   onClick={(event) => {
                                     event.preventDefault();
                                     event.stopPropagation();
@@ -2489,7 +2776,7 @@ const Message = ({
                                   aria-label="Cancelar envío"
                                   title="Cancelar envío"
                                 >
-                                  ×
+                                  <span className="wa-upload-cancel-x" aria-hidden="true">×</span>
                                 </button>
                               </span>
                             )}
@@ -2603,12 +2890,12 @@ const Message = ({
                       return (
                         <div className="wa-message-media-stack">
                           <div className="wa-single-image-wrap">
-                            <img
+                            <ProgressiveChatImage
                               src={urlArchivo}
                               alt={nombre}
-                              loading="lazy"
-                              decoding="async"
                               className="wa-message-image"
+                              sizeBytes={tamano}
+                              pendingUpload={estado === "subiendo"}
                               style={{
                                 opacity: estado === "subiendo" ? 0.8 : 1,
                               }}
@@ -2617,23 +2904,29 @@ const Message = ({
                               }
                             />
 
-                            {estado === "subiendo" && (
-                              <div className="wa-media-upload-overlay">
-                                <button
-                                  type="button"
-                                  className="wa-upload-cancel-btn"
-                                  onClick={(event) => {
-                                    event.preventDefault();
-                                    event.stopPropagation();
-                                    onCancelUpload?.(mensajeData.id || id);
-                                  }}
-                                  aria-label="Cancelar envío"
-                                  title="Cancelar envío"
-                                >
-                                  ×
-                                </button>
-                              </div>
-                            )}
+                            {estado === "subiendo" && (() => {
+                              const progressValue = Math.max(0, Math.min(100, Number(progreso) || 0));
+                              const determinate = progressValue > 0;
+
+                              return (
+                                <div className="wa-media-upload-overlay">
+                                  <button
+                                    type="button"
+                                    className={`wa-upload-cancel-btn ${determinate ? "is-determinate" : "is-indeterminate"}`}
+                                    style={{ "--wa-upload-progress": `${progressValue}%` }}
+                                    onClick={(event) => {
+                                      event.preventDefault();
+                                      event.stopPropagation();
+                                      onCancelUpload?.(mensajeData.id || id);
+                                    }}
+                                    aria-label={`Cancelar envío${determinate ? ` (${progressValue}%)` : ""}`}
+                                    title="Cancelar envío"
+                                  >
+                                    <span className="wa-upload-cancel-x" aria-hidden="true">×</span>
+                                  </button>
+                                </div>
+                              );
+                            })()}
 
                             {estado === "error" && (
                               <button

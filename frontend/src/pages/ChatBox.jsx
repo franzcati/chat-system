@@ -2082,6 +2082,185 @@ const ChatBox = ({ chat, user, setChat, onVerPerfil, onAddToList, estadosUsuario
     markPendingUploadError(pendingId, "Envío cancelado. Haz clic para volver a intentar.");
   }, []);
 
+  async function uploadAndSendGif(gif, options = {}) {
+    if (!gif?.id || !chat || !user?.id) return null;
+
+    const remoteUrl =
+      options.remoteUrl ||
+      gif.images?.fixed_height?.url ||
+      gif.images?.downsized?.url ||
+      gif.images?.original?.url;
+
+    if (!remoteUrl) {
+      throw new Error("El GIF seleccionado no tiene una URL utilizable.");
+    }
+
+    const pendingId = options.pendingId || `temp-gif-${Date.now()}-${Math.random()}`;
+    const previewUrl = options.previewUrl || remoteUrl;
+    const replyToId = options.replyToId ?? replyingTo?.id ?? null;
+    const replyToType = options.replyToType ?? replyingTo?.reply_to_tipo ?? replyingTo?.reply_source ?? "privado";
+    const replyToGrupoId = options.replyToGrupoId ?? replyingTo?.reply_to_grupo_id ?? replyingTo?.source_group_id ?? null;
+    const replyPayload = options.replyPayload ?? replyingTo ?? null;
+    const gifSize = Number(
+      gif.images?.fixed_height?.size ||
+      gif.images?.downsized?.size ||
+      gif.images?.original?.size ||
+      0
+    );
+
+    if (!options.keepExistingPending) {
+      const tempMessage = createLocalOutgoingMessage({
+        id: pendingId,
+        mensaje: previewUrl,
+        archivo_url: previewUrl,
+        tipo_archivo: "image/gif",
+        nombre_archivo: `giphy_${gif.id}.gif`,
+        tamano: gifSize,
+        estado: "subiendo",
+        progreso: 0,
+        reply_to_id: replyToId,
+        reply_to_tipo: replyToType,
+        reply_to_grupo_id: replyToGrupoId,
+        reply_to: replyPayload,
+      });
+
+      setMessages((prev) => sortAndDedupeMessages([...prev, tempMessage]));
+    } else {
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === pendingId
+            ? { ...m, estado: "subiendo", progreso: 0, error_mensaje: null }
+            : m
+        )
+      );
+    }
+
+    if (replyToId && !options.keepExistingPending) {
+      setReplyingTo(null);
+    }
+
+    const controller = makePendingController(pendingId, {
+      kind: "gif",
+      gif,
+      remoteUrl,
+      previewUrl,
+      replyToId,
+      replyToType,
+      replyToGrupoId,
+      replyPayload,
+    });
+
+    try {
+      // 1) El emisor ya ve el preview local/remoto con spinner.
+      // 2) El backend descarga y confirma una copia local.
+      const cacheRes = await axios.post(
+        "/api/giphy/cache",
+        { id: gif.id, url: remoteUrl },
+        { signal: controller.signal }
+      );
+
+      const localUrl = String(cacheRes.data?.url || "").trim();
+      if (!localUrl) {
+        throw new Error("El backend no devolvió la URL local del GIF.");
+      }
+
+      // Actualizamos el temporal ANTES de crear el mensaje real. Así el socket
+      // puede reconciliarlo por la misma URL local sin duplicar burbujas.
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === pendingId
+            ? {
+                ...m,
+                mensaje: localUrl,
+                archivo_url: localUrl,
+                tipo_archivo: "image/gif",
+                nombre_archivo: `giphy_${gif.id}.gif`,
+                estado: "subiendo",
+                progreso: 100,
+              }
+            : m
+        )
+      );
+
+      // 3) Sólo cuando el GIF ya existe en nuestro servidor se crea/emite el mensaje.
+      let nuevo;
+      if (chat.tipo === "grupo") {
+        const res = await axios.post("/api/mensajes/grupo", {
+          grupoId: chat.grupo_id,
+          usuarioId: user.id,
+          mensaje: localUrl,
+          replyToId,
+          replyToType,
+          replyToGrupoId,
+        }, { signal: controller.signal });
+        nuevo = res.data?.mensaje || res.data;
+      } else {
+        const res = await axios.post("/api/mensajes", {
+          senderId: user.id,
+          receiverId: chat.usuario_id,
+          message: localUrl,
+          replyToId,
+          replyToType,
+          replyToGrupoId,
+        }, { signal: controller.signal });
+        nuevo = res.data?.mensaje || res.data;
+      }
+
+      if (replyPayload && nuevo && !nuevo.reply_to) {
+        nuevo.reply_to = replyPayload;
+        nuevo.reply_to_tipo = replyToType;
+        nuevo.reply_to_grupo_id = replyToGrupoId;
+      }
+
+      if (nuevo?.id) {
+        const finalMessage = {
+          ...nuevo,
+          archivo_url: nuevo.archivo_url || localUrl,
+          tipo_archivo: nuevo.tipo_archivo || "image/gif",
+          nombre_archivo: nuevo.nombre_archivo || `giphy_${gif.id}.gif`,
+          tamano: nuevo.tamano || gifSize,
+          estado: "enviado",
+          progreso: 100,
+        };
+
+        setMessages((prev) => {
+          const realExists = prev.some((m) => Number(m.id) === Number(finalMessage.id));
+
+          if (realExists) {
+            return sortAndDedupeMessages(
+              prev
+                .filter((m) => m.id !== pendingId)
+                .map((m) =>
+                  Number(m.id) === Number(finalMessage.id)
+                    ? { ...m, ...finalMessage }
+                    : m
+                )
+            );
+          }
+
+          return sortAndDedupeMessages(
+            prev.map((m) => m.id === pendingId ? { ...m, ...finalMessage } : m)
+          );
+        });
+      }
+
+      clearPendingUpload(pendingId);
+      return nuevo || null;
+    } catch (err) {
+      if (axios.isCancel?.(err) || err?.name === "CanceledError" || err?.code === "ERR_CANCELED") {
+        markPendingUploadError(pendingId, "Envío cancelado. Haz clic para volver a intentar.");
+        throw err;
+      }
+
+      console.error("❌ Error preparando/enviando GIF:", err);
+      markPendingUploadError(
+        pendingId,
+        "No se pudo enviar el GIF. Haz clic en el icono rojo para reintentar."
+      );
+      throw err;
+    }
+  }
+
   const retryPendingUpload = useCallback((pendingId) => {
     const entry = pendingUploadsRef.current.get(pendingId);
     if (!entry) return;
@@ -2141,6 +2320,20 @@ const ChatBox = ({ chat, user, setChat, onVerPerfil, onAddToList, estadosUsuario
           console.error("❌ Error reintentando imagen:", err);
           markPendingUploadError(pendingId);
         });
+      return;
+    }
+
+    if (entry.kind === "gif") {
+      uploadAndSendGif(entry.gif, {
+        pendingId,
+        remoteUrl: entry.remoteUrl,
+        previewUrl: entry.previewUrl,
+        replyToId: entry.replyToId,
+        replyToType: entry.replyToType,
+        replyToGrupoId: entry.replyToGrupoId,
+        replyPayload: entry.replyPayload,
+        keepExistingPending: true,
+      }).catch(() => {});
       return;
     }
 
@@ -2478,37 +2671,19 @@ const ChatBox = ({ chat, user, setChat, onVerPerfil, onAddToList, estadosUsuario
   const handleSelectGif = async (gif) => {
     if (!gif?.id || gifSendingId) return;
 
-    const remoteUrl =
-      gif.images?.fixed_height?.url ||
-      gif.images?.downsized?.url ||
-      gif.images?.original?.url;
-
-    if (!remoteUrl) {
-      console.error("❌ El GIF seleccionado no tiene una URL utilizable.");
-      return;
-    }
-
     setGifSendingId(gif.id);
+
+    // Igual que WhatsApp: el usuario ve inmediatamente lo que eligió.
+    // El receptor NO recibe nada todavía; primero esperamos a que el backend
+    // confirme que la copia local del GIF está completa.
+    closeMediaPickers();
+    setGifSearch("");
+    setGifResults([]);
+
     try {
-      // Guardamos una copia local antes de enviar el mensaje. De esta forma,
-      // los usuarios ya no dependen de media*.giphy.com al abrir el chat.
-      const res = await axios.post("/api/giphy/cache", {
-        id: gif.id,
-        url: remoteUrl,
-      });
-
-      const localUrl = String(res.data?.url || "").trim();
-      if (!localUrl) {
-        throw new Error("El backend no devolvió la URL local del GIF.");
-      }
-
-      await handleSendMessage(localUrl);
-      closeMediaPickers();
-      setGifSearch("");
-      setGifResults([]);
+      await uploadAndSendGif(gif);
     } catch (err) {
-      console.error("❌ Error guardando/enviando GIF:", err);
-      alert("No se pudo preparar el GIF. Inténtalo nuevamente.");
+      // La burbuja queda visible en estado de error con opción de reintento.
     } finally {
       setGifSendingId(null);
     }
@@ -3405,7 +3580,7 @@ const ChatBox = ({ chat, user, setChat, onVerPerfil, onAddToList, estadosUsuario
           onUploadProgress: (e) => {
             if (onProgress && e.total) {
               const percent = Math.round((e.loaded * 100) / e.total);
-              if (percent === 100 || percent - lastPercent >= 10) {
+              if (percent === 100 || percent - lastPercent >= 2) {
                 lastPercent = percent;
                 onProgress(percent);
               }
@@ -3423,7 +3598,7 @@ const ChatBox = ({ chat, user, setChat, onVerPerfil, onAddToList, estadosUsuario
           onUploadProgress: (e) => {
             if (onProgress && e.total) {
               const percent = Math.round((e.loaded * 100) / e.total);
-              if (percent === 100 || percent - lastPercent >= 10) {
+              if (percent === 100 || percent - lastPercent >= 2) {
                 lastPercent = percent;
                 onProgress(percent);
               }

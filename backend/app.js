@@ -101,7 +101,27 @@ app.use(
   })
 );
 
-app.use("/uploads", express.static(path.join(__dirname, "uploads")));
+// Los archivos de mensajes usan nombres únicos (timestamp/ID), por eso
+// Chrome puede reutilizarlos al cambiar de conversación sin pedirlos otra vez.
+// Otros recursos de /uploads conservan una caché corta.
+app.use(
+  "/uploads",
+  express.static(path.join(__dirname, "uploads"), {
+    etag: true,
+    lastModified: true,
+    setHeaders: (res, filePath) => {
+      const normalized = String(filePath || "").replace(/\\/g, "/");
+      const isPrivateChatMedia = /\/uploads\/chat_\d+_\d+\//i.test(normalized);
+      const isGroupChatMedia = /\/uploads\/grupo_\d+\/archivos\//i.test(normalized);
+
+      if (isPrivateChatMedia || isGroupChatMedia) {
+        res.setHeader("Cache-Control", "public, max-age=2592000, immutable");
+      } else {
+        res.setHeader("Cache-Control", "public, max-age=3600");
+      }
+    },
+  })
+);
 
 // Aquí se agregarán las rutas más adelante
 app.get('/', (req, res) => {
