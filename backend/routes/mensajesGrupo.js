@@ -297,14 +297,28 @@ function normalizarPermisosChat(value) {
   return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
 }
 
-async function usuarioPuedeEnviarAudios(usuarioId) {
+async function obtenerPermisosChatUsuario(usuarioId) {
   const [rows] = await db.query(
     "SELECT permisos_chat FROM usuario WHERE id = ? LIMIT 1",
     [usuarioId]
   );
-  const permisos = normalizarPermisosChat(rows[0]?.permisos_chat);
+  return normalizarPermisosChat(rows[0]?.permisos_chat);
+}
+
+async function usuarioPuedeEnviarAudios(usuarioId) {
+  const permisos = await obtenerPermisosChatUsuario(usuarioId);
   const valor = permisos.enviar_audios;
   return valor === 1 || valor === "1" || valor === true || valor === "true";
+}
+
+async function usuarioPuedeEditarMensajes(usuarioId) {
+  const permisos = await obtenerPermisosChatUsuario(usuarioId);
+  return permisos.editar_mensajes === 1;
+}
+
+async function usuarioPuedeEliminarMensajes(usuarioId) {
+  const permisos = await obtenerPermisosChatUsuario(usuarioId);
+  return permisos.eliminar_mensajes === 1;
 }
 
 // =======================
@@ -1004,6 +1018,10 @@ router.put("/:id/eliminar", async (req, res) => {
   const io = req.app.get("io");
 
   try {
+    if (!(await usuarioPuedeEliminarMensajes(usuarioId))) {
+      return res.status(403).json({ error: "No tienes permiso para eliminar mensajes" });
+    }
+
     await db.query(
       `UPDATE mensajes_grupo SET eliminado = 1 WHERE id = ? AND usuario_id = ?`,
       [id, usuarioId]
@@ -1037,6 +1055,8 @@ router.put("/:id/deshacer", async (req, res) => {
   const io = req.app.get("io");
 
   try {
+    // Restaurar/deshacer un mensaje propio NO depende del permiso
+    // eliminar_mensajes. El permiso solo controla la acción de eliminar.
     await db.query(
       `UPDATE mensajes_grupo SET eliminado = 0 WHERE id = ? AND usuario_id = ?`,
       [id, usuarioId]
@@ -1082,6 +1102,10 @@ router.put("/:id/editar", async (req, res) => {
 
     const mensajeActual = rows[0];
     if (mensajeActual.usuario_id !== usuarioId) return res.status(403).json({ error: "No autorizado" });
+
+    if (!(await usuarioPuedeEditarMensajes(usuarioId))) {
+      return res.status(403).json({ error: "No tienes permiso para editar mensajes" });
+    }
 
     const fechaOriginal = mensajeActual.fecha_editado || mensajeActual.fecha_envio;
 

@@ -98,13 +98,24 @@ router.post('/login', async (req, res) => {
       return res.status(404).json({ error: 'El correo ingresado no existe' });
     }
 
-    const usuario =
-      rows.find((row) => contrasenasCoinciden(row.contrasena, contrasena) && estadoNormalizado(row.estado) === 'aprobado') ||
-      rows.find((row) => contrasenasCoinciden(row.contrasena, contrasena));
+    // Primero validamos la contraseña. Si coincide pero la cuenta no está
+    // aprobada, NO permitimos el acceso. La versión anterior tenía un fallback
+    // que podía autenticar cuentas con estado distinto de "aprobado".
+    const usuarioContrasena = rows.find((row) => contrasenasCoinciden(row.contrasena, contrasena));
 
-    if (!usuario) {
+    if (!usuarioContrasena) {
       return res.status(401).json({ error: 'Contraseña incorrecta' });
     }
+
+    const estado = estadoNormalizado(usuarioContrasena.estado);
+    if (estado !== 'aprobado') {
+      return res.status(403).json({
+        code: 'ACCOUNT_INACTIVE',
+        error: 'Tu cuenta está desactivada o todavía no ha sido aprobada. Comunícate con un administrador.'
+      });
+    }
+
+    const usuario = usuarioContrasena;
 
     usuario.permisos_chat = normalizarPermisosChat(usuario.permisos_chat);
 

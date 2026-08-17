@@ -656,10 +656,24 @@ const Message = ({
     );
   };
 
+  const permisosChat = useMemo(() => {
+    let value = miUsuario?.permisos_chat;
+    if (typeof value === "string") {
+      try { value = JSON.parse(value); } catch { value = {}; }
+    }
+    return value && typeof value === "object" && !Array.isArray(value) ? value : {};
+  }, [miUsuario?.permisos_chat]);
+
+  const tienePermisoEditar = [1, true, "1", "true"].includes(permisosChat.editar_mensajes);
+  const tienePermisoEliminar = [1, true, "1", "true"].includes(permisosChat.eliminar_mensajes);
+
   const puedeEditar =
     isMine &&
+    tienePermisoEditar &&
     !mensajeData.eliminado &&
     Date.now() - new Date(mensajeData.fecha_envio).getTime() < 15 * 60 * 1000;
+
+  const puedeEliminar = isMine && tienePermisoEliminar;
 
   // 👇 estado local que parte de lo que vino del backend
   const reacciones = reaccionesDB || [];
@@ -2161,7 +2175,7 @@ const Message = ({
                       </li>
                     )}
 
-                    {isMine && (
+                    {puedeEliminar && (
                       <>
                         <li>
                           <hr className="dropdown-divider" />
@@ -2953,6 +2967,8 @@ const Message = ({
 
               {/* Footer con hora + acciones pequeñas */}
               <div className="message-footer">
+                {/* Deshacer es independiente del permiso eliminar_mensajes:
+                    el permiso solo controla la eliminación. */}
                 {mensajeData.eliminado === 1 && isMine && (
                   <button
                     type="button"

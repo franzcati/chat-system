@@ -7,6 +7,35 @@ const { toAbsoluteUploadUrl } = require("../utils/urlUtils");
 
 const router = express.Router();
 
+const DEFAULT_CHAT_PERMISSIONS = {
+  crear_grupos: 0,
+  editar_mensajes: 0,
+  eliminar_mensajes: 0,
+  enviar_audios: 0,
+};
+
+function normalizarPermisosChat(value) {
+  let parsed = value || {};
+  if (typeof parsed === "string") {
+    try { parsed = JSON.parse(parsed); } catch { parsed = {}; }
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) parsed = {};
+  return Object.keys(DEFAULT_CHAT_PERMISSIONS).reduce((acc, key) => {
+    const raw = parsed[key];
+    acc[key] = raw === 1 || raw === "1" || raw === true || raw === "true" ? 1 : 0;
+    return acc;
+  }, {});
+}
+
+async function usuarioPuedeCrearGrupos(usuarioId) {
+  if (!usuarioId) return false;
+  const [rows] = await db.query(
+    "SELECT permisos_chat FROM usuario WHERE id = ? LIMIT 1",
+    [usuarioId]
+  );
+  const permisos = normalizarPermisosChat(rows[0]?.permisos_chat);
+  return permisos.crear_grupos === 1;
+}
 
 // Configuración multer (guardar en carpeta /uploads/grupos)
 const fs = require("fs");
@@ -154,6 +183,18 @@ router.get("/:id/todos-usuarios", async (req, res) => {
 router.post("/", upload.single("imagen"), async (req, res) => {
   const { nombre, descripcion, propietarioId, miembros } = req.body;
   const file = req.file;
+
+  try {
+    const autorizado = await usuarioPuedeCrearGrupos(Number(propietarioId));
+    if (!autorizado) {
+      if (file?.path) fs.unlink(file.path, () => {});
+      return res.status(403).json({ error: "No tienes permiso para crear grupos" });
+    }
+  } catch (permissionError) {
+    console.error("❌ Error verificando permiso crear_grupos:", permissionError);
+    if (file?.path) fs.unlink(file.path, () => {});
+    return res.status(500).json({ error: "No se pudo verificar el permiso para crear grupos" });
+  }
 
   // 🔹 Aseguramos que 'miembros' sea un array de IDs válidos
   let miembrosArray;

@@ -144,6 +144,77 @@ const Messenger = () => {
   useEffect(() => {
     if (!usuario?.id) return;
 
+    const actualizarUsuarioLocal = (payload = {}) => {
+      if (Number(payload.usuarioId) !== Number(usuario.id)) return;
+
+      setUsuario((prev) => {
+        if (!prev) return prev;
+
+        const next = {
+          ...prev,
+          ...(payload.rol_id != null ? { rol_id: Number(payload.rol_id) } : {}),
+          ...(Array.isArray(payload.rol_permisos) ? { rol_permisos: payload.rol_permisos } : {}),
+          ...(payload.permisos_chat && typeof payload.permisos_chat === "object"
+            ? { permisos_chat: payload.permisos_chat }
+            : {}),
+        };
+
+        try {
+          localStorage.setItem("usuario", JSON.stringify(next));
+        } catch (error) {
+          console.warn("⚠️ No se pudo actualizar localStorage del usuario:", error);
+        }
+
+        return next;
+      });
+    };
+
+    const handlePermisosChatActualizados = (payload = {}) => {
+      actualizarUsuarioLocal(payload);
+      logDev("🔐 Permisos de chat actualizados en tiempo real:", payload.permisos_chat);
+    };
+
+    const handleRolUsuarioActualizado = (payload = {}) => {
+      actualizarUsuarioLocal(payload);
+      logDev("👤 Rol/permisos de rol actualizados en tiempo real:", payload);
+    };
+
+    const handleCuentaDesactivada = (payload = {}) => {
+      if (Number(payload.usuarioId) !== Number(usuario.id)) return;
+
+      const mensaje = payload.motivo ||
+        "Tu cuenta ha sido desactivada. Comunícate con un administrador.";
+
+      try {
+        localStorage.removeItem("usuario");
+      } catch (error) {
+        console.warn("⚠️ No se pudo limpiar la sesión local:", error);
+      }
+
+      try {
+        socket.disconnect();
+      } catch (error) {
+        console.warn("⚠️ No se pudo desconectar Socket.IO:", error);
+      }
+
+      window.alert(mensaje);
+      navigate("/");
+    };
+
+    socket.on("permisosChatActualizados", handlePermisosChatActualizados);
+    socket.on("rolUsuarioActualizado", handleRolUsuarioActualizado);
+    socket.on("cuentaDesactivada", handleCuentaDesactivada);
+
+    return () => {
+      socket.off("permisosChatActualizados", handlePermisosChatActualizados);
+      socket.off("rolUsuarioActualizado", handleRolUsuarioActualizado);
+      socket.off("cuentaDesactivada", handleCuentaDesactivada);
+    };
+  }, [usuario?.id, navigate]);
+
+  useEffect(() => {
+    if (!usuario?.id) return;
+
     logDev("🔌 Messenger va a conectar socket", usuario.id);
     conectarUsuarioSocket(usuario.id);
 

@@ -627,7 +627,53 @@ router.put("/:id", async (req, res) => {
     }
 
     await connection.commit();
-    res.json({ mensaje: "Usuario actualizado correctamente" });
+
+    // Notificar en tiempo real al usuario afectado para que no tenga que
+    // cerrar sesión y volver a entrar para recibir los nuevos permisos.
+    const socketUtils = req.app.get("socketUtils");
+    const permisosActualizados = normalizarPermisosChat(permisos_chat);
+
+    // Obtener los permisos efectivos del nuevo rol para actualizar la sesión
+    // del usuario inmediatamente, sin cerrar sesión.
+    let rolPermisosActualizados = [];
+    if (rol_id) {
+      const [permisosRol] = await pool.query(
+        `SELECT permiso FROM roles_permisos WHERE rol_id = ?`,
+        [rol_id]
+      );
+      rolPermisosActualizados = permisosRol.map((item) => item.permiso);
+    }
+
+    if (socketUtils?.enviarEventoAlUsuario) {
+      const payloadActualizacion = {
+        usuarioId: Number(id),
+        rol_id: rol_id ? Number(rol_id) : null,
+        rol_permisos: rolPermisosActualizados,
+        permisos_chat: permisosActualizados,
+      };
+
+      // Se mantiene el evento existente para compatibilidad.
+      socketUtils.enviarEventoAlUsuario(
+        id,
+        "permisosChatActualizados",
+        payloadActualizacion
+      );
+
+      // Nuevo evento específico para cambios de rol/permisos del rol.
+      socketUtils.enviarEventoAlUsuario(
+        id,
+        "rolUsuarioActualizado",
+        payloadActualizacion
+      );
+    }
+
+    res.json({
+      mensaje: "Usuario actualizado correctamente",
+      usuarioId: Number(id),
+      rol_id: rol_id ? Number(rol_id) : null,
+      rol_permisos: rolPermisosActualizados,
+      permisos_chat: permisosActualizados,
+    });
 
   } catch (error) {
     await connection.rollback();
@@ -647,6 +693,21 @@ router.delete("/:id", async (req, res) => {
   try {
     await pool.query(`DELETE FROM usuario_proyecto WHERE usuario_id = ?`, [id]);
     await pool.query(`UPDATE usuario SET estado = 'desaprobado' WHERE id = ?`, [id]);
+
+    // Si la cuenta estaba conectada, se le notifica inmediatamente para que
+    // salga de la aplicación. El siguiente login también quedará bloqueado
+    // por /api/usuario/login.
+    const socketUtils = req.app.get("socketUtils");
+    if (socketUtils?.enviarEventoAlUsuario) {
+      socketUtils.enviarEventoAlUsuario(
+        id,
+        "cuentaDesactivada",
+        {
+          usuarioId: Number(id),
+          motivo: "Tu cuenta ha sido desactivada. Comunícate con un administrador."
+        }
+      );
+    }
 
     res.json({ mensaje: "Usuario eliminado correctamente" });
 
