@@ -198,37 +198,6 @@ const buildAudioMessageFallbackWave = (seed = "") => {
   });
 };
 
-const extractAudioWaveformFromBuffer = (audioBuffer, barCount = AUDIO_MESSAGE_WAVE_BAR_COUNT) => {
-  if (!audioBuffer || !audioBuffer.length) return buildAudioMessageFallbackWave();
-
-  const channel = audioBuffer.getChannelData(0);
-  const samplesPerBar = Math.max(1, Math.floor(channel.length / barCount));
-  const levels = [];
-
-  for (let bar = 0; bar < barCount; bar += 1) {
-    const start = bar * samplesPerBar;
-    const end = Math.min(channel.length, start + samplesPerBar);
-    let sum = 0;
-    let count = 0;
-
-    for (let sample = start; sample < end; sample += 1) {
-      const value = channel[sample];
-      sum += value * value;
-      count += 1;
-    }
-
-    levels.push(count > 0 ? Math.sqrt(sum / count) : 0);
-  }
-
-  const maxLevel = Math.max(...levels, 0.001);
-
-  return levels.map((level) => {
-    const normalized = level / maxLevel;
-    if (normalized < 0.06) return 0.04;
-    return clampAudioWaveLevel(0.12 + Math.pow(normalized, 0.72) * 0.88);
-  });
-};
-
 const isRecordedVoiceNoteFile = (name = "") =>
   /^(audio|voice_note)_\d+\.(webm|ogg|m4a|mp3|wav|aac)$/i.test(String(name || ""));
 
@@ -709,6 +678,20 @@ const Message = ({
       } catch (e) {}
     }
 
+    // Los GIF antiguos guardaban la URL externa de GIPHY. Los cargamos a
+    // través del backend de QuickChat/Chatvista para evitar peticiones que
+    // puedan quedarse "Stalled" en perfiles concretos de Chrome. El backend
+    // conserva una copia local después de la primera solicitud.
+    if (/^https?:\/\//i.test(finalUrl)) {
+      try {
+        const u = new URL(finalUrl);
+        const isGiphyHost = u.hostname === "giphy.com" || u.hostname.endsWith(".giphy.com");
+        if (isGiphyHost && /\/giphy\.gif$/i.test(u.pathname)) {
+          return `/api/giphy/media?url=${encodeURIComponent(finalUrl)}`;
+        }
+      } catch (e) {}
+    }
+
     if (/^https?:\/\//i.test(finalUrl) || finalUrl.startsWith("/uploads/")) {
       return getAvatarUrl(finalUrl) || finalUrl;
     }
@@ -796,53 +779,15 @@ const Message = ({
     setGaleriaAbierta(true);
   };
 
+  // La onda visual se genera localmente. No descargamos ni decodificamos
+  // el audio completo al abrir el chat; el archivo se solicita solo cuando
+  // el elemento <audio> necesita sus metadatos o el usuario lo reproduce.
   useEffect(() => {
-    let cancelado = false;
+    const waveformSeed = tieneAudioSuelto && archivoUrlCrudo
+      ? `${archivoUrlCrudo}-${mensajeData.nombre_archivo || ""}`
+      : "";
 
-    if (!tieneAudioSuelto || !archivoUrlCrudo) {
-      setAudioWaveform(buildAudioMessageFallbackWave(""));
-      return undefined;
-    }
-
-    const fallbackWave = buildAudioMessageFallbackWave(
-      `${archivoUrlCrudo}-${mensajeData.nombre_archivo || ""}`
-    );
-    setAudioWaveform(fallbackWave);
-
-    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
-    if (!AudioContextClass || typeof fetch !== "function") return undefined;
-
-    const audioUrl = normalizarUrlImagen(archivoUrlCrudo);
-
-    const loadWaveform = async () => {
-      let audioContext = null;
-
-      try {
-        const response = await fetch(audioUrl, { cache: "force-cache" });
-        if (!response.ok) return;
-
-        const arrayBuffer = await response.arrayBuffer();
-        audioContext = new AudioContextClass();
-        const audioBuffer = await audioContext.decodeAudioData(arrayBuffer.slice(0));
-        const nextWaveform = extractAudioWaveformFromBuffer(audioBuffer);
-
-        if (!cancelado) {
-          setAudioWaveform(nextWaveform);
-        }
-      } catch (error) {
-        if (!cancelado) {
-          setAudioWaveform(fallbackWave);
-        }
-      } finally {
-        audioContext?.close?.().catch(() => {});
-      }
-    };
-
-    loadWaveform();
-
-    return () => {
-      cancelado = true;
-    };
+    setAudioWaveform(buildAudioMessageFallbackWave(waveformSeed));
   }, [tieneAudioSuelto, archivoUrlCrudo, mensajeData.nombre_archivo]);
 
   // Cerrar dropdown al hacer click fuera
@@ -1654,8 +1599,15 @@ const Message = ({
 
     if (audioPlaying) {
       audioRef.current.pause();
-    } else {
-      audioRef.current.play();
+      return;
+    }
+
+    const playPromise = audioRef.current.play();
+    if (playPromise && typeof playPromise.catch === "function") {
+      playPromise.catch((error) => {
+        setAudioPlaying(false);
+        logDev("No se pudo reproducir el audio:", error);
+      });
     }
   };
 
@@ -1676,8 +1628,28 @@ const Message = ({
 
   const handleLoadedMetadata = () => {
     if (!audioRef.current) return;
+
     audioRef.current.playbackRate = audioPlaybackRate;
-    setAudioDuration(audioRef.current.duration || 0);
+
+    const duration = Number(audioRef.current.duration);
+    if (Number.isFinite(duration) && duration > 0) {
+      setAudioDuration(duration);
+    }
+  };
+
+  const handleAudioError = () => {
+    if (!audioRef.current) return;
+
+    setAudioPlaying(false);
+    setAudioDuration(0);
+    setAudioCurrentTime(0);
+
+    const mediaError = audioRef.current.error;
+    logDev("Error cargando audio del mensaje:", {
+      code: mediaError?.code || null,
+      message: mediaError?.message || "Error de audio",
+      src: audioRef.current.currentSrc || audioRef.current.src || "",
+    });
   };
 
   const handleTimeUpdate = () => {
@@ -2399,6 +2371,8 @@ const Message = ({
                                 <img
                                   src={finalUrl}
                                   alt={`imagen-${idx}`}
+                                  loading="lazy"
+                                  decoding="async"
                                   className="wa-message-image"
                                   style={{
                                     height: total === 1 ? "auto" : 120,
@@ -2632,6 +2606,8 @@ const Message = ({
                             <img
                               src={urlArchivo}
                               alt={nombre}
+                              loading="lazy"
+                              decoding="async"
                               className="wa-message-image"
                               style={{
                                 opacity: estado === "subiendo" ? 0.8 : 1,
@@ -2815,15 +2791,18 @@ const Message = ({
                         <div className={`wa-audio-player ${enviadoPorMi ? "out" : "in"} ${isVoiceNote ? "voice-note" : "audio-file"}`}>
                           <audio
                             ref={audioRef}
+                            src={urlArchivo}
                             preload="metadata"
                             onLoadedMetadata={handleLoadedMetadata}
+                            onDurationChange={handleLoadedMetadata}
+                            onCanPlay={handleLoadedMetadata}
                             onTimeUpdate={handleTimeUpdate}
                             onPlay={() => setAudioPlaying(true)}
                             onPause={() => setAudioPlaying(false)}
                             onEnded={handleAudioEnded}
+                            onError={handleAudioError}
                             style={{ display: "none" }}
                           >
-                            <source src={urlArchivo} type={tipo || "audio/mpeg"} />
                             Tu navegador no soporta audio.
                           </audio>
 

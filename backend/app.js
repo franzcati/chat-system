@@ -85,7 +85,22 @@ app.use("/api/stickers", stickersRoutes);
 const notificacionesRoutes = require("./routes/notificaciones");
 app.use("/api/notificaciones", notificacionesRoutes);
 
+// GIPHY: búsquedas/trending con caché y almacenamiento local de GIFs.
+const giphyRoutes = require("./routes/giphy");
+app.use("/api/giphy", giphyRoutes);
+
 const path = require("path");
+
+// Los GIF guardados por QuickChat tienen nombres inmutables (ID/hash), por
+// eso sí podemos permitir una caché larga sin afectar el resto de uploads.
+app.use(
+  "/uploads/gifs",
+  express.static(path.join(__dirname, "uploads", "gifs"), {
+    maxAge: 30 * 24 * 60 * 60 * 1000,
+    immutable: true,
+  })
+);
+
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
 // Aquí se agregarán las rutas más adelante

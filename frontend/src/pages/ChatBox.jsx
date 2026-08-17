@@ -349,6 +349,7 @@ const ChatBox = ({ chat, user, setChat, onVerPerfil, onAddToList, estadosUsuario
   const [showGifPicker, setShowGifPicker] = useState(false);
   const [gifSearch, setGifSearch] = useState(""); // texto a buscar
   const [gifResults, setGifResults] = useState([]); // resultados de la API
+  const [gifSendingId, setGifSendingId] = useState(null);
   const { theme } = useTheme();
   const emojiTheme = theme === "dark" ? "dark" : "light";
   const puedeGrabarAudios = permisoChatActivo(user?.permisos_chat, "enviar_audios");
@@ -2450,35 +2451,66 @@ const ChatBox = ({ chat, user, setChat, onVerPerfil, onAddToList, estadosUsuario
   };
 
   const fetchGifs = async (query) => {
-    if (!query.trim()) return;
+    const cleanQuery = String(query || "").trim();
+    if (!cleanQuery) return;
+
     try {
-      const res = await axios.get("https://api.giphy.com/v1/gifs/search", {
-        params: {
-          api_key: "eYpoeaOCfdA8NSzbqDSoFsA3xrqDxwZR",
-          q: query,
-          limit: 20,
-          rating: "pg",
-        },
+      const res = await axios.get("/api/giphy/search", {
+        params: { q: cleanQuery },
       });
-      logDev("Giphy response:", res.data); // para depurar
-      setGifResults(res.data.data);
+      setGifResults(Array.isArray(res.data?.data) ? res.data.data : []);
     } catch (err) {
       console.error("❌ Error buscando GIFs:", err);
+      setGifResults([]);
     }
   };
 
   const fetchTrendingGifs = async () => {
     try {
-      const res = await axios.get("https://api.giphy.com/v1/gifs/trending", {
-        params: {
-          api_key: "eYpoeaOCfdA8NSzbqDSoFsA3xrqDxwZR",
-          limit: 20,
-          rating: "pg",
-        },
-      });
-      setGifResults(res.data.data);
+      const res = await axios.get("/api/giphy/trending");
+      setGifResults(Array.isArray(res.data?.data) ? res.data.data : []);
     } catch (err) {
       console.error("❌ Error cargando GIFs trending:", err);
+      setGifResults([]);
+    }
+  };
+
+  const handleSelectGif = async (gif) => {
+    if (!gif?.id || gifSendingId) return;
+
+    const remoteUrl =
+      gif.images?.fixed_height?.url ||
+      gif.images?.downsized?.url ||
+      gif.images?.original?.url;
+
+    if (!remoteUrl) {
+      console.error("❌ El GIF seleccionado no tiene una URL utilizable.");
+      return;
+    }
+
+    setGifSendingId(gif.id);
+    try {
+      // Guardamos una copia local antes de enviar el mensaje. De esta forma,
+      // los usuarios ya no dependen de media*.giphy.com al abrir el chat.
+      const res = await axios.post("/api/giphy/cache", {
+        id: gif.id,
+        url: remoteUrl,
+      });
+
+      const localUrl = String(res.data?.url || "").trim();
+      if (!localUrl) {
+        throw new Error("El backend no devolvió la URL local del GIF.");
+      }
+
+      await handleSendMessage(localUrl);
+      closeMediaPickers();
+      setGifSearch("");
+      setGifResults([]);
+    } catch (err) {
+      console.error("❌ Error guardando/enviando GIF:", err);
+      alert("No se pudo preparar el GIF. Inténtalo nuevamente.");
+    } finally {
+      setGifSendingId(null);
     }
   };
 
@@ -4872,15 +4904,17 @@ const ChatBox = ({ chat, user, setChat, onVerPerfil, onAddToList, estadosUsuario
                               {gifResults.map((gif) => (
                                 <img
                                   key={gif.id}
-                                  src={gif.images.fixed_height_small.url}
-                                  alt={gif.title}
+                                  src={gif.images.fixed_height_small?.url || gif.images.fixed_height?.url}
+                                  alt={gif.title || "GIF"}
                                   className="wa-gif-result"
-                                  onClick={() => {
-                                    handleSendMessage(gif.images.original.url);
-                                    closeMediaPickers();
-                                    setGifSearch("");
-                                    setGifResults([]);
+                                  loading="lazy"
+                                  decoding="async"
+                                  aria-busy={gifSendingId === gif.id}
+                                  style={{
+                                    opacity: gifSendingId && gifSendingId !== gif.id ? 0.55 : 1,
+                                    pointerEvents: gifSendingId ? "none" : "auto",
                                   }}
+                                  onClick={() => handleSelectGif(gif)}
                                 />
                               ))}
                             </div>
