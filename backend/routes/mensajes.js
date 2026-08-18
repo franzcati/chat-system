@@ -3,6 +3,7 @@ const router = express.Router();
 const db = require("../db");
 const { logDev } = require("../utils/logger");
 const { queryWithRetry } = require("../utils/dbRetry");
+const { optimizeUploadedAudio } = require("../utils/audioOptimizer");
 
 function formatDateToMySQL(date) {
   return date.toISOString().slice(0, 19).replace("T", " ");
@@ -651,66 +652,136 @@ router.get("/", async (req, res) => {
       return res.status(400).json({ error: "Faltan parámetros usuario1 y usuario2" });
     }
 
-    const params = [usuario1, usuario2, usuario2, usuario1];
-    let beforeClause = "";
-
-    if (paginated && beforeId) {
-      beforeClause = "AND m.id < ?";
-      params.push(beforeId);
-    }
-
-    const limitClause = paginated
-      ? "ORDER BY m.id DESC LIMIT ?"
-      : "ORDER BY m.fecha_envio ASC, m.id ASC";
+    let sqlMensajes;
+    let params;
 
     if (paginated) {
-      params.push(limit + 1);
-    }
+      // Fase 9B:
+      // En vez de pedir a MariaDB que resuelva (A->B OR B->A) sobre toda la
+      // tabla, cada dirección usa el índice idx_mensajes_chat_id y devuelve
+      // como máximo limit+1 candidatos. El ordenamiento final trabaja sobre
+      // un conjunto pequeño (máximo 2 * (limit+1)).
+      const candidateLimit = limit + 1;
+      const beforeBranchClause = beforeId ? "AND id < ?" : "";
 
-    const sqlMensajes = `
-      SELECT 
-        m.id,
-        m.usuario_envia_id,
-        m.usuario_recibe_id,
-        m.mensaje,
-        m.lote_id,
-        m.reply_to_id,
-        m.reply_to_tipo,
-        m.reply_to_grupo_id,
-        m.reenviado,
-        m.fecha_envio,
-        m.eliminado,
-        m.editado,
-        m.visto,
-        m.fijado,
-        ma.archivo_url,
-        ma.tipo_archivo,
-        ma.nombre_archivo,
-        ma.tamano,
-        ue.nombre AS emisor_nombre,
-        ue.apellido AS emisor_apellido,
-        ue.url_imagen AS emisor_avatar,
-        ue.background AS emisor_background,
-        ue.correo AS emisor_correo, 
-        ur.nombre AS receptor_nombre,
-        ur.apellido AS receptor_apellido,
-        ur.url_imagen AS receptor_avatar,
-        ur.background AS receptor_background,
-        ur.correo AS receptor_correo
-      FROM mensajes m
-      JOIN usuario ue ON ue.id = m.usuario_envia_id
-      JOIN usuario ur ON ur.id = m.usuario_recibe_id
-      LEFT JOIN mensajes_archivos ma
-        ON ma.sender_id = m.usuario_envia_id
-       AND ma.receiver_id = m.usuario_recibe_id
-       AND ma.archivo_url = m.mensaje
-      WHERE (
-          (m.usuario_envia_id = ? AND m.usuario_recibe_id = ?)
-       OR (m.usuario_envia_id = ? AND m.usuario_recibe_id = ?)
-      )
-      ${beforeClause}
-      ${limitClause}
-    `;
+      sqlMensajes = `
+        SELECT
+          m.id,
+          m.usuario_envia_id,
+          m.usuario_recibe_id,
+          m.mensaje,
+          m.lote_id,
+          m.reply_to_id,
+          m.reply_to_tipo,
+          m.reply_to_grupo_id,
+          m.reenviado,
+          m.fecha_envio,
+          m.eliminado,
+          m.editado,
+          m.visto,
+          m.fijado,
+          ma.archivo_url,
+          ma.tipo_archivo,
+          ma.nombre_archivo,
+          ma.tamano,
+          ue.nombre AS emisor_nombre,
+          ue.apellido AS emisor_apellido,
+          ue.url_imagen AS emisor_avatar,
+          ue.background AS emisor_background,
+          ue.correo AS emisor_correo,
+          ur.nombre AS receptor_nombre,
+          ur.apellido AS receptor_apellido,
+          ur.url_imagen AS receptor_avatar,
+          ur.background AS receptor_background,
+          ur.correo AS receptor_correo
+        FROM (
+          (
+            SELECT id
+            FROM mensajes FORCE INDEX (idx_mensajes_chat_id)
+            WHERE usuario_envia_id = ?
+              AND usuario_recibe_id = ?
+              ${beforeBranchClause}
+            ORDER BY id DESC
+            LIMIT ?
+          )
+          UNION ALL
+          (
+            SELECT id
+            FROM mensajes FORCE INDEX (idx_mensajes_chat_id)
+            WHERE usuario_envia_id = ?
+              AND usuario_recibe_id = ?
+              ${beforeBranchClause}
+            ORDER BY id DESC
+            LIMIT ?
+          )
+          ORDER BY id DESC
+          LIMIT ?
+        ) candidatos
+        JOIN mensajes m ON m.id = candidatos.id
+        JOIN usuario ue ON ue.id = m.usuario_envia_id
+        JOIN usuario ur ON ur.id = m.usuario_recibe_id
+        LEFT JOIN mensajes_archivos ma
+          ON ma.sender_id = m.usuario_envia_id
+         AND ma.receiver_id = m.usuario_recibe_id
+         AND ma.archivo_url = m.mensaje
+        ORDER BY candidatos.id DESC
+      `;
+
+      params = [usuario1, usuario2];
+      if (beforeId) params.push(beforeId);
+      params.push(candidateLimit);
+
+      params.push(usuario2, usuario1);
+      if (beforeId) params.push(beforeId);
+      params.push(candidateLimit, candidateLimit);
+    } else {
+      // Se conserva la consulta completa histórica para los consumidores que
+      // todavía no usan paginación.
+      sqlMensajes = `
+        SELECT
+          m.id,
+          m.usuario_envia_id,
+          m.usuario_recibe_id,
+          m.mensaje,
+          m.lote_id,
+          m.reply_to_id,
+          m.reply_to_tipo,
+          m.reply_to_grupo_id,
+          m.reenviado,
+          m.fecha_envio,
+          m.eliminado,
+          m.editado,
+          m.visto,
+          m.fijado,
+          ma.archivo_url,
+          ma.tipo_archivo,
+          ma.nombre_archivo,
+          ma.tamano,
+          ue.nombre AS emisor_nombre,
+          ue.apellido AS emisor_apellido,
+          ue.url_imagen AS emisor_avatar,
+          ue.background AS emisor_background,
+          ue.correo AS emisor_correo,
+          ur.nombre AS receptor_nombre,
+          ur.apellido AS receptor_apellido,
+          ur.url_imagen AS receptor_avatar,
+          ur.background AS receptor_background,
+          ur.correo AS receptor_correo
+        FROM mensajes m
+        JOIN usuario ue ON ue.id = m.usuario_envia_id
+        JOIN usuario ur ON ur.id = m.usuario_recibe_id
+        LEFT JOIN mensajes_archivos ma
+          ON ma.sender_id = m.usuario_envia_id
+         AND ma.receiver_id = m.usuario_recibe_id
+         AND ma.archivo_url = m.mensaje
+        WHERE (
+            (m.usuario_envia_id = ? AND m.usuario_recibe_id = ?)
+         OR (m.usuario_envia_id = ? AND m.usuario_recibe_id = ?)
+        )
+        ORDER BY m.fecha_envio ASC, m.id ASC
+      `;
+      params = [usuario1, usuario2, usuario2, usuario1];
+    }
 
     const [rows] = await db.query(sqlMensajes, params);
     const hasMore = paginated && rows.length > limit;
@@ -1437,9 +1508,13 @@ router.post("/archivo", upload.single("archivo"), async (req, res) => {
       });
     }
 
+    const preparedFile = await optimizeUploadedAudio(file, {
+      isVoiceNote: esNotaVozGrabada(req, file),
+    });
+
     const relativePath = path.relative(
       path.join(__dirname, "../uploads"),
-      file.path
+      preparedFile.path
     );
 
     const urlArchivo = `/uploads/${relativePath.replace(/\\/g, "/")}`;
@@ -1455,7 +1530,7 @@ router.post("/archivo", upload.single("archivo"), async (req, res) => {
       `INSERT INTO mensajes_archivos 
         (sender_id, receiver_id, archivo_url, tipo_archivo, nombre_archivo, tamano, fecha_envio, lote_id)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      [sender_id, receiver_id, urlArchivo, file.mimetype, file.originalname, file.size, fechaEnvioMySQL, loteId],
+      [sender_id, receiver_id, urlArchivo, preparedFile.mimetype, file.originalname, preparedFile.size, fechaEnvioMySQL, loteId],
       { attempts: 4, label: "insertar archivo privado" }
     );
 
@@ -1493,9 +1568,9 @@ router.post("/archivo", upload.single("archivo"), async (req, res) => {
       visto: 0,
       fijado: false,
       archivo_url: urlArchivo,
-      tipo_archivo: file.mimetype,
+      tipo_archivo: preparedFile.mimetype,
       nombre_archivo: file.originalname,
-      tamano: file.size,
+      tamano: preparedFile.size,
       emisor_nombre: emisor.nombre || null,
       emisor_apellido: emisor.apellido || null,
       emisor_correo: emisor.correo || null,

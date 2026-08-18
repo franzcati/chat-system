@@ -416,18 +416,25 @@ router.get('/resumen/:userId', async (req, res) => {
           END AS mensajes_no_leidos,
           1 AS es_resumen_chat
        FROM (
-         SELECT
-           CASE
-             WHEN usuario_envia_id = ? THEN usuario_recibe_id
-             ELSE usuario_envia_id
-           END AS other_user_id,
-           MAX(id) AS ultimo_id
-         FROM mensajes
-         WHERE usuario_envia_id = ? OR usuario_recibe_id = ?
-         GROUP BY CASE
-           WHEN usuario_envia_id = ? THEN usuario_recibe_id
-           ELSE usuario_envia_id
-         END
+         SELECT other_user_id, MAX(ultimo_id) AS ultimo_id
+         FROM (
+           SELECT
+             usuario_recibe_id AS other_user_id,
+             MAX(id) AS ultimo_id
+           FROM mensajes FORCE INDEX (idx_mensajes_chat_id)
+           WHERE usuario_envia_id = ?
+           GROUP BY usuario_recibe_id
+
+           UNION ALL
+
+           SELECT
+             usuario_envia_id AS other_user_id,
+             MAX(id) AS ultimo_id
+           FROM mensajes
+           WHERE usuario_recibe_id = ?
+           GROUP BY usuario_envia_id
+         ) conversaciones
+         GROUP BY other_user_id
        ) resumen
        JOIN mensajes m ON m.id = resumen.ultimo_id
        JOIN usuario u_env ON u_env.id = m.usuario_envia_id
@@ -458,7 +465,7 @@ router.get('/resumen/:userId', async (req, res) => {
              AND ma_l.receiver_id = m.usuario_recibe_id
          )
        ORDER BY m.id DESC`,
-      [userId, userId, userId, userId, userId, userId, userId, userId]
+      [userId, userId, userId, userId, userId, userId]
     );
 
     res.json(rows);

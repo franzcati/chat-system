@@ -1,12 +1,12 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import toast from "react-hot-toast";
-import data from "@emoji-mart/data";
-import Picker from "@emoji-mart/react";
 import "../css/emoji.css";
 import GroupAvatar from "./GroupAvatar";
 import { getAvatarUrl } from "../utils/url";
 import { getMessagePreview } from "../utils/messagePreview";
 import socket from "../socket";
+
+const LazyEmojiPicker = React.lazy(() => import("./LazyEmojiPicker"));
 
 const BASE_URL = "";
 
@@ -969,13 +969,20 @@ const EditField = ({
 
     {showEmoji && (
       <div className="wa-edit-emoji-picker">
-        <Picker
-          data={data}
-          onEmojiSelect={onEmoji}
-          theme="light"
-          previewPosition="none"
-          searchPosition="none"
-        />
+        <React.Suspense
+          fallback={
+            <div className="p-3 text-center" aria-label="Cargando emojis">
+              <span className="spinner-border spinner-border-sm" role="status" aria-hidden="true" />
+            </div>
+          }
+        >
+          <LazyEmojiPicker
+            onEmojiSelect={onEmoji}
+            theme="light"
+            previewPosition="none"
+            searchPosition="none"
+          />
+        </React.Suspense>
       </div>
     )}
   </div>

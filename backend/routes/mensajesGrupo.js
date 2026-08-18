@@ -6,6 +6,7 @@ const path = require("path");
 const fs = require("fs");
 const { logDev } = require("../utils/logger");
 const { queryWithRetry } = require("../utils/dbRetry");
+const { optimizeUploadedAudio } = require("../utils/audioOptimizer");
 
 
 // =======================
@@ -254,15 +255,31 @@ const storage = multer.diskStorage({
   },
 
   filename: (req, file, cb) => {
+    if (file.fieldname === "miniatura" && req._quickchatMainUploadFilename) {
+      const parsed = path.parse(req._quickchatMainUploadFilename);
+      return cb(null, `${parsed.name}.thumb.webp`);
+    }
+
     const safeName = file.originalname.replace(/\s+/g, "_");
-    cb(null, `${Date.now()}_${safeName}`);
+    const generatedName = `${Date.now()}_${safeName}`;
+
+    if (file.fieldname === "archivo") {
+      req._quickchatMainUploadFilename = generatedName;
+    }
+
+    cb(null, generatedName);
   },
 });
 
 const upload = multer({
   storage,
-  limits: { fileSize: 70 * 1024 * 1024 }, // 70 MB
+  limits: { fileSize: 70 * 1024 * 1024 }, // 70 MB por archivo
 });
+
+const uploadArchivoConMiniatura = upload.fields([
+  { name: "archivo", maxCount: 1 },
+  { name: "miniatura", maxCount: 1 },
+]);
 
 function esArchivoAudio(file) {
   const mime = String(file?.mimetype || "").toLowerCase();
@@ -1398,7 +1415,7 @@ router.get("/fijados/:grupoId", async (req, res) => {
 // =======================
 // 📤 Subir archivo a un grupo (con subcarpetas dinámicas)
 // =======================
-router.post("/archivo", upload.single("archivo"), async (req, res) => {
+router.post("/archivo", uploadArchivoConMiniatura, async (req, res) => {
   try {
     const grupo_id = Number(req.body.grupo_id || req.query.grupo_id);
     const usuario_id = Number(req.body.usuario_id || req.query.usuario_id);
@@ -1415,24 +1432,44 @@ router.post("/archivo", upload.single("archivo"), async (req, res) => {
       return res.status(400).json({ error: "Datos inválidos en la solicitud" });
     }
 
-    const file = req.file;
+    const file = req.files?.archivo?.[0] || null;
+    let thumbnailFile = req.files?.miniatura?.[0] || null;
+
     if (!file) {
       return res.status(400).json({ error: "No se recibió ningún archivo" });
     }
 
+    const mainIsImage = String(file.mimetype || "").toLowerCase().startsWith("image/");
+    if (thumbnailFile && (!mainIsImage || thumbnailFile.mimetype !== "image/webp")) {
+      eliminarArchivoTemporal(thumbnailFile);
+      thumbnailFile = null;
+    }
+
     if (esNotaVozGrabada(req, file) && !(await usuarioPuedeEnviarAudios(usuario_id))) {
       eliminarArchivoTemporal(file);
+      eliminarArchivoTemporal(thumbnailFile);
       return res.status(403).json({
         error: "No tienes permiso para grabar audios. Solicita autorización a un administrador.",
       });
     }
 
-    // 📁 Ruta relativa final tipo: /uploads/grupo_51/imagenes/....
+    const preparedFile = await optimizeUploadedAudio(file, {
+      isVoiceNote: esNotaVozGrabada(req, file),
+    });
+
+    // 📁 Ruta relativa final tipo: /uploads/grupo_51/archivos/....
     const relativePath = path.relative(
       path.join(__dirname, "../uploads"),
-      file.path
+      preparedFile.path
     );
     const urlArchivo = `/uploads/${relativePath.replace(/\\/g, "/")}`;
+
+    const miniaturaUrl = thumbnailFile?.path
+      ? `/uploads/${path.relative(
+          path.join(__dirname, "../uploads"),
+          thumbnailFile.path
+        ).replace(/\\/g, "/")}`
+      : null;
 
     // 1️⃣ Crear mensaje en mensajes_grupo (mensaje = ruta de la imagen)
     await ensureReplyColumn();
@@ -1450,9 +1487,9 @@ router.post("/archivo", upload.single("archivo"), async (req, res) => {
     await queryWithRetry(
       db,
       `INSERT INTO mensajes_grupo_archivos 
-        (grupo_id, usuario_id, archivo_url, tipo_archivo, nombre_archivo, tamano, fecha_envio)
-       VALUES (?, ?, ?, ?, ?, ?, UTC_TIMESTAMP(3))`,
-      [grupo_id, usuario_id, urlArchivo, file.mimetype, file.originalname, file.size],
+        (grupo_id, usuario_id, archivo_url, tipo_archivo, nombre_archivo, tamano, lote_id, fecha_envio)
+       VALUES (?, ?, ?, ?, ?, ?, ?, UTC_TIMESTAMP(3))`,
+      [grupo_id, usuario_id, urlArchivo, preparedFile.mimetype, file.originalname, preparedFile.size, loteId || null],
       { attempts: 4, label: "insertar archivo de grupo" }
     );
 
@@ -1470,9 +1507,10 @@ router.post("/archivo", upload.single("archivo"), async (req, res) => {
       usuario_id,
       mensaje: urlArchivo,
       archivo_url: urlArchivo,
-      tipo_archivo: file.mimetype,
+      miniatura_url: miniaturaUrl,
+      tipo_archivo: preparedFile.mimetype,
       nombre_archivo: file.originalname,
-      tamano: file.size,
+      tamano: preparedFile.size,
       eliminado: 0,
       editado: 0,
       fijado: 0,

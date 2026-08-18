@@ -26,3 +26,8 @@ logs/
 .vscode/
 .idea/
 .DS_Store
+
+# Uploads activos y respaldos locales del servidor
+backend/uploads
+backend/uploads.before-fase6/
+*.before-fase*

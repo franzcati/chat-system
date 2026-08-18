@@ -1,14 +1,32 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, lazy, Suspense } from 'react';
 import { useNavigate } from 'react-router-dom'; // 👈
 import { logDev } from "../utils/logger";
+import "../css/MessengerShell.css";
 import Sidebar from './Sidebar';
 import ChatList from './ChatList';
-import ChatBox from './ChatBox';
-import CreateChat from '../components/CreateChat';
-import ProfileModal from "../components/ProfileModal";
-import AddUsers from "../components/AddUsers";
-import EditUsers from "../components/EditUsers";
 import socket, { conectarUsuarioSocket, emitirActividadUsuario } from "../socket";
+
+const ChatBox = lazy(() => import('./ChatBox'));
+const CreateChat = lazy(() => import('../components/CreateChat'));
+const ProfileModal = lazy(() => import("../components/ProfileModal"));
+const AddUsers = lazy(() => import("../components/AddUsers"));
+const EditUsers = lazy(() => import("../components/EditUsers"));
+
+const LazyPanelFallback = () => (
+  <div className="flex-1 d-flex align-items-center justify-content-center">
+    <div className="spinner-border" role="status" aria-label="Cargando">
+      <span className="visually-hidden">Cargando...</span>
+    </div>
+  </div>
+);
+
+const ChatBoxFallback = () => (
+  <div className="d-flex align-items-center justify-content-center h-100 w-100">
+    <div className="spinner-border" role="status" aria-label="Cargando conversación">
+      <span className="visually-hidden">Cargando conversación...</span>
+    </div>
+  </div>
+);
 
 const Messenger = () => {
   const [selectedChat, setSelectedChat] = useState(null);
@@ -36,7 +54,7 @@ const Messenger = () => {
       }
 
       setUsuario(parsedUser);
-      logDev("✅ Usuario cargado desde localStorage:", parsedUser);
+      logDev("✅ Usuario cargado desde localStorage", { usuarioId: parsedUser?.id });
     } else {
       navigate('/');
     }
@@ -101,18 +119,6 @@ const Messenger = () => {
       socket.off("actualizarUsuarios", handleActualizarUsuarios);
     };
   }, [usuario?.id]);
-
-  useEffect(() => {
-    if (selectedChat) {
-      logDev("📩 selectedChat enviado a ChatBox:", selectedChat);
-    }
-  }, [selectedChat]);
-
-  useEffect(() => {
-    if (usuario) {
-      logDev("📩 usuario enviado a ChatBox:", usuario);
-    }
-  }, [selectedChat]);
 
   useEffect(() => {
     if (!usuario?.id) return;
@@ -235,15 +241,6 @@ const Messenger = () => {
     };
   }, [usuario?.id]);
 
-  // 👇 AGREGALOS AQUI
-  logDev("🧩 Messenger render", {
-    activeTab,
-    usuarioId: usuario?.id,
-    selectedChat,
-  });
-
-  logDev("🧩 Va a renderizar ChatList?", activeTab === "chat");
-
   return (
     <div className="flex h-screen bg-[#f8f9fd]">
       {/* Sidebar con iconos */}
@@ -269,23 +266,29 @@ const Messenger = () => {
         />
       )}
       {activeTab === "edit" && (
-        <CreateChat proyectoId={usuario?.proyectoId} usuarioId={usuario?.id} />
+        <Suspense fallback={<LazyPanelFallback />}>
+          <CreateChat proyectoId={usuario?.proyectoId} usuarioId={usuario?.id} />
+        </Suspense>
       )}
       {activeTab === "add-user" && (
         <div className="flex-1">
-          <AddUsers
-            proyectos={proyectos}        // 👈 AHORA SÍ SE PASAN LOS PROYECTOS
-            onCancel={() => setActive("chat")}
-          />
+          <Suspense fallback={<LazyPanelFallback />}>
+            <AddUsers
+              proyectos={proyectos}        // 👈 AHORA SÍ SE PASAN LOS PROYECTOS
+              onCancel={() => setActive("chat")}
+            />
+          </Suspense>
         </div>
       )}
       {activeTab === "edit-user" && (
         <div className="flex-1">
-          <EditUsers
-            proyectos={proyectos}
-            usuarioLogueado={usuario}  // 👈 AQUI LO MANDAS
-            onCancel={() => setActive("chat")}
-          />
+          <Suspense fallback={<LazyPanelFallback />}>
+            <EditUsers
+              proyectos={proyectos}
+              usuarioLogueado={usuario}  // 👈 AQUI LO MANDAS
+              onCancel={() => setActive("chat")}
+            />
+          </Suspense>
         </div>
       )}                     
 
@@ -297,17 +300,19 @@ const Messenger = () => {
       {activeTab === "chat" && (
         <div className="wa-chat-stage flex-1">
           {selectedChat ? (
-            <ChatBox
-              chat={selectedChat}
-              user={usuario}
-              setChat={setSelectedChat}  // 👈 Agregamos esto
-              onVerPerfil={(u) => {
-                setPerfilSeleccionado(u);
-                setShowModal(true);
-              }}
-              onAddToList={(chatToAdd) => setAddToListTarget(chatToAdd)}
-              estadosUsuarios={estadosUsuarios}
-            />
+            <Suspense fallback={<ChatBoxFallback />}>
+              <ChatBox
+                chat={selectedChat}
+                user={usuario}
+                setChat={setSelectedChat}  // 👈 Agregamos esto
+                onVerPerfil={(u) => {
+                  setPerfilSeleccionado(u);
+                  setShowModal(true);
+                }}
+                onAddToList={(chatToAdd) => setAddToListTarget(chatToAdd)}
+                estadosUsuarios={estadosUsuarios}
+              />
+            </Suspense>
           ) : (
             <div className="d-flex flex-column h-100 justify-content-center text-center">
               <div className="mb-6">
@@ -339,28 +344,32 @@ const Messenger = () => {
       )}
 
       {/* 🔹 Modal de perfil */}
-      <ProfileModal
-        usuario={perfilSeleccionado}
-        miUsuario={usuario}
-        show={showModal}
-        onClose={() => setShowModal(false)}
-        onLogout={() => {
-          localStorage.removeItem("usuario");
-          navigate("/");
-        }}
-        onEnviarMensaje={(usuarioDestino) => {
-          setSelectedChat({
-            tipo: "privado",
-            usuario_id: usuarioDestino.id,
-            usuario_nombre: `${usuarioDestino.nombre} ${usuarioDestino.apellido}`, // 👈 aquí
-            apellido: usuarioDestino.apellido,
-            url_imagen: usuarioDestino.url_imagen,
-            background: usuarioDestino.background,
-            correo: usuarioDestino.correo,
-          });
-          setShowModal(false);
-        }}
-      />
+      {showModal && (
+        <Suspense fallback={null}>
+          <ProfileModal
+            usuario={perfilSeleccionado}
+            miUsuario={usuario}
+            show={showModal}
+            onClose={() => setShowModal(false)}
+            onLogout={() => {
+              localStorage.removeItem("usuario");
+              navigate("/");
+            }}
+            onEnviarMensaje={(usuarioDestino) => {
+              setSelectedChat({
+                tipo: "privado",
+                usuario_id: usuarioDestino.id,
+                usuario_nombre: `${usuarioDestino.nombre} ${usuarioDestino.apellido}`, // 👈 aquí
+                apellido: usuarioDestino.apellido,
+                url_imagen: usuarioDestino.url_imagen,
+                background: usuarioDestino.background,
+                correo: usuarioDestino.correo,
+              });
+              setShowModal(false);
+            }}
+          />
+        </Suspense>
+      )}
     </div>
   );
 };

@@ -6,7 +6,6 @@ import MiembrosGrupos from "../components/MiembrosGrupos";
 import VerInfoGrupo from "../components/VerInfoGrupo";
 import VerInfoContacto from "../components/VerInfoContacto";
 import VerArchivos from "../components/VerArchivos";
-import ProfileModal from "../components/ProfileModal";
 import { useTheme } from "../context/ThemeContext";
 import socket from "../socket";
 import * as bootstrap from "bootstrap";
@@ -15,11 +14,13 @@ import { getAvatarUrl } from "../utils/url";
 import { getMessagePreview, getReplyAuthorName } from "../utils/messagePreview";
 import { getProfileTitleStyle } from "../utils/profileColor";
 import { renderRichTextInline } from "../utils/richText.jsx";
+import { optimizeImageForChat, formatOptimizationSavings } from "../utils/imageOptimizer";
 import ChatInput from "../components/ChatInput";
 import GroupAvatar from "../components/GroupAvatar";
-import data from "@emoji-mart/data";
-import Picker from "@emoji-mart/react";
+import "../css/ChatBox.css";
 import "../css/emoji.css";
+
+const LazyEmojiPicker = React.lazy(() => import("../components/LazyEmojiPicker"));
 
 
 const MESSAGE_PAGE_SIZE = 50;
@@ -2274,19 +2275,62 @@ const ChatBox = ({ chat, user, setChat, onVerPerfil, onAddToList, estadosUsuario
 
       const controller = makePendingController(pendingId, { ...entry, kind: "image" });
 
-      uploadImageMessage(
-        entry.file,
-        entry.loteId,
-        (percent) => {
-          setMessages((prev) =>
-            prev.map((m) => (m.id === pendingId ? { ...m, progreso: percent } : m))
+      const retryPreparation = entry.optimizedFile
+        ? Promise.resolve({
+            file: entry.optimizedFile,
+            optimized: entry.optimizedFile !== entry.originalFile,
+            originalSize: entry.originalFile?.size || entry.optimizedFile.size,
+            optimizedSize: entry.optimizedFile.size,
+          })
+        : (
+            entry.optimizationPromise ||
+            optimizeImageForChat(entry.originalFile || entry.file, { signal: controller.signal })
           );
-        },
-        entry.replyToId,
-        entry.replyToType,
-        entry.replyToGrupoId,
-        { signal: controller.signal }
-      )
+
+      Promise.resolve(retryPreparation)
+        .then((optimization) => {
+          if (controller.signal.aborted) {
+            const cancelError = new Error("Envío cancelado");
+            cancelError.name = "CanceledError";
+            throw cancelError;
+          }
+
+          const uploadFile = optimization?.file || entry.originalFile || entry.file;
+          const pendingEntry = pendingUploadsRef.current.get(pendingId);
+
+          if (pendingEntry) {
+            pendingEntry.file = uploadFile;
+            pendingEntry.optimizedFile = uploadFile;
+            pendingEntry.optimizationResult = optimization || null;
+          }
+
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === pendingId
+                ? {
+                    ...m,
+                    tipo_archivo: uploadFile.type || m.tipo_archivo,
+                    nombre_archivo: uploadFile.name || m.nombre_archivo,
+                    tamano: uploadFile.size || m.tamano,
+                  }
+                : m
+            )
+          );
+
+          return uploadImageMessage(
+            uploadFile,
+            entry.loteId,
+            (percent) => {
+              setMessages((prev) =>
+                prev.map((m) => (m.id === pendingId ? { ...m, progreso: percent } : m))
+              );
+            },
+            entry.replyToId,
+            entry.replyToType,
+            entry.replyToGrupoId,
+            { signal: controller.signal }
+          );
+        })
         .then((mensajeServidor) => {
           if (!mensajeServidor) {
             markPendingUploadError(pendingId);
@@ -2442,20 +2486,68 @@ const ChatBox = ({ chat, user, setChat, onVerPerfil, onAddToList, estadosUsuario
           const controller = makePendingController(tempId, {
             kind: "image",
             file: img.file,
+            originalFile: img.file,
+            optimizationPromise: img.optimizationPromise || null,
             loteId,
             replyToId,
             replyToType,
             replyToGrupoId,
           });
 
-          // Subimos la imagen de verdad
-          uploadImageMessage(img.file, loteId, (percent) => {
-            setMessages((prev) =>
-              prev.map((m) =>
-                m.id === tempId ? { ...m, progreso: percent } : m
-              )
-            );
-          }, replyToId, replyToType, replyToGrupoId, { signal: controller.signal })
+          // Mientras el usuario veía el preview ya empezamos a preparar la foto.
+          // GIF/SVG u otros formatos no compatibles pasan sin cambios.
+          const preparePromise = img.optimizationPromise || optimizeImageForChat(
+            img.file,
+            { signal: controller.signal }
+          );
+
+          Promise.resolve(preparePromise)
+            .then((optimization) => {
+              if (controller.signal.aborted) {
+                const cancelError = new Error("Envío cancelado");
+                cancelError.name = "CanceledError";
+                throw cancelError;
+              }
+
+              const uploadFile = optimization?.file || img.file;
+              const pendingEntry = pendingUploadsRef.current.get(tempId);
+
+              if (pendingEntry) {
+                pendingEntry.file = uploadFile;
+                pendingEntry.optimizedFile = uploadFile;
+                pendingEntry.optimizationResult = optimization || null;
+              }
+
+              const savingPercent = formatOptimizationSavings(optimization);
+              if (savingPercent) {
+                logDev(
+                  `🖼️ Imagen optimizada antes de subir: ${img.file.name} (${savingPercent}% menos)`
+                );
+              }
+
+              // Actualizamos los metadatos del mensaje temporal antes de subirlo,
+              // así el socket puede reconciliar nombre/tamaño con la respuesta real.
+              setMessages((prev) =>
+                prev.map((m) =>
+                  m.id === tempId
+                    ? {
+                        ...m,
+                        tipo_archivo: uploadFile.type || m.tipo_archivo,
+                        nombre_archivo: uploadFile.name || m.nombre_archivo,
+                        tamano: uploadFile.size || m.tamano,
+                      }
+                    : m
+                )
+              );
+
+              return uploadImageMessage(uploadFile, loteId, (percent) => {
+                setMessages((prev) =>
+                  prev.map((m) =>
+                    m.id === tempId ? { ...m, progreso: percent } : m
+                  )
+                );
+              }, replyToId, replyToType, replyToGrupoId, { signal: controller.signal });
+            })
             .then((mensajeServidor) => {
               if (!mensajeServidor) {
                 // marcar error si no hay respuesta
@@ -3535,6 +3627,19 @@ const ChatBox = ({ chat, user, setChat, onVerPerfil, onAddToList, estadosUsuario
       id: `${file.name}-${file.size}-${file.lastModified}-${Math.random()}`,
       file,
       preview: URL.createObjectURL(file),
+      // La preparación empieza apenas el usuario selecciona la foto. El preview
+      // sigue siendo inmediato, pero cuando pulse Enviar normalmente la versión
+      // optimizada ya estará lista o muy avanzada.
+      optimizationPromise: optimizeImageForChat(file).catch((error) => {
+        console.warn("⚠️ No se pudo optimizar la imagen; se enviará el original:", error?.message || error);
+        return {
+          file,
+          optimized: false,
+          originalSize: file.size,
+          optimizedSize: file.size,
+          reason: "optimizer-error",
+        };
+      }),
     }));
 
     setPendingImages((prev) => {
@@ -5052,17 +5157,24 @@ const ChatBox = ({ chat, user, setChat, onVerPerfil, onAddToList, estadosUsuario
                     >
                       <div className={`wa-media-picker-content ${activeMediaPicker}`}>
                         {activeMediaPicker === "emoji" && (
-                          <Picker
-                            data={data}
-                            onEmojiSelect={(emoji) => handleEmojiClick({ emoji: emoji.native })}
-                            previewPosition="none"
-                            skinTonePosition="search"
-                            perLine={9}
-                            dynamicWidth
-                            theme={emojiTheme}
-                            locale="es"
-                            style={{ width: "100%", height: "100%" }}
-                          />
+                          <React.Suspense
+                            fallback={
+                              <div className="p-3 text-center" aria-label="Cargando emojis">
+                                <span className="spinner-border spinner-border-sm" role="status" aria-hidden="true" />
+                              </div>
+                            }
+                          >
+                            <LazyEmojiPicker
+                              onEmojiSelect={(emoji) => handleEmojiClick({ emoji: emoji.native })}
+                              previewPosition="none"
+                              skinTonePosition="search"
+                              perLine={9}
+                              dynamicWidth
+                              theme={emojiTheme}
+                              locale="es"
+                              style={{ width: "100%", height: "100%" }}
+                            />
+                          </React.Suspense>
                         )}
 
                         {activeMediaPicker === "gif" && (

@@ -2,8 +2,6 @@
 import React, { useState, useRef, useEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { getAvatarUrl } from "../utils/url";
-import data from "@emoji-mart/data";
-import Picker from "@emoji-mart/react";
 import twemoji from "twemoji";
 import { formatChatTimeOnly, formatChatDate } from "../utils/date";
 import { useTheme } from "../context/ThemeContext";
@@ -18,6 +16,8 @@ import {
   sanitizeRichHtml,
 } from "../utils/richText.jsx";
 import ChatInput from "./ChatInput";
+
+const LazyEmojiPicker = React.lazy(() => import("./LazyEmojiPicker"));
 
 const reactions = ["👍", "❤️", "😂", "😮", "😢", "🙏"];
 
@@ -152,6 +152,7 @@ const enqueueMediaLoad = (start) => {
 
 const ProgressiveChatImage = ({
   src,
+  fallbackSrc = "",
   alt,
   className = "",
   style,
@@ -161,15 +162,24 @@ const ProgressiveChatImage = ({
 }) => {
   const imgRef = useRef(null);
   const slotReleaseRef = useRef(null);
-  const previouslyLoaded = wasMediaLoadedThisSession(src);
+  const primaryPreviouslyLoaded = wasMediaLoadedThisSession(src);
+  const fallbackPreviouslyLoaded = fallbackSrc ? wasMediaLoadedThisSession(fallbackSrc) : false;
+  const [usingFallback, setUsingFallback] = useState(
+    !primaryPreviouslyLoaded && fallbackPreviouslyLoaded
+  );
+  const requestedSrc = usingFallback && fallbackSrc ? fallbackSrc : src;
+  const previouslyLoaded = wasMediaLoadedThisSession(requestedSrc);
   const [status, setStatus] = useState(previouslyLoaded ? "loaded" : "loading");
   const [attempt, setAttempt] = useState(0);
   const [nearViewport, setNearViewport] = useState(
-    previouslyLoaded || /^(blob:|data:)/i.test(String(src || ""))
+    previouslyLoaded || /^(blob:|data:)/i.test(String(requestedSrc || ""))
   );
-  const [activeSrc, setActiveSrc] = useState(previouslyLoaded ? src : "");
+  const [activeSrc, setActiveSrc] = useState(previouslyLoaded ? requestedSrc : "");
 
-  const effectiveSrc = useMemo(() => addMediaRetryParam(src, attempt), [src, attempt]);
+  const effectiveSrc = useMemo(
+    () => addMediaRetryParam(requestedSrc, attempt),
+    [requestedSrc, attempt]
+  );
 
   const releaseLoadSlot = () => {
     const release = slotReleaseRef.current;
@@ -179,12 +189,18 @@ const ProgressiveChatImage = ({
 
   useEffect(() => {
     releaseLoadSlot();
-    const cached = wasMediaLoadedThisSession(src);
+    const primaryCached = wasMediaLoadedThisSession(src);
+    const fallbackCached = fallbackSrc ? wasMediaLoadedThisSession(fallbackSrc) : false;
+    const nextUsingFallback = !primaryCached && fallbackCached;
+    const nextSrc = nextUsingFallback && fallbackSrc ? fallbackSrc : src;
+    const cached = wasMediaLoadedThisSession(nextSrc);
+
+    setUsingFallback(nextUsingFallback);
     setStatus(cached ? "loaded" : "loading");
     setAttempt(0);
-    setNearViewport(cached || /^(blob:|data:)/i.test(String(src || "")));
-    setActiveSrc(cached ? src : "");
-  }, [src]);
+    setNearViewport(cached || /^(blob:|data:)/i.test(String(nextSrc || "")));
+    setActiveSrc(cached ? nextSrc : "");
+  }, [src, fallbackSrc]);
 
   // Sólo iniciar medios que estén cerca de la zona visible del chat.
   useEffect(() => {
@@ -215,7 +231,7 @@ const ProgressiveChatImage = ({
 
     // Si ya cargó durante esta sesión, dejar que Chrome lo pinte desde caché
     // y no volver a enseñar el spinner por cambiar de chat.
-    if (wasMediaLoadedThisSession(src)) {
+    if (wasMediaLoadedThisSession(requestedSrc)) {
       setActiveSrc(effectiveSrc);
       setStatus("loaded");
 
@@ -246,17 +262,26 @@ const ProgressiveChatImage = ({
       cancelQueued();
       releaseLoadSlot();
     };
-  }, [nearViewport, effectiveSrc, src]);
+  }, [nearViewport, effectiveSrc, requestedSrc]);
 
   useEffect(() => () => releaseLoadSlot(), []);
 
   const handleLoaded = () => {
-    rememberLoadedMedia(src);
+    rememberLoadedMedia(requestedSrc);
     setStatus("loaded");
     releaseLoadSlot();
   };
 
   const handleError = () => {
+    // Imágenes antiguas pueden no tener *.thumb.webp. En ese caso hacemos
+    // fallback silencioso al archivo completo y no mostramos un error falso.
+    if (!usingFallback && fallbackSrc && fallbackSrc !== src) {
+      setUsingFallback(true);
+      setStatus("loading");
+      setActiveSrc("");
+      return;
+    }
+
     setStatus("error");
     releaseLoadSlot();
   };
@@ -265,6 +290,7 @@ const ProgressiveChatImage = ({
     event?.preventDefault?.();
     event?.stopPropagation?.();
     releaseLoadSlot();
+    setUsingFallback(false);
     setStatus("loading");
     setActiveSrc("");
     setNearViewport(true);
@@ -278,10 +304,13 @@ const ProgressiveChatImage = ({
     <>
       <img
         ref={imgRef}
-        key={activeSrc || `pending-${getMediaCacheKey(src)}`}
+        key={activeSrc || `pending-${getMediaCacheKey(requestedSrc)}`}
         src={activeSrc || undefined}
         alt={alt}
-        loading="lazy"
+        // El src sólo se asigna cuando el medio está cerca del viewport y entra
+        // en nuestra cola (máximo 3). Una vez autorizado, pedimos carga inmediata
+        // para que Chrome no añada otra espera "lazy" sobre nuestra propia cola.
+        loading="eager"
         decoding="async"
         draggable="false"
         className={`${className} ${status === "loaded" ? "is-media-loaded" : "is-media-loading"}`.trim()}
@@ -986,6 +1015,33 @@ const Message = ({
     }
 
     return finalUrl;
+  };
+
+  const obtenerMiniaturaLocal = (rawUrl, tipoArchivo = "") => {
+    const value = String(rawUrl || "").trim();
+    const tipo = String(tipoArchivo || "").toLowerCase();
+
+    if (!value || /^(blob:|data:)/i.test(value)) return "";
+    if (tipo === "image/gif" || /\.gif(?:\?.*)?$/i.test(value)) return "";
+
+    try {
+      const base = typeof window !== "undefined" ? window.location.origin : "https://quickchat.local";
+      const url = new URL(value, base);
+
+      // Sólo nuestros uploads locales usan la convención *.thumb.webp.
+      if (!url.pathname.startsWith("/uploads/")) return "";
+      if (!/\.(jpe?g|png|webp|avif)$/i.test(url.pathname)) return "";
+
+      url.pathname = url.pathname.replace(/\.(jpe?g|png|webp|avif)$/i, ".thumb.webp");
+      url.search = "";
+      url.hash = "";
+
+      return /^https?:\/\//i.test(value)
+        ? url.toString()
+        : `${url.pathname}`;
+    } catch {
+      return "";
+    }
   };
 
   const normalizeComparableMediaUrl = (value = "") => {
@@ -2644,6 +2700,14 @@ const Message = ({
 
                             finalUrl = getAvatarUrl(finalUrl) || finalUrl;
 
+                            // En los mensajes con varias imágenes también usamos
+                            // la miniatura local *.thumb.webp. La versión anterior
+                            // de Fase 8 sólo hacía esto para imágenes individuales,
+                            // por lo que los álbumes seguían descargando originales.
+                            const thumbnailUrl = normalizarUrlImagen(
+                              obtenerMiniaturaLocal(finalUrl)
+                            );
+
                             const isLastVisible = idx === visibles.length - 1;
                             const showMoreBadge =
                               isLastVisible && total > MAX_VISIBLE;
@@ -2658,7 +2722,8 @@ const Message = ({
                                 }
                               >
                                 <ProgressiveChatImage
-                                  src={finalUrl}
+                                  src={thumbnailUrl || finalUrl}
+                                  fallbackSrc={thumbnailUrl ? finalUrl : ""}
                                   alt={`imagen-${idx}`}
                                   className="wa-message-image"
                                   style={{
@@ -2860,7 +2925,7 @@ const Message = ({
 
                   if (urlArchivo) {
                     const esImagen =
-                      /\.(jpe?g|png|webp|gif)(\?.*)?$/i.test(urlArchivo) ||
+                      /\.(jpe?g|png|webp|gif|avif)(\?.*)?$/i.test(urlArchivo) ||
                       (tipo && tipo.startsWith("image/"));
 
                     const esAudio =
@@ -2887,11 +2952,18 @@ const Message = ({
                           ? textoCaptionImagen
                           : "";
 
+                      const miniaturaUrl = estado === "subiendo"
+                        ? ""
+                        : normalizarUrlImagen(
+                            mensajeData.miniatura_url || obtenerMiniaturaLocal(urlArchivo, tipo)
+                          );
+
                       return (
                         <div className="wa-message-media-stack">
                           <div className="wa-single-image-wrap">
                             <ProgressiveChatImage
-                              src={urlArchivo}
+                              src={miniaturaUrl || urlArchivo}
+                              fallbackSrc={miniaturaUrl ? urlArchivo : ""}
                               alt={nombre}
                               className="wa-message-image"
                               sizeBytes={tamano}
@@ -3313,14 +3385,21 @@ const Message = ({
             }}
             onClick={(e) => e.stopPropagation()}
           >
-            <Picker
-              data={data}
-              onEmojiSelect={(emoji) => handleReaction(emoji.native)}
-              theme={emojiTheme}
-              previewPosition="none"
-              searchPosition="top"
-              locale="es"
-            />
+            <React.Suspense
+              fallback={
+                <div className="p-3 text-center" aria-label="Cargando emojis">
+                  <span className="spinner-border spinner-border-sm" role="status" aria-hidden="true" />
+                </div>
+              }
+            >
+              <LazyEmojiPicker
+                onEmojiSelect={(emoji) => handleReaction(emoji.native)}
+                theme={emojiTheme}
+                previewPosition="none"
+                searchPosition="top"
+                locale="es"
+              />
+            </React.Suspense>
           </div>
         )}
 
@@ -3641,14 +3720,21 @@ const Message = ({
 
               {showEmojiPickerEdit && (
                 <div ref={emojiPickerEditRef} className="wa-edit-emoji-popover">
-                  <Picker
-                    data={data}
-                    onEmojiSelect={(emoji) => editInputRef.current?.insertEmoji?.(emoji.native)}
-                    theme={emojiTheme}
-                    previewPosition="none"
-                    searchPosition="top"
-                    locale="es"
-                  />
+                  <React.Suspense
+                    fallback={
+                      <div className="p-3 text-center" aria-label="Cargando emojis">
+                        <span className="spinner-border spinner-border-sm" role="status" aria-hidden="true" />
+                      </div>
+                    }
+                  >
+                    <LazyEmojiPicker
+                      onEmojiSelect={(emoji) => editInputRef.current?.insertEmoji?.(emoji.native)}
+                      theme={emojiTheme}
+                      previewPosition="none"
+                      searchPosition="top"
+                      locale="es"
+                    />
+                  </React.Suspense>
                 </div>
               )}
             </div>

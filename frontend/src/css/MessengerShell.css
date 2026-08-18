@@ -1,0 +1,764 @@
+/*
+ * MessengerShell.css
+ *
+ * Estilos compartidos que deben existir desde que se abre /mensajes,
+ * incluso antes de seleccionar una conversación.
+ *
+ * Se separan de ChatBox.css para conservar el lazy-loading de ChatBox
+ * sin deformar ChatList, listas personalizadas ni badges de presencia.
+ */
+
+/* ===== Presencia / avatares en Sidebar y ChatList ===== */
+/* ==========================================
+   Estados de presencia estilo Discord/WhatsApp
+   ========================================== */
+.wa-presence-wrapper {
+  position: relative;
+  display: inline-flex;
+  flex: 0 0 auto;
+  line-height: 0;
+}
+
+.wa-presence-wrapper > img,
+.wa-presence-wrapper > .avatar-img,
+.wa-presence-wrapper > div:not(.wa-presence-badge) {
+  border-radius: 50%;
+}
+
+.wa-presence-badge {
+  position: absolute;
+  right: -2px;
+  bottom: -2px;
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  border: 2px solid var(--wa-sidebar-bg, #f7f8fa);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 7px;
+  color: #ffffff;
+  z-index: 4;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.22);
+}
+
+.wa-presence-wrapper-sm .wa-presence-badge {
+  width: 13px;
+  height: 13px;
+  font-size: 6px;
+  right: -2px;
+  bottom: -2px;
+}
+
+.wa-presence-badge.online {
+  background: #23a559;
+}
+
+.wa-presence-badge.idle {
+  background: #f0b232;
+  color: #16202a;
+}
+
+.wa-presence-badge.dnd {
+  background: #f23f43;
+}
+
+.wa-presence-badge.offline {
+  background: #7f8792;
+}
+
+.wa-presence-badge.offline i {
+  font-size: 5px;
+}
+
+body.dark .wa-presence-badge,
+[data-bs-theme="dark"] .wa-presence-badge {
+  border-color: #0b1420;
+}
+
+.wa-chat-header .wa-presence-badge {
+  border-color: var(--wa-chat-header-bg, #ffffff);
+}
+
+body.dark .wa-chat-header .wa-presence-badge,
+[data-bs-theme="dark"] .wa-chat-header .wa-presence-badge {
+  border-color: #111c22;
+}
+
+/* ===== Listas personalizadas / filtros de ChatList ===== */
+.wa-custom-list-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 8px 0 2px;
+  scrollbar-width: none;
+}
+
+.wa-custom-list-row::-webkit-scrollbar {
+  display: none;
+}
+
+.wa-custom-list-chip {
+  flex: 0 0 auto;
+  max-width: 150px;
+}
+
+.wa-custom-list-chip span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wa-custom-list-chip small {
+  margin-left: 6px;
+  font-size: 12px;
+  opacity: 0.8;
+}
+
+.wa-list-add-chip {
+  width: 36px;
+  min-width: 36px;
+  height: 36px;
+  padding: 0 !important;
+  justify-content: center;
+}
+
+.wa-filter-new-list {
+  border-top: 1px solid rgba(0, 0, 0, 0.08) !important;
+  margin-top: 4px;
+  padding-top: 12px !important;
+}
+
+.wa-filter-new-list i {
+  margin-right: 8px;
+}
+
+.wa-create-list-sidebar {
+  display: flex;
+  flex-direction: column;
+  background: #ffffff !important;
+}
+
+.wa-create-list-head {
+  height: 66px;
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  padding: 0 22px;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+  color: #111827;
+  font-weight: 500;
+}
+
+.wa-create-list-head button,
+.wa-list-modal-header button {
+  width: 38px;
+  height: 38px;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: inherit;
+  display: grid;
+  place-items: center;
+}
+
+.wa-create-list-head button:hover,
+.wa-list-modal-header button:hover {
+  background: rgba(0, 0, 0, 0.06);
+}
+
+.wa-create-list-body {
+  padding: 26px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+}
+
+.wa-create-list-label,
+.wa-create-list-section-title {
+  display: block;
+  color: #667781;
+  font-size: 13px;
+  margin-bottom: -12px;
+}
+
+.wa-create-list-input {
+  border-bottom: 2px solid #667781;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.wa-create-list-input:focus-within {
+  border-bottom-color: #00a884;
+}
+
+.wa-create-list-input input {
+  flex: 1;
+  min-width: 0;
+  height: 42px;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  font-size: 16px;
+}
+
+.wa-create-list-input i {
+  color: #667781;
+  font-size: 19px;
+}
+
+.wa-create-list-add-row {
+  border: 0;
+  background: transparent;
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  min-height: 56px;
+  padding: 0;
+  color: #111827;
+  font-size: 16px;
+  text-align: left;
+}
+
+.wa-create-list-add-row span {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: #00a884;
+  color: #fff;
+}
+
+.wa-create-list-selected {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.wa-create-list-selected button {
+  border: 0;
+  background: rgba(0, 0, 0, 0.04);
+  border-radius: 14px;
+  padding: 8px 12px;
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr) 20px;
+  align-items: center;
+  gap: 10px;
+  text-align: left;
+}
+
+.wa-create-list-selected-avatar {
+  width: 36px;
+  height: 36px;
+  display: block;
+  overflow: hidden;
+  border-radius: 50%;
+}
+
+.wa-create-list-selected-avatar .wa-presence-badge {
+  display: none;
+}
+
+.wa-create-list-submit {
+  width: fit-content;
+  border: 0;
+  border-radius: 18px;
+  padding: 9px 20px;
+  background: #00a884;
+  color: #fff;
+  font-weight: 600;
+}
+
+.wa-create-list-submit:disabled {
+  background: rgba(0, 0, 0, 0.07);
+  color: #aebac1;
+}
+
+.wa-list-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 2500;
+  background: rgba(0, 0, 0, 0.35);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 86px;
+}
+
+.wa-list-modal {
+  width: min(420px, calc(100vw - 32px));
+  max-height: min(720px, calc(100vh - 120px));
+  border-radius: 12px;
+  background: #ffffff;
+  box-shadow: 0 18px 70px rgba(0, 0, 0, 0.22);
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.wa-list-modal-header {
+  height: 58px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 0 16px;
+}
+
+.wa-list-modal-header strong {
+  font-size: 16px;
+  font-weight: 500;
+}
+
+.wa-list-modal-search {
+  margin: 0 18px 14px;
+  height: 42px;
+  border: 2px solid #00a884;
+  border-radius: 24px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 14px;
+  color: #667781;
+}
+
+.wa-list-modal-search input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  font-size: 14px;
+}
+
+.wa-list-modal-subtitle {
+  padding: 0 24px 10px;
+  color: #667781;
+  font-size: 13px;
+}
+
+.wa-list-modal-body {
+  overflow-y: auto;
+  padding: 0 0 78px;
+}
+
+.wa-list-modal-body.compact {
+  padding-bottom: 16px;
+}
+
+.wa-list-select-row,
+.wa-existing-list-row {
+  width: 100%;
+  min-height: 64px;
+  border: 0;
+  background: transparent;
+  display: grid;
+  grid-template-columns: 32px 48px minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+  padding: 8px 24px;
+  text-align: left;
+}
+
+.wa-list-select-row:hover,
+.wa-existing-list-row:hover {
+  background: rgba(0, 0, 0, 0.045);
+}
+
+.wa-list-check {
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  border: 2px solid #8696a0;
+  color: #00a884;
+  display: grid;
+  place-items: center;
+  font-size: 11px;
+}
+
+.wa-list-select-row.selected .wa-list-check {
+  border-color: #00a884;
+}
+
+.wa-list-select-avatar {
+  width: 44px;
+  height: 44px;
+  overflow: hidden;
+  border-radius: 50%;
+}
+
+.wa-list-select-avatar .wa-presence-badge {
+  display: none;
+}
+
+.wa-list-select-main strong,
+.wa-list-select-main small,
+.wa-existing-list-row strong,
+.wa-existing-list-row small {
+  display: block;
+}
+
+.wa-list-select-main strong,
+.wa-existing-list-row strong {
+  color: #111827;
+  font-size: 15px;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.wa-list-select-main small,
+.wa-existing-list-row small {
+  color: #667781;
+  font-size: 13px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.wa-list-modal-confirm {
+  position: absolute;
+  right: 28px;
+  bottom: 26px;
+  width: 58px;
+  height: 58px;
+  border: 0;
+  border-radius: 50%;
+  background: #00a884;
+  color: #fff;
+  box-shadow: 0 8px 22px rgba(0, 168, 132, 0.35);
+}
+
+.wa-list-modal-confirm:disabled {
+  opacity: 0.45;
+}
+
+.wa-add-list-modal {
+  max-height: 520px;
+}
+
+.wa-existing-list-row {
+  grid-template-columns: 44px minmax(0, 1fr);
+}
+
+.wa-existing-list-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: #e7fce3;
+  color: #00a884;
+}
+
+.wa-create-first-list-btn {
+  border: 0;
+  background: transparent;
+  color: #00a884;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 22px 20px;
+  text-align: left;
+}
+
+.wa-list-empty-box {
+  color: #667781;
+  padding: 24px;
+  text-align: center;
+}
+
+:root[data-theme="dark"] .wa-create-list-sidebar,
+:root[data-theme="dark"] .wa-list-modal {
+  background: #111b21 !important;
+  color: #e9edef;
+}
+
+:root[data-theme="dark"] .wa-create-list-head,
+:root[data-theme="dark"] .wa-create-list-add-row,
+:root[data-theme="dark"] .wa-list-select-main strong,
+:root[data-theme="dark"] .wa-existing-list-row strong {
+  color: #e9edef;
+}
+
+:root[data-theme="dark"] .wa-create-list-input input,
+:root[data-theme="dark"] .wa-list-modal-search input {
+  color: #e9edef;
+}
+
+:root[data-theme="dark"] .wa-create-list-selected button,
+:root[data-theme="dark"] .wa-list-select-row:hover,
+:root[data-theme="dark"] .wa-existing-list-row:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+@media (max-width: 1199px) {
+  .wa-chat-shell.is-info-open .wa-contact-info-panel.is-open {
+    inset: 0 !important;
+    width: 100% !important;
+    max-width: none !important;
+    flex-basis: 100% !important;
+  }
+}
+
+/* Ajuste 10: listas personalizadas tipo WhatsApp */
+.wa-custom-list-row {
+  padding-top: 6px !important;
+  padding-bottom: 8px !important;
+}
+
+.wa-custom-list-chip-wrap {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  min-height: 34px;
+  border: 1px solid #d7dde3;
+  border-radius: 999px;
+  background: #ffffff;
+  overflow: hidden;
+  transition: background-color 0.18s ease, border-color 0.18s ease;
+}
+
+.wa-custom-list-chip-wrap.active {
+  background: #d9fdd3;
+  border-color: #9fe39b;
+}
+
+.wa-custom-list-chip-wrap .wa-custom-list-chip {
+  border: 0 !important;
+  background: transparent !important;
+  min-height: 32px;
+  max-width: 128px;
+  padding: 6px 8px 6px 14px !important;
+  border-radius: 999px 0 0 999px !important;
+}
+
+.wa-custom-list-chip-wrap .wa-custom-list-chip.active {
+  color: #008069;
+}
+
+.wa-list-chip-action {
+  width: 29px;
+  height: 29px;
+  border: 0;
+  background: transparent;
+  color: #667781;
+  display: inline-grid;
+  place-items: center;
+  font-size: 12px;
+  opacity: 0.72;
+  transition: background-color 0.18s ease, color 0.18s ease, opacity 0.18s ease;
+}
+
+.wa-list-chip-action:hover {
+  background: rgba(0, 168, 132, 0.12);
+  color: #008069;
+  opacity: 1;
+}
+
+.wa-list-chip-action.danger:hover {
+  background: rgba(223, 51, 84, 0.12);
+  color: #d7193f;
+}
+
+:root[data-theme="dark"] .wa-custom-list-chip-wrap {
+  background: #111b21;
+  border-color: rgba(134, 150, 160, 0.35);
+}
+
+:root[data-theme="dark"] .wa-custom-list-chip-wrap.active {
+  background: rgba(0, 168, 132, 0.18);
+  border-color: rgba(0, 168, 132, 0.45);
+}
+
+:root[data-theme="dark"] .wa-list-chip-action {
+  color: #aebac1;
+}
+
+/* Ajuste 11: listas personalizadas compactas con menu de desborde */
+.wa-custom-list-row {
+  max-width: 100% !important;
+  min-width: 0 !important;
+  overflow: visible !important;
+  flex-wrap: nowrap !important;
+  margin-bottom: 4px !important;
+}
+
+.wa-custom-list-chip-wrap {
+  flex: 1 1 0 !important;
+  min-width: 0 !important;
+  max-width: calc((100% - 48px) / 2) !important;
+}
+
+.wa-custom-list-chip-wrap .wa-custom-list-chip {
+  flex: 1 1 auto !important;
+  min-width: 0 !important;
+  max-width: none !important;
+}
+
+.wa-custom-list-more {
+  flex: 0 0 auto !important;
+  min-width: 36px !important;
+  max-width: 128px !important;
+  padding-inline: 11px !important;
+}
+
+.wa-custom-list-more span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wa-custom-list-dropdown {
+  width: 260px !important;
+  padding: 8px 0 !important;
+}
+
+.wa-custom-list-menu-row {
+  display: flex;
+  align-items: center;
+  min-height: 48px;
+  color: #111b21;
+}
+
+.wa-custom-list-menu-row:hover,
+.wa-custom-list-menu-row.active {
+  background: #f0f2f5;
+}
+
+.wa-custom-list-menu-row.active .wa-custom-list-menu-main {
+  color: #008069;
+}
+
+.wa-custom-list-dropdown .wa-custom-list-menu-main {
+  flex: 1 1 auto !important;
+  min-width: 0 !important;
+  width: auto !important;
+  padding: 12px 10px 12px 16px !important;
+  justify-content: space-between !important;
+  border: 0 !important;
+  background: transparent !important;
+  color: inherit !important;
+  font-size: 0.92rem !important;
+  font-weight: 600 !important;
+  text-align: left !important;
+}
+
+.wa-custom-list-dropdown .wa-custom-list-menu-main span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wa-custom-list-dropdown .wa-custom-list-menu-main strong {
+  flex: 0 0 auto;
+  margin-left: 12px;
+  color: #00a884;
+  font-size: 0.88rem;
+}
+
+.wa-custom-list-dropdown .wa-custom-list-menu-action {
+  flex: 0 0 34px !important;
+  width: 34px !important;
+  height: 34px !important;
+  padding: 0 !important;
+  margin-right: 4px;
+  display: inline-grid !important;
+  place-items: center !important;
+  justify-content: center !important;
+  border: 0 !important;
+  border-radius: 50% !important;
+  background: transparent !important;
+  color: #667781 !important;
+  font-size: 12px !important;
+}
+
+.wa-custom-list-dropdown .wa-custom-list-menu-action:hover {
+  background: rgba(0, 168, 132, 0.12) !important;
+  color: #008069 !important;
+}
+
+.wa-custom-list-dropdown .wa-custom-list-menu-action.danger:hover {
+  background: rgba(223, 51, 84, 0.12) !important;
+  color: #d7193f !important;
+}
+
+:root[data-theme="dark"] .wa-custom-list-menu-row {
+  color: #e9edef;
+}
+
+:root[data-theme="dark"] .wa-custom-list-menu-row:hover,
+:root[data-theme="dark"] .wa-custom-list-menu-row.active {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+:root[data-theme="dark"] .wa-custom-list-dropdown .wa-custom-list-menu-action {
+  color: #aebac1 !important;
+}
+
+.wa-custom-list-row:not(.has-overflow) .wa-custom-list-chip-wrap {
+  max-width: calc((100% - 8px) / 2) !important;
+}
+
+.wa-custom-list-row.has-overflow .wa-custom-list-chip-wrap {
+  max-width: calc((100% - 56px) / 2) !important;
+}
+
+.wa-custom-list-menu-row.active .wa-custom-list-menu-main {
+  color: #008069 !important;
+}
+
+/* ===== Avatar de grupos usado por ChatList antes de cargar ChatBox =====
+   GroupAvatar se renderiza en la lista inicial de chats. Estas reglas antes
+   vivían únicamente en ChatBox.css; al diferir ChatBox, el icono quedaba
+   sin círculo/fondo hasta seleccionar una conversación.
+*/
+.wa-group-avatar-composite {
+  position: relative;
+  border-radius: 999px;
+  overflow: hidden;
+  background: #dfe5e7 !important;
+  color: #54656f !important;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: inset 0 0 0 1px rgba(17, 27, 33, 0.08);
+  flex: 0 0 auto;
+}
+
+.wa-group-avatar-main-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.wa-group-avatar-default {
+  width: 100%;
+  height: 100%;
+  border-radius: 999px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #dfe5e7;
+  color: #54656f;
+}
+
+.wa-group-avatar-default i {
+  font-size: var(--group-avatar-icon-size, 24px);
+  line-height: 1;
+}
+
+:root[data-theme="dark"] .wa-group-avatar-composite,
+:root[data-theme="dark"] .wa-group-avatar-default {
+  background: #3b4a54 !important;
+  color: #d1d7db !important;
+}
+

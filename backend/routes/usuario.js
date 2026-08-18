@@ -115,9 +115,12 @@ router.post('/login', async (req, res) => {
       });
     }
 
-    const usuario = usuarioContrasena;
-
-    usuario.permisos_chat = normalizarPermisosChat(usuario.permisos_chat);
+    // La contraseña sólo se usa para validar el login. Nunca debe salir en la respuesta HTTP.
+    const { contrasena: _contrasena, ...usuarioSinContrasena } = usuarioContrasena;
+    const usuario = {
+      ...usuarioSinContrasena,
+      permisos_chat: normalizarPermisosChat(usuarioSinContrasena.permisos_chat),
+    };
 
     const [permisos] = await pool.query(
       'SELECT permiso FROM roles_permisos WHERE rol_id = ?',

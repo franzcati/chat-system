@@ -134,7 +134,6 @@ const dedupeMessagesById = (items = []) => {
 
 const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat, addToListTarget, onAddToListHandled, onUnreadTotalChange, estadosUsuarios = {} }) => {
   
-  logDev("🔥 ChatList renderizado", { userId });
   const [mensajes, setMensajes] = useState([]);
   const [grupos, setGrupos] = useState([]);
   const [chats, setChats] = useState([]);

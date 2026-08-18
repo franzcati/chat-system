@@ -27,7 +27,7 @@ function Login() {
         contrasena: password,
       });
 
-      logDev('Login exitoso:', res.data);
+      logDev('Login exitoso', { usuarioId: res.data?.usuario?.id });
       setError('');
       // ✅ Guardar usuario en localStorage
       localStorage.setItem('usuario', JSON.stringify(res.data.usuario));

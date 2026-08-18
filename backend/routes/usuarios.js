@@ -394,7 +394,6 @@ router.get("/", async (req, res) => {
         u.nombre,
         u.apellido,
         u.correo AS usuario,
-        u.contrasena,
         u.rol_id,
         u.estado,
         u.url_imagen,
@@ -430,9 +429,12 @@ router.get("/", async (req, res) => {
     `);
 
     const data = rows.map((u) => {
-      const perfilNormalizado = normalizarPerfilUsuario(u);
+      // Defensa en profundidad: aunque una consulta futura vuelva a incluirla,
+      // la contraseña nunca debe formar parte del JSON enviado al navegador.
+      const { contrasena: _contrasena, ...usuarioSeguro } = u;
+      const perfilNormalizado = normalizarPerfilUsuario(usuarioSeguro);
       return {
-        ...u,
+        ...usuarioSeguro,
         perfil_biografia: perfilNormalizado.perfil_biografia,
         perfil_estado_mensaje: perfilNormalizado.perfil_estado_mensaje,
         perfil_estado_expira: perfilNormalizado.perfil_estado_expira,
