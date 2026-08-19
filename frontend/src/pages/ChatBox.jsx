@@ -2328,7 +2328,10 @@ const ChatBox = ({ chat, user, setChat, onVerPerfil, onAddToList, estadosUsuario
             entry.replyToId,
             entry.replyToType,
             entry.replyToGrupoId,
-            { signal: controller.signal }
+            {
+              signal: controller.signal,
+              thumbnailFile: optimization?.thumbnailFile || entry.optimizationResult?.thumbnailFile || null,
+            }
           );
         })
         .then((mensajeServidor) => {
@@ -2546,7 +2549,7 @@ const ChatBox = ({ chat, user, setChat, onVerPerfil, onAddToList, estadosUsuario
                     m.id === tempId ? { ...m, progreso: percent } : m
                   )
                 );
-              }, replyToId, replyToType, replyToGrupoId, { signal: controller.signal });
+              }, replyToId, replyToType, replyToGrupoId, { signal: controller.signal, thumbnailFile: optimization?.thumbnailFile || null });
             })
             .then((mensajeServidor) => {
               if (!mensajeServidor) {
@@ -3666,6 +3669,10 @@ const ChatBox = ({ chat, user, setChat, onVerPerfil, onAddToList, estadosUsuario
 
     const formData = new FormData();
     formData.append("archivo", file);
+    const thumbnailFile = requestOptions?.thumbnailFile || null;
+    if (thumbnailFile?.size && thumbnailFile.type === "image/webp") {
+      formData.append("miniatura", thumbnailFile, thumbnailFile.name || "imagen.thumb.webp");
+    }
     if (requestOptions?.isVoiceNote) formData.append("esNotaVoz", "1");
     if (loteId) formData.append("loteId", loteId); // 👈 importante
     if (replyToId) formData.append("replyToId", replyToId);

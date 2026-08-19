@@ -413,12 +413,24 @@ const storage = multer.diskStorage({
     cb(null, folderPath);
   },
   filename: (req, file, cb) => {
+    if (file.fieldname === "miniatura" && req._quickchatMainUploadFilename) {
+      const parsed = path.parse(req._quickchatMainUploadFilename);
+      return cb(null, `${parsed.name}.thumb.webp`);
+    }
+
     const uniquePrefix = Date.now();
-    cb(null, `${uniquePrefix}_${file.originalname.replace(/\s+/g, "_")}`);
+    const generatedName = `${uniquePrefix}_${file.originalname.replace(/\s+/g, "_")}`;
+    if (file.fieldname === "archivo") req._quickchatMainUploadFilename = generatedName;
+    cb(null, generatedName);
   },
 });
 
 const upload = multer({ storage });
+
+const uploadArchivoConMiniatura = upload.fields([
+  { name: "archivo", maxCount: 1 },
+  { name: "miniatura", maxCount: 1 },
+]);
 
 function esArchivoAudio(file) {
   const mime = String(file?.mimetype || "").toLowerCase();
@@ -1480,7 +1492,7 @@ router.get("/fijados", async (req, res) => {
 // =======================
 // Subir archivo en chat individual
 // =======================
-router.post("/archivo", upload.single("archivo"), async (req, res) => {
+router.post("/archivo", uploadArchivoConMiniatura, async (req, res) => {
   try {
     const sender_id = Number(req.body.sender_id || req.query.sender_id);
     const receiver_id = Number(req.body.receiver_id || req.query.receiver_id);
@@ -1495,13 +1507,21 @@ router.post("/archivo", upload.single("archivo"), async (req, res) => {
       return res.status(400).json({ success: false, error: "Datos inválidos en la solicitud" });
     }
 
-    const file = req.file;
+    const file = req.files?.archivo?.[0] || null;
+    let thumbnailFile = req.files?.miniatura?.[0] || null;
     if (!file) {
       return res.status(400).json({ success: false, error: "No se recibió ningún archivo" });
     }
 
+    const mainIsImage = String(file.mimetype || "").toLowerCase().startsWith("image/");
+    if (thumbnailFile && (!mainIsImage || String(thumbnailFile.mimetype || "").toLowerCase() !== "image/webp")) {
+      eliminarArchivoTemporal(thumbnailFile);
+      thumbnailFile = null;
+    }
+
     if (esNotaVozGrabada(req, file) && !(await usuarioPuedeEnviarAudios(sender_id))) {
       eliminarArchivoTemporal(file);
+      eliminarArchivoTemporal(thumbnailFile);
       return res.status(403).json({
         success: false,
         error: "No tienes permiso para grabar audios. Solicita autorización a un administrador.",
@@ -1518,6 +1538,10 @@ router.post("/archivo", upload.single("archivo"), async (req, res) => {
     );
 
     const urlArchivo = `/uploads/${relativePath.replace(/\\/g, "/")}`;
+
+    const miniaturaUrl = thumbnailFile?.path
+      ? `/uploads/${path.relative(path.join(__dirname, "../uploads"), thumbnailFile.path).replace(/\\/g, "/")}`
+      : null;
 
     await ensureReplyColumn();
 
@@ -1568,6 +1592,7 @@ router.post("/archivo", upload.single("archivo"), async (req, res) => {
       visto: 0,
       fijado: false,
       archivo_url: urlArchivo,
+      miniatura_url: miniaturaUrl,
       tipo_archivo: preparedFile.mimetype,
       nombre_archivo: file.originalname,
       tamano: preparedFile.size,
