@@ -4,7 +4,7 @@ const path = require("path");
 const { spawn } = require("child_process");
 
 const uploadsDir = path.resolve(__dirname, "../uploads");
-const supported = new Set([".jpg", ".jpeg", ".png", ".webp", ".avif"]);
+const supported = new Set([".jpg", ".jpeg", ".jfif", ".png", ".webp", ".avif"]);
 const minBytes = Math.max(1, Number(process.env.THUMB_BACKFILL_MIN_BYTES || 120 * 1024));
 
 function runFfmpeg(input, output) {
