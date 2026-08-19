@@ -656,6 +656,179 @@ const Message = ({
   const [showAudioRateControl, setShowAudioRateControl] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
 
+  // Gesto móvil tipo WhatsApp: deslizar el mensaje hacia la derecha
+  // para responder. Funciona también sobre imágenes y stickers.
+  const replyTouchRef = useRef({
+    startX: 0,
+    startY: 0,
+    currentX: 0,
+    currentY: 0,
+    intent: null,
+    ready: false,
+    suppressClickUntil: 0,
+    settleTimer: null,
+  });
+
+  const resetReplySwipeVisual = () => {
+    const node = messageRef.current;
+    if (!node) return;
+
+    node.classList.remove("is-reply-swiping", "is-reply-ready");
+    node.style.setProperty("--wa-reply-swipe-x", "0px");
+
+    window.clearTimeout(replyTouchRef.current.settleTimer);
+    replyTouchRef.current.settleTimer = window.setTimeout(() => {
+      node.classList.remove("is-reply-settling");
+    }, 190);
+    node.classList.add("is-reply-settling");
+  };
+
+  const isReplySwipeBlockedTarget = (target) => (
+    target instanceof Element
+    && Boolean(
+      target.closest(
+        "button, a, input, textarea, select, video, audio, [contenteditable='true'], " +
+        ".message-action, .reply-preview, .wa-message-reactions, .message-reply-shortcut"
+      )
+    )
+  );
+
+  const handleReplyTouchStart = (event) => {
+    if (
+      selectionMode
+      || mensajeData?.eliminado
+      || typeof onReply !== "function"
+      || isReplySwipeBlockedTarget(event.target)
+    ) {
+      replyTouchRef.current.intent = "blocked";
+      return;
+    }
+
+    const touch = event.touches?.[0];
+    if (!touch) return;
+
+    window.clearTimeout(replyTouchRef.current.settleTimer);
+
+    replyTouchRef.current.startX = touch.clientX;
+    replyTouchRef.current.startY = touch.clientY;
+    replyTouchRef.current.currentX = touch.clientX;
+    replyTouchRef.current.currentY = touch.clientY;
+    replyTouchRef.current.intent = null;
+    replyTouchRef.current.ready = false;
+
+    const node = messageRef.current;
+    node?.classList.remove("is-reply-settling", "is-reply-ready");
+    node?.style.setProperty("--wa-reply-swipe-x", "0px");
+  };
+
+  const handleReplyTouchMove = (event) => {
+    if (
+      selectionMode
+      || mensajeData?.eliminado
+      || typeof onReply !== "function"
+      || replyTouchRef.current.intent === "blocked"
+    ) {
+      return;
+    }
+
+    const touch = event.touches?.[0];
+    if (!touch) return;
+
+    replyTouchRef.current.currentX = touch.clientX;
+    replyTouchRef.current.currentY = touch.clientY;
+
+    const dx = touch.clientX - replyTouchRef.current.startX;
+    const dy = touch.clientY - replyTouchRef.current.startY;
+    const absX = Math.abs(dx);
+    const absY = Math.abs(dy);
+
+    if (replyTouchRef.current.intent == null && (absX > 8 || absY > 8)) {
+      // Sólo el desplazamiento horizontal hacia la derecha es "responder".
+      if (dx > 0 && absX > absY * 1.12) {
+        replyTouchRef.current.intent = "reply";
+      } else if (absY > absX || dx < 0) {
+        replyTouchRef.current.intent = "scroll";
+      }
+    }
+
+    if (replyTouchRef.current.intent !== "reply") return;
+
+    // touch-action: pan-y deja el scroll vertical al navegador y este gesto
+    // controla únicamente el desplazamiento horizontal.
+    event.preventDefault?.();
+
+    const visualOffset = Math.max(0, Math.min(44, dx * 0.58));
+    const ready = dx >= 58;
+
+    const node = messageRef.current;
+    if (node) {
+      node.classList.add("is-reply-swiping");
+      node.classList.toggle("is-reply-ready", ready);
+      node.style.setProperty("--wa-reply-swipe-x", `${visualOffset}px`);
+    }
+
+    if (ready && !replyTouchRef.current.ready) {
+      // Android puede dar una vibración corta; iPhone simplemente la ignora.
+      try {
+        navigator.vibrate?.(8);
+      } catch {
+        // Sin vibración disponible.
+      }
+    }
+
+    replyTouchRef.current.ready = ready;
+  };
+
+  const handleReplyTouchEnd = (event) => {
+    if (
+      selectionMode
+      || mensajeData?.eliminado
+      || typeof onReply !== "function"
+      || replyTouchRef.current.intent === "blocked"
+    ) {
+      resetReplySwipeVisual();
+      replyTouchRef.current.intent = null;
+      return;
+    }
+
+    const touch = event.changedTouches?.[0];
+    const endX = touch?.clientX ?? replyTouchRef.current.currentX;
+    const endY = touch?.clientY ?? replyTouchRef.current.currentY;
+    const dx = endX - replyTouchRef.current.startX;
+    const dy = endY - replyTouchRef.current.startY;
+
+    const shouldReply =
+      replyTouchRef.current.intent === "reply"
+      && dx >= 58
+      && Math.abs(dx) > Math.abs(dy) * 1.08;
+
+    if (shouldReply) {
+      replyTouchRef.current.suppressClickUntil = Date.now() + 550;
+      event.preventDefault?.();
+      event.stopPropagation?.();
+      handleReply(event);
+    }
+
+    resetReplySwipeVisual();
+    replyTouchRef.current.intent = null;
+    replyTouchRef.current.ready = false;
+  };
+
+  const handleReplyTouchCancel = () => {
+    resetReplySwipeVisual();
+    replyTouchRef.current.intent = null;
+    replyTouchRef.current.ready = false;
+  };
+
+  const handleReplySwipeClickCapture = (event) => {
+    // Después de deslizar una imagen/sticker Safari puede emitir un click.
+    // Lo cancelamos para que el gesto de responder no abra el visor multimedia.
+    if (Date.now() < replyTouchRef.current.suppressClickUntil) {
+      event.preventDefault();
+      event.stopPropagation();
+    }
+  };
+
   // version oscura de emoji
   const { theme } = useTheme();
   const emojiTheme = theme === "dark" ? "dark" : "light";
@@ -2199,7 +2372,11 @@ const Message = ({
         ref={messageRef}
         className="message-inner"
         style={{ position: "relative" }}
-        onDoubleClick={selectionMode ? undefined : handleReply}
+        onTouchStart={selectionMode ? undefined : handleReplyTouchStart}
+        onTouchMove={selectionMode ? undefined : handleReplyTouchMove}
+        onTouchEnd={selectionMode ? undefined : handleReplyTouchEnd}
+        onTouchCancel={selectionMode ? undefined : handleReplyTouchCancel}
+        onClickCapture={selectionMode ? undefined : handleReplySwipeClickCapture}
         onCopy={handleMessageCopy}
         onClick={(event) => {
           if (!selectionMode || mensajeData.eliminado) return;
@@ -2207,6 +2384,9 @@ const Message = ({
           onToggleSelect?.(crearPayloadReenviar());
         }}
       >
+        <span className="wa-swipe-reply-indicator" aria-hidden="true">
+          <i className="fa-solid fa-reply" />
+        </span>
         <div className="message-body">
           <div className="message-content">
             <div

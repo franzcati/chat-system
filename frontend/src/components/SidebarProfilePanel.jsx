@@ -572,7 +572,7 @@ const buildProfileThemeVars = (primaryValue, secondaryValue) => {
   };
 };
 
-const SidebarProfilePanel = ({ usuario, show, onClose, onLogout, onUsuarioUpdate, sidebarExpanded = false }) => {
+const SidebarProfilePanel = ({ usuario, show, onClose, onLogout, onUsuarioUpdate, sidebarExpanded = false, onOpenMenu }) => {
   const { theme: appTheme } = useTheme();
   const defaultProfileTheme = useMemo(() => getDefaultProfileTheme(appTheme), [appTheme]);
   const [perfil, setPerfil] = useState(usuario || null);
@@ -1080,7 +1080,8 @@ const SidebarProfilePanel = ({ usuario, show, onClose, onLogout, onUsuarioUpdate
 
   return (
     <>
-      <div className={`wa-profile-popover ${sidebarExpanded ? "is-sidebar-expanded" : "is-sidebar-collapsed"}`} role="dialog" aria-label="Perfil de usuario">
+      {renderModalPortal(
+        <div className={`wa-profile-popover ${sidebarExpanded ? "is-sidebar-expanded" : "is-sidebar-collapsed"}`} role="dialog" aria-label="Perfil de usuario">
         <div className="wa-profile-card" style={profileThemeWithCoverStyle}>
           <div
             className={`wa-profile-cover ${coverUrl ? "has-image" : ""}`}
@@ -1209,6 +1210,7 @@ const SidebarProfilePanel = ({ usuario, show, onClose, onLogout, onUsuarioUpdate
           </div>
         )}
       </div>
+      )}
 
       <input
         ref={avatarInputRef}
@@ -1338,7 +1340,7 @@ const SidebarProfilePanel = ({ usuario, show, onClose, onLogout, onUsuarioUpdate
 
       {renderModalPortal(editOpen && (
         <div className="wa-profile-modal-backdrop wa-profile-edit-layer">
-          <div className={`wa-profile-edit-modal ${editModalShake ? "is-shaking" : ""}`} style={editThemeWithCoverStyle}>
+          <div className={`wa-profile-edit-modal wa-profile-edit-modal-mobile-ready ${editModalShake ? "is-shaking" : ""}`} style={editThemeWithCoverStyle}>
             <button type="button" className="wa-profile-modal-close" onClick={closeEditModal}>
               <i className="fa-solid fa-xmark" />
             </button>

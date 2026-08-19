@@ -1,4 +1,4 @@
-import React, { useState, useEffect, lazy, Suspense } from 'react';
+import React, { useState, useEffect, useRef, useCallback, lazy, Suspense } from 'react';
 import { useNavigate } from 'react-router-dom'; // 👈
 import { logDev } from "../utils/logger";
 import "../css/MessengerShell.css";
@@ -39,6 +39,210 @@ const Messenger = () => {
   const [unreadTotal, setUnreadTotal] = useState(0);
   const [estadosUsuarios, setEstadosUsuarios] = useState({});
   const navigate = useNavigate();
+  const selectedChatRef = useRef(null);
+
+  const isMobileViewport = useCallback(() => (
+    typeof window !== "undefined" && window.matchMedia("(max-width: 767px)").matches
+  ), []);
+
+  useEffect(() => {
+    selectedChatRef.current = selectedChat;
+  }, [selectedChat]);
+
+  // Expone al CSS si una conversación móvil está abierta. En iPhone esto
+  // permite bloquear el documento y dejar que sólo el chat use VisualViewport.
+  useEffect(() => {
+    if (typeof window === "undefined" || typeof document === "undefined") return undefined;
+
+    const root = document.documentElement;
+    const syncChatOpenClass = () => {
+      const mobile = window.matchMedia("(max-width: 767px)").matches;
+      root.classList.toggle("qc-mobile-chat-open", Boolean(selectedChat) && mobile);
+    };
+
+    syncChatOpenClass();
+    window.addEventListener("resize", syncChatOpenClass);
+
+    return () => {
+      window.removeEventListener("resize", syncChatOpenClass);
+      root.classList.remove("qc-mobile-chat-open");
+    };
+  }, [selectedChat]);
+
+  // Mantiene el alto REAL del navegador móvil.
+  // Safari/iPhone no siempre redimensiona el layout viewport cuando aparece
+  // el teclado. VisualViewport sí conoce el área visible y evitamos que Safari
+  // "empuje" toda la conversación fuera de la pantalla al enfocar el editor.
+  useEffect(() => {
+    if (typeof window === "undefined" || typeof document === "undefined") return undefined;
+
+    const root = document.documentElement;
+    const viewport = window.visualViewport;
+    const ua = navigator.userAgent || "";
+    const isIOS = /iPad|iPhone|iPod/i.test(ua)
+      || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+
+    let rafId = 0;
+    let focusTimer = 0;
+    let viewportBaseline = Math.max(
+      Math.round(window.innerHeight || 0),
+      Math.round(viewport?.height || 0),
+      Math.round(document.documentElement.clientHeight || 0)
+    );
+
+    root.classList.toggle("qc-ios", isIOS);
+
+    const syncViewport = () => {
+      cancelAnimationFrame(rafId);
+      rafId = requestAnimationFrame(() => {
+        const height = Math.max(
+          1,
+          Math.round(viewport?.height || window.innerHeight || document.documentElement.clientHeight || 0)
+        );
+        const offsetTop = Math.max(0, Math.round(viewport?.offsetTop || 0));
+        const mobile = window.matchMedia("(max-width: 767px)").matches;
+
+        // Guardamos la altura normal más grande para distinguir teclado de
+        // pequeños cambios de las barras de Safari.
+        if (!root.classList.contains("qc-composer-focused") && height > viewportBaseline - 80) {
+          viewportBaseline = Math.max(viewportBaseline, height);
+        }
+
+        const keyboardHeight = Math.max(0, viewportBaseline - height);
+        const keyboardOpen =
+          mobile
+          && root.classList.contains("qc-composer-focused")
+          && keyboardHeight >= 120;
+
+        root.style.setProperty("--qc-mobile-vh", `${height}px`);
+        root.style.setProperty("--qc-mobile-vtop", `${offsetTop}px`);
+        root.style.setProperty("--qc-mobile-vbottom", `${Math.max(0, offsetTop + height)}px`);
+        root.style.setProperty("--qc-mobile-keyboard-height", `${keyboardHeight}px`);
+        root.classList.toggle("qc-mobile-keyboard-open", keyboardOpen);
+      });
+    };
+
+    const isComposerTarget = (target) => (
+      target instanceof Element
+      && Boolean(target.closest(".wa-chat-form"))
+      && (
+        target.matches(".wa-rich-editor, textarea, input")
+        || Boolean(target.closest(".wa-rich-editor"))
+      )
+    );
+
+    const handleFocusIn = (event) => {
+      if (!isComposerTarget(event.target)) return;
+
+      root.classList.add("qc-composer-focused");
+      syncViewport();
+
+      // Safari actualiza VisualViewport en varias etapas al abrir el teclado.
+      // No usamos window.scrollTo(): en iOS puede producir un salto negro del
+      // viewport. Sólo re-sincronizamos las dimensiones visibles.
+      if (isIOS) {
+        requestAnimationFrame(syncViewport);
+        window.clearTimeout(focusTimer);
+
+        // Safari anima el teclado y el offset del VisualViewport en varias
+        // etapas. Recalculamos durante esa animación para que el composer
+        // permanezca visible sin que el usuario tenga que arrastrar la página.
+        window.setTimeout(syncViewport, 60);
+        window.setTimeout(syncViewport, 140);
+        focusTimer = window.setTimeout(syncViewport, 280);
+      }
+    };
+
+    const handleFocusOut = () => {
+      window.clearTimeout(focusTimer);
+      focusTimer = window.setTimeout(() => {
+        const active = document.activeElement;
+        if (!isComposerTarget(active)) {
+          root.classList.remove("qc-composer-focused");
+          syncViewport();
+        }
+      }, 120);
+    };
+
+    syncViewport();
+    viewport?.addEventListener("resize", syncViewport);
+    viewport?.addEventListener("scroll", syncViewport);
+    window.addEventListener("orientationchange", syncViewport);
+    window.addEventListener("resize", syncViewport);
+    document.addEventListener("focusin", handleFocusIn);
+    document.addEventListener("focusout", handleFocusOut);
+
+    return () => {
+      cancelAnimationFrame(rafId);
+      window.clearTimeout(focusTimer);
+      viewport?.removeEventListener("resize", syncViewport);
+      viewport?.removeEventListener("scroll", syncViewport);
+      window.removeEventListener("orientationchange", syncViewport);
+      window.removeEventListener("resize", syncViewport);
+      document.removeEventListener("focusin", handleFocusIn);
+      document.removeEventListener("focusout", handleFocusOut);
+      root.classList.remove(
+        "qc-ios",
+        "qc-mobile-keyboard-open",
+        "qc-composer-focused"
+      );
+      root.style.removeProperty("--qc-mobile-vtop");
+      root.style.removeProperty("--qc-mobile-vbottom");
+      root.style.removeProperty("--qc-mobile-keyboard-height");
+    };
+  }, []);
+
+  const handleSelectChat = useCallback((nextChat) => {
+    if (!nextChat) return;
+
+    setActiveTab("chat");
+
+    if (isMobileViewport() && !window.history.state?.quickchatMobileChat) {
+      window.history.pushState(
+        { ...(window.history.state || {}), quickchatMobileChat: true },
+        "",
+        window.location.href
+      );
+    }
+
+    setSelectedChat(nextChat);
+  }, [isMobileViewport]);
+
+  const handleCloseChat = useCallback(() => {
+    if (isMobileViewport() && window.history.state?.quickchatMobileChat) {
+      window.history.back();
+      return;
+    }
+
+    setSelectedChat(null);
+  }, [isMobileViewport]);
+
+  // El botón Atrás de Android/Chrome cierra la conversación antes de abandonar /mensajes.
+  useEffect(() => {
+    if (typeof window === "undefined") return undefined;
+
+    const handlePopState = () => {
+      if (isMobileViewport() && selectedChatRef.current) {
+        setSelectedChat(null);
+      }
+    };
+
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, [isMobileViewport]);
+
+  const setSelectedChatFromList = useCallback((nextChat) => {
+    if (typeof nextChat === "function") {
+      setSelectedChat((prev) => nextChat(prev));
+      return;
+    }
+
+    if (nextChat) {
+      handleSelectChat(nextChat);
+    } else {
+      handleCloseChat();
+    }
+  }, [handleCloseChat, handleSelectChat]);
 
   useEffect(() => {
     const storedUser = localStorage.getItem('usuario');
@@ -56,7 +260,7 @@ const Messenger = () => {
       setUsuario(parsedUser);
       logDev("✅ Usuario cargado desde localStorage", { usuarioId: parsedUser?.id });
     } else {
-      navigate('/');
+      navigate('/', { replace: true });
     }
   }, []);
 
@@ -204,7 +408,7 @@ const Messenger = () => {
       }
 
       window.alert(mensaje);
-      navigate("/");
+      navigate("/", { replace: true });
     };
 
     socket.on("permisosChatActualizados", handlePermisosChatActualizados);
@@ -242,7 +446,7 @@ const Messenger = () => {
   }, [usuario?.id]);
 
   return (
-    <div className="flex h-screen bg-[#f8f9fd]">
+    <div className={`flex h-screen bg-[#f8f9fd] wa-messenger-root ${selectedChat ? "has-selected-chat" : "no-selected-chat"} active-tab-${activeTab}`}>
       {/* Sidebar con iconos */}
       <Sidebar
         usuario={usuario}
@@ -255,9 +459,9 @@ const Messenger = () => {
 
       {activeTab === "chat" && (
         <ChatList
-          onSelectChat={setSelectedChat}
+          onSelectChat={handleSelectChat}
           selectedChat={selectedChat}
-          setSelectedChat={setSelectedChat}
+          setSelectedChat={setSelectedChatFromList}
           userId={usuario?.id}
           addToListTarget={addToListTarget}
           onAddToListHandled={() => setAddToListTarget(null)}
@@ -304,7 +508,8 @@ const Messenger = () => {
               <ChatBox
                 chat={selectedChat}
                 user={usuario}
-                setChat={setSelectedChat}  // 👈 Agregamos esto
+                setChat={setSelectedChat}  // Cambios internos entre conversaciones
+                onCloseChat={handleCloseChat}
                 onVerPerfil={(u) => {
                   setPerfilSeleccionado(u);
                   setShowModal(true);
@@ -353,10 +558,10 @@ const Messenger = () => {
             onClose={() => setShowModal(false)}
             onLogout={() => {
               localStorage.removeItem("usuario");
-              navigate("/");
+              navigate("/", { replace: true });
             }}
             onEnviarMensaje={(usuarioDestino) => {
-              setSelectedChat({
+              handleSelectChat({
                 tipo: "privado",
                 usuario_id: usuarioDestino.id,
                 usuario_nombre: `${usuarioDestino.nombre} ${usuarioDestino.apellido}`, // 👈 aquí

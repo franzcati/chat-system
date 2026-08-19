@@ -762,3 +762,1112 @@ body.dark .wa-chat-header .wa-presence-badge,
   color: #d1d7db !important;
 }
 
+/* =========================================================
+   QUICK CHAT MOBILE V2 - SHELL / LISTA / NAVEGACIÓN
+   ========================================================= */
+:root {
+  --qc-mobile-nav-height: 62px;
+}
+
+@media (max-width: 767px) {
+  .wa-messenger-root {
+    position: relative !important;
+    display: flex !important;
+    flex-direction: row !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+    height: var(--qc-mobile-vh, 100dvh) !important;
+    min-height: 0 !important;
+    max-height: var(--qc-mobile-vh, 100dvh) !important;
+    overflow: hidden !important;
+  }
+
+  /* En la lista, el rail deja de robar ancho y pasa abajo como app móvil. */
+  .wa-messenger-root.no-selected-chat {
+    padding-bottom: calc(var(--qc-mobile-nav-height) + env(safe-area-inset-bottom, 0px)) !important;
+  }
+
+  .wa-messenger-root.no-selected-chat > .wa-app-rail,
+  .wa-messenger-root.no-selected-chat > .wa-app-rail.is-collapsed,
+  .wa-messenger-root.no-selected-chat > .wa-app-rail.is-expanded {
+    position: fixed !important;
+    z-index: 12000 !important;
+    left: 0 !important;
+    right: 0 !important;
+    top: auto !important;
+    bottom: 0 !important;
+    display: flex !important;
+    flex-direction: row !important;
+    align-items: center !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+    height: calc(var(--qc-mobile-nav-height) + env(safe-area-inset-bottom, 0px)) !important;
+    min-height: calc(var(--qc-mobile-nav-height) + env(safe-area-inset-bottom, 0px)) !important;
+    padding: 5px 8px env(safe-area-inset-bottom, 0px) !important;
+    border-radius: 0 !important;
+    border: 0 !important;
+    border-top: 1px solid rgba(100, 116, 139, 0.18) !important;
+    box-shadow: 0 -6px 24px rgba(15, 23, 42, 0.08) !important;
+    overflow: hidden !important;
+  }
+
+  .wa-messenger-root .wa-rail-toggle,
+  .wa-messenger-root .wa-rail-logo,
+  .wa-messenger-root .wa-rail-logo-text,
+  .wa-messenger-root .wa-rail-label,
+  .wa-messenger-root .wa-rail-support-card,
+  .wa-messenger-root .wa-rail-spacer,
+  .wa-messenger-root .wa-rail-profile-info,
+  .wa-messenger-root .wa-rail-profile-chevron {
+    display: none !important;
+  }
+
+  .wa-messenger-root.no-selected-chat .wa-rail-nav {
+    display: flex !important;
+    flex: 1 1 auto !important;
+    flex-direction: row !important;
+    align-items: center !important;
+    justify-content: space-evenly !important;
+    gap: 2px !important;
+    width: auto !important;
+    min-width: 0 !important;
+    height: 52px !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow-x: auto !important;
+    overflow-y: hidden !important;
+    scrollbar-width: none;
+  }
+
+  .wa-messenger-root.no-selected-chat .wa-rail-nav::-webkit-scrollbar {
+    display: none;
+  }
+
+  .wa-messenger-root.no-selected-chat .wa-rail-item,
+  .wa-messenger-root.no-selected-chat .wa-app-rail.is-expanded .wa-rail-item {
+    flex: 1 1 48px !important;
+    width: auto !important;
+    min-width: 46px !important;
+    max-width: 62px !important;
+    height: 48px !important;
+    min-height: 48px !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    display: grid !important;
+    place-items: center !important;
+    border-radius: 14px !important;
+  }
+
+  .wa-messenger-root.no-selected-chat .wa-rail-item::before {
+    display: none !important;
+  }
+
+  .wa-messenger-root.no-selected-chat .wa-rail-icon {
+    width: 34px !important;
+    height: 34px !important;
+    min-width: 34px !important;
+    margin: 0 !important;
+    display: grid !important;
+    place-items: center !important;
+  }
+
+  .wa-messenger-root.no-selected-chat .wa-rail-icon svg {
+    width: 23px !important;
+    height: 23px !important;
+  }
+
+  .wa-messenger-root.no-selected-chat .wa-rail-badge {
+    right: -6px !important;
+    top: -5px !important;
+  }
+
+  .wa-messenger-root.no-selected-chat .wa-rail-profile,
+  .wa-messenger-root.no-selected-chat .wa-app-rail.is-expanded .wa-rail-profile {
+    display: flex !important;
+    flex: 0 0 48px !important;
+    width: 48px !important;
+    min-width: 48px !important;
+    max-width: 48px !important;
+    height: 48px !important;
+    margin: 0 0 0 3px !important;
+    padding: 0 !important;
+    justify-content: center !important;
+    border-radius: 14px !important;
+  }
+
+  .wa-messenger-root.no-selected-chat .wa-rail-profile-presence,
+  .wa-messenger-root.no-selected-chat .wa-rail-avatar-img,
+  .wa-messenger-root.no-selected-chat .wa-rail-avatar-fallback {
+    width: 34px !important;
+    min-width: 34px !important;
+    height: 34px !important;
+  }
+
+  /* Lista de chats usa todo el ancho disponible. */
+  .wa-messenger-root.no-selected-chat > .sidebar {
+    position: relative !important;
+    display: block !important;
+    flex: 1 1 100% !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+    height: calc(var(--qc-mobile-vh, 100dvh) - var(--qc-mobile-nav-height) - env(safe-area-inset-bottom, 0px)) !important;
+    max-height: calc(var(--qc-mobile-vh, 100dvh) - var(--qc-mobile-nav-height) - env(safe-area-inset-bottom, 0px)) !important;
+    overflow: hidden !important;
+  }
+
+  .wa-messenger-root.no-selected-chat > .sidebar .hide-scrollbar {
+    width: 100% !important;
+    max-width: 100% !important;
+    height: 100% !important;
+    overflow-x: hidden !important;
+    overflow-y: auto !important;
+    overscroll-behavior-y: contain;
+  }
+
+  .wa-messenger-root.no-selected-chat > .sidebar .container {
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: none !important;
+    padding: 14px 12px 18px !important;
+  }
+
+  .wa-messenger-root.no-selected-chat > .sidebar h2 {
+    font-size: 1.55rem !important;
+    line-height: 1.15 !important;
+  }
+
+  .wa-chat-search,
+  .wa-chat-search .form-control,
+  .wa-filter-row,
+  .wa-custom-list-row,
+  .wa-chat-list,
+  .wa-chat-list-card,
+  .wa-chat-list-card-body,
+  .wa-chat-list-row,
+  .wa-chat-list-main,
+  .wa-chat-list-top,
+  .wa-chat-list-bottom {
+    min-width: 0 !important;
+    max-width: 100% !important;
+  }
+
+  .wa-filter-row,
+  .wa-custom-list-row {
+    flex-wrap: nowrap !important;
+    overflow-x: auto !important;
+    overflow-y: hidden !important;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .wa-filter-row::-webkit-scrollbar,
+  .wa-custom-list-row::-webkit-scrollbar {
+    display: none;
+  }
+
+  .wa-chat-list-card {
+    width: 100% !important;
+    overflow: hidden !important;
+  }
+
+  .wa-chat-list-title,
+  .wa-chat-list-preview,
+  .wa-chat-list-preview .wa-preview-line {
+    min-width: 0 !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    white-space: nowrap !important;
+  }
+
+  .wa-chat-list-time {
+    flex: 0 0 auto !important;
+    max-width: 88px !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    white-space: nowrap !important;
+  }
+
+  /* Conversación: ocupa todo el teléfono, sin rail ni lista detrás. */
+  .wa-messenger-root.has-selected-chat {
+    padding: 0 !important;
+  }
+
+  .wa-messenger-root.has-selected-chat > .wa-app-rail,
+  .wa-messenger-root.has-selected-chat > .sidebar {
+    display: none !important;
+  }
+
+  .wa-messenger-root.no-selected-chat > .wa-chat-stage {
+    display: none !important;
+  }
+
+  .wa-messenger-root.has-selected-chat > .wa-chat-stage {
+    position: relative !important;
+    display: block !important;
+    flex: 1 1 100% !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+    height: var(--qc-mobile-vh, 100dvh) !important;
+    max-height: var(--qc-mobile-vh, 100dvh) !important;
+    overflow: hidden !important;
+  }
+
+  .wa-messenger-root.has-selected-chat > .wa-chat-stage > .main,
+  .wa-messenger-root.has-selected-chat .wa-chat-shell,
+  .wa-messenger-root.has-selected-chat .wa-chat-conversation {
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+    height: 100% !important;
+    min-height: 0 !important;
+    overflow: hidden !important;
+  }
+
+  /* Pantallas administrativas: cuerpo completo y navegación inferior. */
+  .wa-messenger-root.no-selected-chat > :not(.wa-app-rail):not(.wa-chat-stage):not(.sidebar) {
+    flex: 1 1 100% !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+    height: calc(var(--qc-mobile-vh, 100dvh) - var(--qc-mobile-nav-height) - env(safe-area-inset-bottom, 0px)) !important;
+    max-height: calc(var(--qc-mobile-vh, 100dvh) - var(--qc-mobile-nav-height) - env(safe-area-inset-bottom, 0px)) !important;
+    overflow-x: hidden !important;
+    overflow-y: auto !important;
+  }
+}
+
+/* =========================================================
+   QUICK CHAT MOBILE V3
+   - Dock flotante: botón menú + avatar circular.
+   - Menú lateral a pantalla completa.
+   - Perfil a pantalla completa.
+   ========================================================= */
+@media (max-width: 767px) {
+  :root {
+    --qc-mobile-dock-left: 14px;
+    --qc-mobile-dock-bottom: calc(14px + env(safe-area-inset-bottom, 0px));
+  }
+
+  /* La lista vuelve a aprovechar toda la altura. */
+  .wa-messenger-root.no-selected-chat {
+    padding-bottom: 0 !important;
+  }
+
+  .wa-messenger-root.no-selected-chat > .sidebar,
+  .wa-messenger-root.no-selected-chat > :not(.wa-app-rail):not(.wa-chat-stage):not(.sidebar) {
+    height: var(--qc-mobile-vh, 100dvh) !important;
+    max-height: var(--qc-mobile-vh, 100dvh) !important;
+  }
+
+  .wa-messenger-root.no-selected-chat > .sidebar .hide-scrollbar {
+    padding-bottom: 150px !important;
+  }
+
+  /* -----------------------------------------
+     DOCK CERRADO: solo flecha + avatar.
+     ----------------------------------------- */
+  .wa-messenger-root.no-selected-chat > .wa-app-rail.is-collapsed {
+    position: fixed !important;
+    z-index: 16000 !important;
+    left: var(--qc-mobile-dock-left) !important;
+    right: auto !important;
+    top: auto !important;
+    bottom: var(--qc-mobile-dock-bottom) !important;
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    justify-content: flex-end !important;
+    gap: 10px !important;
+    width: 62px !important;
+    min-width: 62px !important;
+    max-width: 62px !important;
+    height: 130px !important;
+    min-height: 130px !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    overflow: visible !important;
+    pointer-events: none !important;
+  }
+
+  .wa-messenger-root.no-selected-chat > .wa-app-rail.is-collapsed .wa-rail-logo,
+  .wa-messenger-root.no-selected-chat > .wa-app-rail.is-collapsed .wa-rail-nav,
+  .wa-messenger-root.no-selected-chat > .wa-app-rail.is-collapsed .wa-rail-spacer,
+  .wa-messenger-root.no-selected-chat > .wa-app-rail.is-collapsed .wa-rail-support-card,
+  .wa-messenger-root.no-selected-chat > .wa-app-rail.is-collapsed .wa-rail-profile-info,
+  .wa-messenger-root.no-selected-chat > .wa-app-rail.is-collapsed .wa-rail-profile-chevron {
+    display: none !important;
+  }
+
+  .wa-messenger-root.no-selected-chat > .wa-app-rail.is-collapsed .wa-rail-toggle {
+    position: static !important;
+    order: 1 !important;
+    display: grid !important;
+    place-items: center !important;
+    width: 48px !important;
+    min-width: 48px !important;
+    height: 48px !important;
+    min-height: 48px !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: 0 !important;
+    border-radius: 999px !important;
+    color: #ffffff !important;
+    background: linear-gradient(135deg, #178cff 0%, #315cff 56%, #6d3cff 100%) !important;
+    box-shadow: 0 10px 28px rgba(37, 99, 255, 0.35) !important;
+    pointer-events: auto !important;
+    transform: none !important;
+  }
+
+  .wa-messenger-root.no-selected-chat > .wa-app-rail.is-collapsed .wa-rail-toggle svg {
+    width: 22px !important;
+    height: 22px !important;
+    stroke: currentColor !important;
+    stroke-width: 2.6 !important;
+  }
+
+  .wa-messenger-root.no-selected-chat > .wa-app-rail.is-collapsed .wa-rail-profile {
+    position: static !important;
+    order: 2 !important;
+    display: grid !important;
+    place-items: center !important;
+    flex: 0 0 58px !important;
+    width: 58px !important;
+    min-width: 58px !important;
+    max-width: 58px !important;
+    height: 58px !important;
+    min-height: 58px !important;
+    max-height: 58px !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: 0 !important;
+    border-radius: 999px !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    overflow: visible !important;
+    pointer-events: auto !important;
+  }
+
+  .wa-messenger-root.no-selected-chat > .wa-app-rail.is-collapsed .wa-rail-profile:hover,
+  .wa-messenger-root.no-selected-chat > .wa-app-rail.is-collapsed .wa-rail-profile:focus-visible {
+    background: transparent !important;
+    box-shadow: none !important;
+  }
+
+  .wa-messenger-root.no-selected-chat > .wa-app-rail.is-collapsed .wa-rail-profile-presence {
+    position: relative !important;
+    display: block !important;
+    width: 56px !important;
+    min-width: 56px !important;
+    height: 56px !important;
+    min-height: 56px !important;
+    border-radius: 999px !important;
+    overflow: visible !important;
+  }
+
+  .wa-messenger-root.no-selected-chat > .wa-app-rail.is-collapsed .wa-rail-avatar-img,
+  .wa-messenger-root.no-selected-chat > .wa-app-rail.is-collapsed .wa-rail-avatar-fallback {
+    display: grid !important;
+    place-items: center !important;
+    width: 56px !important;
+    min-width: 56px !important;
+    max-width: 56px !important;
+    height: 56px !important;
+    min-height: 56px !important;
+    max-height: 56px !important;
+    border-radius: 999px !important;
+    object-fit: cover !important;
+    border: 3px solid rgba(255,255,255,0.96) !important;
+    box-shadow: 0 8px 22px rgba(15, 23, 42, 0.20) !important;
+    font-size: 1.05rem !important;
+    font-weight: 800 !important;
+  }
+
+  .wa-messenger-root.no-selected-chat > .wa-app-rail.is-collapsed .wa-presence-badge {
+    right: -1px !important;
+    bottom: -1px !important;
+    top: auto !important;
+  }
+
+  /* -----------------------------------------
+     MENÚ ABIERTO: pantalla completa.
+     ----------------------------------------- */
+  .wa-messenger-root.no-selected-chat > .wa-app-rail.is-expanded {
+    position: fixed !important;
+    z-index: 50000 !important;
+    inset: 0 !important;
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: stretch !important;
+    width: 100vw !important;
+    min-width: 100vw !important;
+    max-width: 100vw !important;
+    height: var(--qc-mobile-vh, 100dvh) !important;
+    min-height: var(--qc-mobile-vh, 100dvh) !important;
+    max-height: var(--qc-mobile-vh, 100dvh) !important;
+    padding: 18px 16px calc(16px + env(safe-area-inset-bottom, 0px)) !important;
+    margin: 0 !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    background:
+      radial-gradient(circle at 86% 4%, rgba(37,99,255,0.10), transparent 26%),
+      linear-gradient(180deg, #f8fbff 0%, #ffffff 58%, #f7faff 100%) !important;
+    box-shadow: none !important;
+    overflow-x: hidden !important;
+    overflow-y: auto !important;
+  }
+
+  :root[data-theme="dark"] .wa-messenger-root.no-selected-chat > .wa-app-rail.is-expanded {
+    background:
+      radial-gradient(circle at 86% 4%, rgba(37,99,255,0.16), transparent 28%),
+      linear-gradient(180deg, #081224 0%, #07101f 58%, #050b16 100%) !important;
+  }
+
+  .wa-messenger-root.no-selected-chat > .wa-app-rail.is-expanded .wa-rail-toggle {
+    position: fixed !important;
+    z-index: 2 !important;
+    top: 18px !important;
+    right: 16px !important;
+    left: auto !important;
+    display: grid !important;
+    place-items: center !important;
+    width: 46px !important;
+    height: 46px !important;
+    margin: 0 !important;
+    border: 0 !important;
+    border-radius: 999px !important;
+    color: #ffffff !important;
+    background: linear-gradient(135deg, #178cff 0%, #315cff 56%, #6d3cff 100%) !important;
+    box-shadow: 0 10px 28px rgba(37, 99, 255, 0.30) !important;
+  }
+
+  .wa-messenger-root.no-selected-chat > .wa-app-rail.is-expanded .wa-rail-toggle svg {
+    width: 22px !important;
+    height: 22px !important;
+    stroke: currentColor !important;
+  }
+
+  .wa-messenger-root.no-selected-chat > .wa-app-rail.is-expanded .wa-rail-logo {
+    display: flex !important;
+    width: calc(100% - 62px) !important;
+    min-width: 0 !important;
+    max-width: 280px !important;
+    height: 58px !important;
+    margin: 0 0 22px 0 !important;
+    padding: 8px 14px !important;
+    border-radius: 16px !important;
+  }
+
+  .wa-messenger-root.no-selected-chat > .wa-app-rail.is-expanded .wa-rail-logo-text {
+    display: inline !important;
+  }
+
+  .wa-messenger-root.no-selected-chat > .wa-app-rail.is-expanded .wa-rail-nav {
+    display: flex !important;
+    flex: 0 0 auto !important;
+    flex-direction: column !important;
+    align-items: stretch !important;
+    justify-content: flex-start !important;
+    gap: 8px !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    height: auto !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: visible !important;
+  }
+
+  .wa-messenger-root.no-selected-chat > .wa-app-rail.is-expanded .wa-rail-item {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: flex-start !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: none !important;
+    height: 56px !important;
+    min-height: 56px !important;
+    padding: 0 18px !important;
+    margin: 0 !important;
+    gap: 14px !important;
+    border-radius: 16px !important;
+  }
+
+  .wa-messenger-root.no-selected-chat > .wa-app-rail.is-expanded .wa-rail-icon {
+    flex: 0 0 30px !important;
+    width: 30px !important;
+    min-width: 30px !important;
+    height: 30px !important;
+    margin: 0 !important;
+  }
+
+  .wa-messenger-root.no-selected-chat > .wa-app-rail.is-expanded .wa-rail-icon svg {
+    width: 23px !important;
+    height: 23px !important;
+  }
+
+  .wa-messenger-root.no-selected-chat > .wa-app-rail.is-expanded .wa-rail-label {
+    display: inline !important;
+    min-width: 0 !important;
+    font-size: 1rem !important;
+    font-weight: 700 !important;
+    white-space: nowrap !important;
+  }
+
+  .wa-messenger-root.no-selected-chat > .wa-app-rail.is-expanded .wa-rail-spacer {
+    display: block !important;
+    flex: 1 1 24px !important;
+    min-height: 24px !important;
+  }
+
+  .wa-messenger-root.no-selected-chat > .wa-app-rail.is-expanded .wa-rail-support-card {
+    display: flex !important;
+    width: 100% !important;
+    margin: 0 0 14px 0 !important;
+  }
+
+  .wa-messenger-root.no-selected-chat > .wa-app-rail.is-expanded .wa-rail-profile {
+    position: relative !important;
+    display: flex !important;
+    flex: 0 0 auto !important;
+    align-items: center !important;
+    justify-content: flex-start !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: none !important;
+    height: 64px !important;
+    margin: 0 !important;
+    padding: 8px 12px !important;
+    gap: 10px !important;
+    border-radius: 16px !important;
+    overflow: visible !important;
+  }
+
+  .wa-messenger-root.no-selected-chat > .wa-app-rail.is-expanded .wa-rail-profile-presence,
+  .wa-messenger-root.no-selected-chat > .wa-app-rail.is-expanded .wa-rail-avatar-img,
+  .wa-messenger-root.no-selected-chat > .wa-app-rail.is-expanded .wa-rail-avatar-fallback {
+    width: 44px !important;
+    min-width: 44px !important;
+    height: 44px !important;
+    min-height: 44px !important;
+    border-radius: 999px !important;
+  }
+
+  .wa-messenger-root.no-selected-chat > .wa-app-rail.is-expanded .wa-rail-profile-info {
+    display: flex !important;
+    flex: 1 1 auto !important;
+    min-width: 0 !important;
+  }
+
+  .wa-messenger-root.no-selected-chat > .wa-app-rail.is-expanded .wa-rail-profile-chevron {
+    display: inline-flex !important;
+  }
+
+  /* -----------------------------------------
+     PERFIL: fullscreen real.
+     El popover está portaleado a document.body.
+     ----------------------------------------- */
+  body > .wa-profile-popover {
+    position: fixed !important;
+    z-index: 1000000 !important;
+    inset: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    top: 0 !important;
+    bottom: 0 !important;
+    width: 100vw !important;
+    min-width: 100vw !important;
+    max-width: 100vw !important;
+    height: var(--qc-mobile-vh, 100dvh) !important;
+    min-height: var(--qc-mobile-vh, 100dvh) !important;
+    max-height: var(--qc-mobile-vh, 100dvh) !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow-x: hidden !important;
+    overflow-y: auto !important;
+    background: var(--profile-card-bg, #ffffff) !important;
+    overscroll-behavior: contain !important;
+  }
+
+  body > .wa-profile-popover .wa-profile-card {
+    width: 100% !important;
+    min-width: 100% !important;
+    max-width: 100% !important;
+    min-height: var(--qc-mobile-vh, 100dvh) !important;
+    margin: 0 !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    overflow: visible !important;
+  }
+
+  body > .wa-profile-popover .wa-profile-cover {
+    height: 156px !important;
+    min-height: 156px !important;
+    max-height: 156px !important;
+  }
+
+  body > .wa-profile-popover .wa-profile-main {
+    min-height: calc(var(--qc-mobile-vh, 100dvh) - 156px) !important;
+    padding-left: 18px !important;
+    padding-right: 18px !important;
+    padding-bottom: calc(24px + env(safe-area-inset-bottom, 0px)) !important;
+  }
+
+  body > .wa-profile-popover .wa-profile-close {
+    position: absolute !important;
+    z-index: 30 !important;
+    top: 14px !important;
+    right: 14px !important;
+    width: 44px !important;
+    height: 44px !important;
+    border-radius: 999px !important;
+  }
+
+  body > .wa-profile-popover .wa-profile-mobile-menu {
+    position: absolute !important;
+    z-index: 30 !important;
+    top: 14px !important;
+    left: 14px !important;
+    display: grid !important;
+    place-items: center !important;
+    width: 44px !important;
+    min-width: 44px !important;
+    height: 44px !important;
+    min-height: 44px !important;
+    padding: 0 !important;
+    border: 0 !important;
+    border-radius: 999px !important;
+    color: #ffffff !important;
+    background: linear-gradient(135deg, #178cff 0%, #315cff 56%, #6d3cff 100%) !important;
+    box-shadow: 0 8px 22px rgba(37, 99, 255, 0.34) !important;
+  }
+
+  body > .wa-profile-popover .wa-profile-mobile-menu i {
+    font-size: 1rem !important;
+  }
+
+  body > .wa-profile-popover .wa-profile-avatar {
+    width: 86px !important;
+    height: 86px !important;
+    min-width: 86px !important;
+    min-height: 86px !important;
+  }
+
+  body > .wa-profile-popover .wa-presence-menu-panel {
+    position: fixed !important;
+    z-index: 1000010 !important;
+    left: 10px !important;
+    right: 10px !important;
+    top: auto !important;
+    bottom: calc(10px + env(safe-area-inset-bottom, 0px)) !important;
+    width: auto !important;
+    max-width: none !important;
+    max-height: min(70dvh, 560px) !important;
+    overflow-y: auto !important;
+    border-radius: 18px !important;
+  }
+}
+
+@media (min-width: 768px) {
+  .wa-profile-mobile-menu {
+    display: none !important;
+  }
+}
+
+/* =========================================================
+   QUICK CHAT MOBILE V4 - GESTOS / PERFIL / SIDEBAR
+   Estas reglas son deliberadamente más específicas que los
+   estilos legacy de App.css para móviles.
+   ========================================================= */
+@media (max-width: 767px) {
+  /* Cerrado: ya NO mostramos el botón azul de apertura.
+     Solo queda el avatar circular en la esquina inferior. */
+  #root > .wa-messenger-root.no-selected-chat > .wa-app-rail.is-collapsed {
+    --rail-collapsed-width: 68px !important;
+    --rail-current-width: 68px !important;
+    position: fixed !important;
+    z-index: 16000 !important;
+    left: 10px !important;
+    right: auto !important;
+    top: auto !important;
+    bottom: calc(12px + env(safe-area-inset-bottom, 0px)) !important;
+    display: grid !important;
+    place-items: end center !important;
+    flex: 0 0 68px !important;
+    width: 68px !important;
+    min-width: 68px !important;
+    max-width: 68px !important;
+    height: 68px !important;
+    min-height: 68px !important;
+    max-height: 68px !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    border: 0 !important;
+    border-radius: 999px !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    overflow: visible !important;
+    isolation: auto !important;
+    pointer-events: none !important;
+  }
+
+  #root > .wa-messenger-root.no-selected-chat > .wa-app-rail.is-collapsed .wa-rail-toggle,
+  #root > .wa-messenger-root.no-selected-chat > .wa-app-rail.is-collapsed .wa-rail-logo,
+  #root > .wa-messenger-root.no-selected-chat > .wa-app-rail.is-collapsed .wa-rail-nav,
+  #root > .wa-messenger-root.no-selected-chat > .wa-app-rail.is-collapsed .wa-rail-spacer,
+  #root > .wa-messenger-root.no-selected-chat > .wa-app-rail.is-collapsed .wa-rail-support-card,
+  #root > .wa-messenger-root.no-selected-chat > .wa-app-rail.is-collapsed .wa-rail-profile-info,
+  #root > .wa-messenger-root.no-selected-chat > .wa-app-rail.is-collapsed .wa-rail-profile-chevron {
+    display: none !important;
+  }
+
+  #root > .wa-messenger-root.no-selected-chat > .wa-app-rail.is-collapsed .wa-rail-profile {
+    position: static !important;
+    display: grid !important;
+    place-items: center !important;
+    width: 64px !important;
+    min-width: 64px !important;
+    max-width: 64px !important;
+    height: 64px !important;
+    min-height: 64px !important;
+    max-height: 64px !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: 0 !important;
+    border-radius: 999px !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    overflow: visible !important;
+    pointer-events: auto !important;
+  }
+
+  #root > .wa-messenger-root.no-selected-chat > .wa-app-rail.is-collapsed .wa-rail-profile-presence {
+    width: 62px !important;
+    min-width: 62px !important;
+    height: 62px !important;
+    min-height: 62px !important;
+    border-radius: 999px !important;
+  }
+
+  #root > .wa-messenger-root.no-selected-chat > .wa-app-rail.is-collapsed .wa-rail-avatar-img,
+  #root > .wa-messenger-root.no-selected-chat > .wa-app-rail.is-collapsed .wa-rail-avatar-fallback {
+    width: 62px !important;
+    min-width: 62px !important;
+    max-width: 62px !important;
+    height: 62px !important;
+    min-height: 62px !important;
+    max-height: 62px !important;
+    border-radius: 999px !important;
+    object-fit: cover !important;
+  }
+
+  /* Abierto: overlay verdaderamente fullscreen.
+     La variable custom también se fuerza para vencer las reglas legacy
+     con #root que antes lo dejaban en ~246px. */
+  #root > .wa-messenger-root.no-selected-chat > .wa-app-rail.is-expanded {
+    --rail-expanded-width: 100vw !important;
+    --rail-current-width: 100vw !important;
+    --rail-profile-left: 0px !important;
+    position: fixed !important;
+    z-index: 500000 !important;
+    inset: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    top: 0 !important;
+    bottom: 0 !important;
+    display: flex !important;
+    flex: 0 0 100vw !important;
+    flex-direction: column !important;
+    align-items: stretch !important;
+    width: 100vw !important;
+    min-width: 100vw !important;
+    max-width: 100vw !important;
+    height: var(--qc-mobile-vh, 100dvh) !important;
+    min-height: var(--qc-mobile-vh, 100dvh) !important;
+    max-height: var(--qc-mobile-vh, 100dvh) !important;
+    padding: 18px 16px calc(18px + env(safe-area-inset-bottom, 0px)) !important;
+    margin: 0 !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    transform: none !important;
+    contain: none !important;
+    overflow-x: hidden !important;
+    overflow-y: auto !important;
+    box-shadow: none !important;
+  }
+
+  #root > .wa-messenger-root.no-selected-chat > .wa-app-rail.is-expanded .wa-rail-toggle {
+    position: fixed !important;
+    z-index: 500010 !important;
+    top: 16px !important;
+    right: 16px !important;
+    left: auto !important;
+    display: grid !important;
+    place-items: center !important;
+    width: 46px !important;
+    min-width: 46px !important;
+    height: 46px !important;
+    min-height: 46px !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    opacity: 1 !important;
+    pointer-events: auto !important;
+    transform: none !important;
+  }
+
+  #root > .wa-messenger-root.no-selected-chat > .wa-app-rail.is-expanded .wa-rail-logo {
+    width: calc(100% - 64px) !important;
+    min-width: 0 !important;
+    max-width: none !important;
+  }
+
+  #root > .wa-messenger-root.no-selected-chat > .wa-app-rail.is-expanded .wa-rail-nav,
+  #root > .wa-messenger-root.no-selected-chat > .wa-app-rail.is-expanded .wa-rail-item,
+  #root > .wa-messenger-root.no-selected-chat > .wa-app-rail.is-expanded .wa-rail-support-card,
+  #root > .wa-messenger-root.no-selected-chat > .wa-app-rail.is-expanded .wa-rail-profile {
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+  }
+
+  /* Perfil fullscreen: vence la regla legacy de 10px/calc(100vw-20px). */
+  body > .wa-profile-popover.is-sidebar-collapsed,
+  body > .wa-profile-popover.is-sidebar-expanded {
+    position: fixed !important;
+    z-index: 1000000 !important;
+    inset: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    top: 0 !important;
+    bottom: 0 !important;
+    width: 100vw !important;
+    min-width: 100vw !important;
+    max-width: 100vw !important;
+    height: var(--qc-mobile-vh, 100dvh) !important;
+    min-height: var(--qc-mobile-vh, 100dvh) !important;
+    max-height: var(--qc-mobile-vh, 100dvh) !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border-radius: 0 !important;
+    transform: none !important;
+    contain: none !important;
+    overflow-x: hidden !important;
+    overflow-y: auto !important;
+  }
+
+  body > .wa-profile-popover.is-sidebar-collapsed .wa-profile-card,
+  body > .wa-profile-popover.is-sidebar-expanded .wa-profile-card {
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+    min-height: var(--qc-mobile-vh, 100dvh) !important;
+    margin: 0 !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    overflow-x: hidden !important;
+    box-shadow: none !important;
+  }
+
+  body > .wa-profile-popover .wa-profile-cover,
+  body > .wa-profile-popover .wa-profile-main,
+  body > .wa-profile-popover .wa-profile-main > *,
+  body > .wa-profile-popover .wa-profile-actions-card,
+  body > .wa-profile-popover .wa-profile-logout {
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+  }
+
+  body > .wa-profile-popover .wa-profile-main h3,
+  body > .wa-profile-popover .wa-profile-userline,
+  body > .wa-profile-popover .wa-profile-bio,
+  body > .wa-profile-popover .wa-profile-rich-output,
+  body > .wa-profile-popover p,
+  body > .wa-profile-popover span {
+    overflow-wrap: anywhere !important;
+    word-break: break-word !important;
+  }
+
+  body > .wa-profile-popover .wa-profile-close {
+    position: fixed !important;
+    z-index: 1000020 !important;
+    top: 14px !important;
+    right: 14px !important;
+    left: auto !important;
+    display: grid !important;
+    place-items: center !important;
+    width: 46px !important;
+    height: 46px !important;
+    opacity: 1 !important;
+    visibility: visible !important;
+    pointer-events: auto !important;
+  }
+
+  body > .wa-profile-popover .wa-profile-mobile-menu {
+    position: fixed !important;
+    z-index: 1000020 !important;
+    top: 14px !important;
+    left: 14px !important;
+    right: auto !important;
+    display: grid !important;
+    place-items: center !important;
+    width: 46px !important;
+    height: 46px !important;
+    pointer-events: auto !important;
+  }
+}
+
+/* =========================================================
+   QUICK CHAT MOBILE V5 - iPHONE / SAFARI KEYBOARD
+   ========================================================= */
+@media (max-width: 767px) {
+  html.qc-mobile-chat-open,
+  html.qc-mobile-chat-open body {
+    width: 100% !important;
+    max-width: 100% !important;
+    overflow: hidden !important;
+    overscroll-behavior: none !important;
+  }
+
+  /*
+   * Safari intenta desplazar el documento entero para centrar un contentEditable.
+   * En una SPA tipo chat eso deja una zona negra y saca el composer de pantalla.
+   * Cuando hay un chat abierto, fijamos la app y la dimensionamos al
+   * VisualViewport real.
+   */
+  html.qc-ios.qc-mobile-chat-open body {
+    position: fixed !important;
+    inset: 0 !important;
+    width: 100vw !important;
+    height: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: hidden !important;
+  }
+
+  html.qc-ios.qc-mobile-chat-open #root {
+    position: fixed !important;
+    z-index: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    top: 0 !important;
+    bottom: auto !important;
+    width: 100vw !important;
+    min-width: 100vw !important;
+    max-width: 100vw !important;
+    height: var(--qc-mobile-vh, 100dvh) !important;
+    min-height: var(--qc-mobile-vh, 100dvh) !important;
+    max-height: var(--qc-mobile-vh, 100dvh) !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: hidden !important;
+    transform: none !important;
+  }
+
+  html.qc-ios.qc-mobile-chat-open #root > .wa-messenger-root.has-selected-chat {
+    position: relative !important;
+    inset: auto !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+    height: 100% !important;
+    min-height: 0 !important;
+    max-height: 100% !important;
+    overflow: hidden !important;
+    transform: none !important;
+  }
+
+  html.qc-ios.qc-mobile-chat-open .wa-messenger-root.has-selected-chat > .wa-chat-stage {
+    position: relative !important;
+    inset: auto !important;
+    display: block !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+    height: 100% !important;
+    min-height: 0 !important;
+    max-height: 100% !important;
+    overflow: hidden !important;
+  }
+
+  html.qc-ios.qc-mobile-chat-open .wa-chat-stage > .main,
+  html.qc-ios.qc-mobile-chat-open .wa-chat-shell,
+  html.qc-ios.qc-mobile-chat-open .wa-chat-conversation {
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+    height: 100% !important;
+    min-height: 0 !important;
+    max-height: 100% !important;
+    overflow: hidden !important;
+  }
+
+  /*
+   * Si Safari informa un offsetTop al enfocar, no trasladamos la aplicación:
+   * mantener top:0 evita el "salto negro". Sólo usamos visualViewport.height.
+   */
+  html.qc-ios.qc-mobile-keyboard-open #root {
+    top: 0 !important;
+    height: var(--qc-mobile-vh, 100dvh) !important;
+    max-height: var(--qc-mobile-vh, 100dvh) !important;
+  }
+}
+
+/* QUICK CHAT MOBILE V6 - perfil sin acceso flotante al sidebar */
+@media (max-width: 767px) {
+  body > .wa-profile-popover .wa-profile-mobile-menu {
+    display: none !important;
+  }
+}
+
+/* =========================================================
+   QUICK CHAT MOBILE V7 - iOS VISUAL VIEWPORT
+   Safari desplaza VisualViewport al abrir el teclado. V5/V6 sólo
+   reducían la altura; ahora también seguimos offsetTop.
+   ========================================================= */
+@media (max-width: 767px) {
+  html.qc-ios.qc-mobile-chat-open #root {
+    position: fixed !important;
+    left: 0 !important;
+    right: 0 !important;
+    top: var(--qc-mobile-vtop, 0px) !important;
+    bottom: auto !important;
+    width: 100vw !important;
+    min-width: 100vw !important;
+    max-width: 100vw !important;
+    height: var(--qc-mobile-vh, 100dvh) !important;
+    min-height: var(--qc-mobile-vh, 100dvh) !important;
+    max-height: var(--qc-mobile-vh, 100dvh) !important;
+    margin: 0 !important;
+    overflow: hidden !important;
+    transform: none !important;
+    transition: none !important;
+  }
+
+  html.qc-ios.qc-mobile-chat-open #root > .wa-messenger-root.has-selected-chat,
+  html.qc-ios.qc-mobile-chat-open .wa-messenger-root.has-selected-chat > .wa-chat-stage,
+  html.qc-ios.qc-mobile-chat-open .wa-chat-stage > .main,
+  html.qc-ios.qc-mobile-chat-open .wa-chat-shell,
+  html.qc-ios.qc-mobile-chat-open .wa-chat-conversation {
+    height: 100% !important;
+    min-height: 0 !important;
+    max-height: 100% !important;
+  }
+
+  html.qc-ios.qc-mobile-keyboard-open #root {
+    top: var(--qc-mobile-vtop, 0px) !important;
+    height: var(--qc-mobile-vh, 100dvh) !important;
+    min-height: var(--qc-mobile-vh, 100dvh) !important;
+    max-height: var(--qc-mobile-vh, 100dvh) !important;
+  }
+}
+

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { UserPlus, Edit3, Users, MessageSquare, Sun, Moon, Settings } from "feather-icons-react";
 import { logDev } from "../utils/logger";
 import SidebarProfilePanel from "../components/SidebarProfilePanel";
@@ -10,6 +10,78 @@ const Sidebar = ({ usuario, active, setActive, onUsuarioUpdate, unreadTotal = 0,
   const [showModal, setShowModal] = useState(false);
   const [sidebarExpanded, setSidebarExpanded] = useState(false);
   const { isDark, toggleTheme } = useTheme();
+
+  useEffect(() => {
+    if (typeof window === "undefined" || typeof document === "undefined") return undefined;
+
+    let startX = null;
+    let startY = null;
+
+    const isMobile = () => window.matchMedia("(max-width: 767px)").matches;
+    const shellAllowsMenu = () => Boolean(document.querySelector(".wa-messenger-root.no-selected-chat"));
+
+    const resetGesture = () => {
+      startX = null;
+      startY = null;
+    };
+
+    const handleTouchStart = (event) => {
+      if (!isMobile() || !shellAllowsMenu()) {
+        resetGesture();
+        return;
+      }
+
+      const touch = event.touches?.[0];
+      if (!touch) return;
+
+      // Con el menú cerrado solo escuchamos el borde izquierdo para no
+      // interferir con el scroll vertical ni con gestos dentro de las tarjetas.
+      if (!sidebarExpanded && touch.clientX > 90) {
+        resetGesture();
+        return;
+      }
+
+      startX = touch.clientX;
+      startY = touch.clientY;
+    };
+
+    const handleTouchEnd = (event) => {
+      if (startX == null || startY == null || !isMobile() || !shellAllowsMenu()) {
+        resetGesture();
+        return;
+      }
+
+      const touch = event.changedTouches?.[0];
+      if (!touch) {
+        resetGesture();
+        return;
+      }
+
+      const deltaX = touch.clientX - startX;
+      const deltaY = touch.clientY - startY;
+      const mostlyHorizontal = Math.abs(deltaX) >= 70 && Math.abs(deltaX) > Math.abs(deltaY) * 1.15;
+
+      if (mostlyHorizontal) {
+        if (!sidebarExpanded && deltaX > 0) {
+          setSidebarExpanded(true);
+        } else if (sidebarExpanded && deltaX < 0) {
+          setSidebarExpanded(false);
+        }
+      }
+
+      resetGesture();
+    };
+
+    document.addEventListener("touchstart", handleTouchStart, { passive: true });
+    document.addEventListener("touchend", handleTouchEnd, { passive: true });
+    document.addEventListener("touchcancel", resetGesture, { passive: true });
+
+    return () => {
+      document.removeEventListener("touchstart", handleTouchStart);
+      document.removeEventListener("touchend", handleTouchEnd);
+      document.removeEventListener("touchcancel", resetGesture);
+    };
+  }, [sidebarExpanded]);
 
 
   const getPresenceInfo = () => {
@@ -69,7 +141,13 @@ const Sidebar = ({ usuario, active, setActive, onUsuarioUpdate, unreadTotal = 0,
 
   const handleLogout = () => {
     logDev("Sesión cerrada");
-    window.location.href = "/";
+    try {
+      localStorage.removeItem("usuario");
+      socket.disconnect();
+    } catch (error) {
+      console.warn("No se pudo limpiar completamente la sesión:", error);
+    }
+    window.location.replace("/");
   };
 
   return (
@@ -87,7 +165,15 @@ const Sidebar = ({ usuario, active, setActive, onUsuarioUpdate, unreadTotal = 0,
       </button>
 
       {/* Logo */}
-      <button type="button" className="wa-rail-logo" title="Quick Chat" onClick={() => setActive("chat")}>
+      <button
+        type="button"
+        className="wa-rail-logo"
+        title="Quick Chat"
+        onClick={() => {
+          setActive("chat");
+          setSidebarExpanded(false);
+        }}
+      >
         <span className="wa-rail-logo-mark">
           <img src="/logo-quick-chat.png" alt="Logo Quick Chat" />
         </span>
@@ -112,6 +198,7 @@ const Sidebar = ({ usuario, active, setActive, onUsuarioUpdate, unreadTotal = 0,
                   return;
                 }
                 setActive(id);
+                setSidebarExpanded(false);
               }}
               title={label}
               aria-label={label}
@@ -137,7 +224,15 @@ const Sidebar = ({ usuario, active, setActive, onUsuarioUpdate, unreadTotal = 0,
       </div>
 
       {/* Avatar */}
-      <button type="button" className="wa-rail-profile" onClick={() => setShowModal(true)} title="Perfil">
+      <button
+        type="button"
+        className="wa-rail-profile"
+        onClick={() => {
+          setSidebarExpanded(false);
+          setShowModal(true);
+        }}
+        title="Perfil"
+      >
         <span className="wa-presence-wrapper wa-rail-profile-presence">
           {usuario?.url_imagen ? (
             <img src={getAvatarUrl(usuario.url_imagen)} alt="User" className="wa-rail-avatar-img" />
@@ -169,6 +264,10 @@ const Sidebar = ({ usuario, active, setActive, onUsuarioUpdate, unreadTotal = 0,
         onLogout={handleLogout}
         onUsuarioUpdate={onUsuarioUpdate}
         sidebarExpanded={sidebarExpanded}
+        onOpenMenu={() => {
+          setShowModal(false);
+          setSidebarExpanded(true);
+        }}
       />
     </div>
   );

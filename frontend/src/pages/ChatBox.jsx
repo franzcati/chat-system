@@ -284,7 +284,7 @@ const STICKER_EDITOR_COLORS = [
 ];
 
 
-const ChatBox = ({ chat, user, setChat, onVerPerfil, onAddToList, estadosUsuarios = {} }) => {
+const ChatBox = ({ chat, user, setChat, onCloseChat, onVerPerfil, onAddToList, estadosUsuarios = {} }) => {
 
   const [messages, setMessages] = useState([]);
   const [socketReconnectToken, setSocketReconnectToken] = useState(0);
@@ -1704,8 +1704,25 @@ const ChatBox = ({ chat, user, setChat, onVerPerfil, onAddToList, estadosUsuario
 
   const handleReplyMessage = useCallback((message) => {
     if (!message?.id) return;
+
     setReplyingTo(message);
-    setTimeout(() => inputRef.current?.focus?.(), 0);
+
+    const ua = typeof navigator !== "undefined" ? navigator.userAgent || "" : "";
+    const isIOS =
+      /iPad|iPhone|iPod/i.test(ua) ||
+      (typeof navigator !== "undefined" &&
+        navigator.platform === "MacIntel" &&
+        navigator.maxTouchPoints > 1);
+
+    /*
+     * Safari/iOS puede mover el VisualViewport fuera de la conversación cuando
+     * se fuerza focus() desde un setTimeout después de elegir "Responder".
+     * En iPhone mostramos primero la barra de respuesta y dejamos que el usuario
+     * toque el composer de forma natural. Android/escritorio conservan autofocus.
+     */
+    if (!isIOS) {
+      setTimeout(() => inputRef.current?.focus?.(), 0);
+    }
   }, []);
 
   const getForwardMessageKey = useCallback((message = {}) => {
@@ -4080,11 +4097,19 @@ const ChatBox = ({ chat, user, setChat, onVerPerfil, onAddToList, estadosUsuario
           <div className="chat-header wa-chat-header border-bottom">
             <div className="row align-items-center">
               {/* Mobile: close */}
-              <div className="col-2 d-xl-none">
-                <a
-                  className="icon icon-lg text-muted"
-                  href="#"
-                  onClick={() => onCloseChat()}
+              <div className="col-2 d-xl-none wa-mobile-chat-back-col">
+                <button
+                  type="button"
+                  className="icon icon-lg text-muted wa-mobile-chat-back"
+                  aria-label="Volver a la lista de chats"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    if (typeof onCloseChat === "function") {
+                      onCloseChat();
+                    } else {
+                      setChat(null);
+                    }
+                  }}
                 >
                   <svg
                     xmlns="http://www.w3.org/2000/svg"
@@ -4100,12 +4125,12 @@ const ChatBox = ({ chat, user, setChat, onVerPerfil, onAddToList, estadosUsuario
                   >
                     <polyline points="15 18 9 12 15 6"></polyline>
                   </svg>
-                </a>
+                </button>
               </div>
               {/* Mobile: close */}
 
               {/* Content */}
-              <div className="col-8 col-xl-12">
+              <div className="col-8 col-xl-12 wa-chat-header-main">
                 <div className="row align-items-center text-center text-xl-start">
                   {/* Title */}
                   <div className="col-12 col-xl-6">

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { logDev } from "../utils/logger";
 import axios from 'axios';
@@ -10,6 +10,13 @@ function Login() {
   const [error, setError] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const navigate = useNavigate();
+
+  // Si la sesión ya existe, volver a / nunca debe mostrar nuevamente el login.
+  useEffect(() => {
+    if (localStorage.getItem("usuario")) {
+      navigate("/mensajes", { replace: true });
+    }
+  }, [navigate]);
 
   const handleLogin = async (e) => {
     e.preventDefault();
@@ -33,7 +40,7 @@ function Login() {
       localStorage.setItem('usuario', JSON.stringify(res.data.usuario));
 
       // Redirigir a /mensajes
-      navigate('/mensajes');
+      navigate('/mensajes', { replace: true });
     } catch (err) {
       if (err.response) {
         setError(err.response.data.error); // Mensaje del servidor

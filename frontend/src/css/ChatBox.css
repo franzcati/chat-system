@@ -11670,3 +11670,759 @@ body.dark .wa-reactions-modal-emoji:hover,
 .wa-custom-list-menu-row.active .wa-custom-list-menu-main {
   color: #008069 !important;
 }
+
+/* =========================================================
+   QUICK CHAT MOBILE V2 - CONVERSACIÓN
+   WhatsApp-like: header legible, cero scroll horizontal,
+   medios contenidos, menú como bottom sheet y composer seguro.
+   ========================================================= */
+@media (max-width: 767px) {
+  .main.is-visible,
+  .main.is-visible > .wa-chat-shell,
+  .wa-chat-shell,
+  .wa-chat-conversation {
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+    height: 100% !important;
+    min-height: 0 !important;
+    overflow: hidden !important;
+  }
+
+  /* ---------- Header móvil ---------- */
+  .wa-chat-header.chat-header {
+    flex: 0 0 58px !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+    height: 58px !important;
+    min-height: 58px !important;
+    padding: 0 8px !important;
+    overflow: hidden !important;
+  }
+
+  .wa-chat-header.chat-header > .row {
+    display: flex !important;
+    flex-wrap: nowrap !important;
+    align-items: center !important;
+    width: 100% !important;
+    height: 100% !important;
+    margin: 0 !important;
+  }
+
+  .wa-mobile-chat-back-col {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: flex-start !important;
+    flex: 0 0 42px !important;
+    width: 42px !important;
+    min-width: 42px !important;
+    max-width: 42px !important;
+    padding: 0 !important;
+  }
+
+  .wa-mobile-chat-back {
+    width: 40px !important;
+    height: 40px !important;
+    min-width: 40px !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: 0 !important;
+    border-radius: 50% !important;
+    background: transparent !important;
+    color: #54656f !important;
+    display: grid !important;
+    place-items: center !important;
+    text-decoration: none !important;
+  }
+
+  :root[data-theme="dark"] .wa-mobile-chat-back {
+    color: #aebac1 !important;
+  }
+
+  .wa-chat-header-main {
+    display: block !important;
+    flex: 1 1 auto !important;
+    width: auto !important;
+    min-width: 0 !important;
+    max-width: none !important;
+    padding: 0 2px !important;
+  }
+
+  .wa-chat-header-main > .row,
+  .wa-chat-header-main .col-12.col-xl-6,
+  .wa-chat-header-main .row.align-items-center.gx-5 {
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  .wa-chat-header-main .row.align-items-center.gx-5 {
+    display: flex !important;
+    flex-wrap: nowrap !important;
+    align-items: center !important;
+  }
+
+  .wa-chat-header-main .col-auto {
+    flex: 1 1 auto !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+    padding: 0 !important;
+  }
+
+  .wa-chat-header-main .cursor-pointer {
+    display: flex !important;
+    align-items: center !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+  }
+
+  /* En privado el avatar estaba oculto por d-none d-xl-inline-block. */
+  .wa-chat-header .avatar.d-none.d-xl-inline-block,
+  .wa-chat-header .avatar {
+    display: inline-flex !important;
+    flex: 0 0 38px !important;
+    width: 38px !important;
+    min-width: 38px !important;
+    height: 38px !important;
+    margin-right: 9px !important;
+  }
+
+  .wa-chat-header .avatar .avatar-img,
+  .wa-chat-header .avatar img,
+  .wa-chat-header .avatar .wa-presence-wrapper,
+  .wa-chat-header .avatar .wa-presence-wrapper > div:not(.wa-presence-badge) {
+    width: 38px !important;
+    min-width: 38px !important;
+    height: 38px !important;
+  }
+
+  .wa-chat-title-block {
+    flex: 1 1 auto !important;
+    width: auto !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+    padding: 0 !important;
+    text-align: left !important;
+  }
+
+  .wa-chat-title-block h5 {
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    font-size: 15.5px !important;
+    font-weight: 650 !important;
+    line-height: 1.25 !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    white-space: nowrap !important;
+  }
+
+  .wa-chat-title-block small {
+    width: 100% !important;
+    max-width: 100% !important;
+    margin-top: 2px !important;
+    font-size: 12px !important;
+    line-height: 1.2 !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    white-space: nowrap !important;
+  }
+
+  /* ---------- Pinned bar ---------- */
+  .pinned-bar,
+  .pinned-bar * {
+    min-width: 0 !important;
+    max-width: 100%;
+  }
+
+  .pinned-bar {
+    width: 100% !important;
+    overflow-x: hidden !important;
+  }
+
+  /* ---------- Área de mensajes ---------- */
+  .chat-body {
+    flex: 1 1 auto !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+    min-height: 0 !important;
+    overflow-x: hidden !important;
+    overflow-y: auto !important;
+    overscroll-behavior-x: none;
+    overscroll-behavior-y: contain;
+    touch-action: pan-y;
+  }
+
+  .chat-body-inner,
+  .chat-body .d-flex.flex-column.h-100,
+  .chat-body .date-group,
+  .chat-body .date-sticky-wrapper {
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+  }
+
+  .chat-body-inner {
+    padding-left: 8px !important;
+    padding-right: 8px !important;
+    overflow-x: hidden !important;
+  }
+
+  .chat-body .date-group {
+    overflow: visible !important;
+  }
+
+  .chat-body .message {
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+    padding-left: 1px !important;
+    padding-right: 1px !important;
+    box-sizing: border-box !important;
+  }
+
+  .chat-body .avatar-responsive.avatar,
+  .chat-body .avatar-responsive.avatar.avatar-lg,
+  .chat-body .avatar-responsive.avatar.avatar-sm,
+  .chat-body .avatar-responsive.avatar.avatar-xl,
+  .chat-body .avatar-responsive.avatar.avatar-xs {
+    flex: 0 0 32px !important;
+    width: 32px !important;
+    min-width: 32px !important;
+    height: 32px !important;
+  }
+
+  .chat-body .avatar-responsive .avatar-img,
+  .chat-body .avatar-responsive img,
+  .chat-body .avatar-responsive > div {
+    width: 32px !important;
+    min-width: 32px !important;
+    height: 32px !important;
+    font-size: 13px !important;
+  }
+
+  .chat-body .message-inner {
+    flex: 0 1 auto !important;
+    width: auto !important;
+    min-width: 0 !important;
+    max-width: calc(100% - 38px) !important;
+    margin-left: 6px !important;
+    margin-right: 0 !important;
+  }
+
+  .chat-body .message-out .message-inner {
+    margin-left: 0 !important;
+    margin-right: 6px !important;
+    max-width: calc(100% - 38px) !important;
+  }
+
+  .message-body,
+  .message-content,
+  .message-text,
+  .wa-message-media-stack,
+  .wa-image-grid,
+  .wa-single-image-wrap,
+  .wa-video-wrap,
+  .wa-audio-player,
+  .wa-audio-main,
+  .wa-quote-preview,
+  .wa-reply-preview {
+    min-width: 0 !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+  }
+
+  .message-text {
+    width: fit-content !important;
+    min-width: 0 !important;
+    max-width: min(82vw, 100%) !important;
+    overflow-wrap: anywhere !important;
+    word-break: break-word !important;
+  }
+
+  .message-text.message-media-bubble,
+  .message-text.message-video-bubble,
+  .message-text.message-audio-bubble {
+    width: fit-content !important;
+    min-width: 0 !important;
+    max-width: min(82vw, 100%) !important;
+  }
+
+  .wa-image-grid,
+  .wa-image-grid.multi,
+  .wa-single-image-wrap,
+  .wa-video-wrap {
+    width: min(78vw, 320px) !important;
+    max-width: 100% !important;
+  }
+
+  .wa-message-image,
+  .wa-message-video {
+    display: block !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+    height: auto;
+    object-fit: cover;
+  }
+
+  .message-text.message-audio-bubble .wa-audio-player,
+  .wa-audio-player {
+    width: min(78vw, 310px) !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+  }
+
+  .wa-sticker-cluster {
+    max-width: calc(100vw - 20px) !important;
+  }
+
+  /* ---------- Menú de un mensaje: bottom sheet ---------- */
+  .message-text .dropdown-menu.show,
+  .chat-body .message.message-layer-active .dropdown-menu.show {
+    position: fixed !important;
+    left: 10px !important;
+    right: 10px !important;
+    top: auto !important;
+    bottom: calc(74px + env(safe-area-inset-bottom, 0px)) !important;
+    width: auto !important;
+    min-width: 0 !important;
+    max-width: none !important;
+    max-height: min(62dvh, 520px) !important;
+    margin: 0 !important;
+    padding: 7px !important;
+    transform: none !important;
+    overflow-x: hidden !important;
+    overflow-y: auto !important;
+    overscroll-behavior: contain;
+    border-radius: 18px !important;
+    box-shadow: 0 18px 52px rgba(15, 23, 42, 0.28) !important;
+    z-index: 200000 !important;
+  }
+
+  .message-text .dropdown-item {
+    width: 100% !important;
+    min-width: 0 !important;
+    min-height: 44px !important;
+    padding: 9px 11px !important;
+    gap: 12px !important;
+    font-size: 15px !important;
+  }
+
+  .message-text .dropdown-item .me-auto {
+    flex: 1 1 auto !important;
+    min-width: 0 !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    white-space: nowrap !important;
+  }
+
+  /* Reacciones y picker nunca deben empujar el ancho del documento. */
+  .chat-body .message.message-layer-active .reactions-popover,
+  .reactions-popover {
+    position: fixed !important;
+    left: 50% !important;
+    right: auto !important;
+    top: auto !important;
+    bottom: calc(82px + env(safe-area-inset-bottom, 0px)) !important;
+    width: auto !important;
+    max-width: calc(100vw - 20px) !important;
+    transform: translateX(-50%) !important;
+    z-index: 200010 !important;
+  }
+
+  .reactions-popover-inner {
+    max-width: calc(100vw - 20px) !important;
+    gap: 3px !important;
+    padding: 5px 7px !important;
+    overflow-x: auto !important;
+    overflow-y: hidden !important;
+  }
+
+  .message .emoji-picker {
+    position: fixed !important;
+    left: 8px !important;
+    right: 8px !important;
+    top: auto !important;
+    bottom: calc(76px + env(safe-area-inset-bottom, 0px)) !important;
+    width: auto !important;
+    max-width: calc(100vw - 16px) !important;
+    transform: none !important;
+    z-index: 200020 !important;
+  }
+
+  .message .emoji-picker em-emoji-picker {
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+
+  /* ---------- Composer ---------- */
+  .chat-footer {
+    flex: 0 0 auto !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    padding: 7px 8px calc(8px + env(safe-area-inset-bottom, 0px)) !important;
+    overflow: visible !important;
+  }
+
+  .wa-chat-form.chat-form,
+  .wa-chat-form .row,
+  .wa-chat-form .input-group,
+  .wa-chat-form .mention-input-wrapper,
+  .wa-chat-form .wa-rich-input-wrapper,
+  .wa-chat-form .wa-rich-editor,
+  .wa-chat-form textarea,
+  .wa-chat-form input {
+    min-width: 0 !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+  }
+
+  .wa-chat-form.chat-form {
+    width: 100% !important;
+    margin: 0 !important;
+    padding-left: 7px !important;
+    padding-right: 7px !important;
+  }
+
+  .wa-chat-form .btn-primary.rounded-circle {
+    flex: 0 0 42px !important;
+    width: 42px !important;
+    min-width: 42px !important;
+    height: 42px !important;
+    margin-left: 6px !important;
+  }
+
+  /* Paneles de información se vuelven pantalla completa. */
+  .wa-chat-shell > .wa-group-info-panel,
+  .wa-group-info-panel,
+  .wa-group-info-panel.is-open {
+    width: 100vw !important;
+    min-width: 100vw !important;
+    max-width: 100vw !important;
+    height: var(--qc-mobile-vh, 100dvh) !important;
+    max-height: var(--qc-mobile-vh, 100dvh) !important;
+  }
+}
+
+/* =========================================================
+   QUICK CHAT MOBILE V5 - COMPOSER iOS / SAFARI
+   ========================================================= */
+@media (max-width: 767px) {
+  /* Flex estable: header + mensajes + composer dentro del viewport visible. */
+  html.qc-mobile-chat-open .wa-chat-conversation {
+    display: flex !important;
+    flex-direction: column !important;
+  }
+
+  html.qc-mobile-chat-open .chat-body {
+    flex: 1 1 0 !important;
+    min-height: 0 !important;
+    height: auto !important;
+    max-height: none !important;
+    overflow-x: hidden !important;
+    overflow-y: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+  }
+
+  html.qc-mobile-chat-open .chat-footer {
+    position: relative !important;
+    z-index: 100 !important;
+    flex: 0 0 auto !important;
+    left: auto !important;
+    right: auto !important;
+    bottom: auto !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    transform: none !important;
+  }
+
+  /*
+   * iPhone hace auto-zoom si el control enfocado usa menos de 16px.
+   * ContentEditable también necesita color / caret explícitos en Safari.
+   */
+  html.qc-ios .wa-chat-form .wa-rich-editor.form-control {
+    display: block !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    min-height: 44px !important;
+    max-height: min(132px, 24dvh) !important;
+    padding: 10px 8px !important;
+    margin: 0 !important;
+    font-size: 16px !important;
+    line-height: 1.4 !important;
+    -webkit-text-size-adjust: 100% !important;
+    text-size-adjust: 100% !important;
+    -webkit-user-select: text !important;
+    user-select: text !important;
+    touch-action: manipulation !important;
+    overflow-x: hidden !important;
+    overflow-y: auto !important;
+    scroll-behavior: auto !important;
+    transform: translateZ(0);
+  }
+
+  html.qc-ios:not([data-theme="dark"]) .wa-chat-form .wa-rich-editor.form-control {
+    color: #111b21 !important;
+    -webkit-text-fill-color: #111b21 !important;
+    caret-color: #2787f5 !important;
+  }
+
+  html.qc-ios[data-theme="dark"] .wa-chat-form .wa-rich-editor.form-control {
+    color: #e9edef !important;
+    -webkit-text-fill-color: #e9edef !important;
+    caret-color: #8ecbff !important;
+  }
+
+  html.qc-ios .wa-chat-form .wa-rich-editor:empty::before {
+    opacity: 1 !important;
+    -webkit-text-fill-color: currentColor;
+  }
+
+  html.qc-ios:not([data-theme="dark"]) .wa-chat-form .wa-rich-editor:empty::before {
+    color: #54656f !important;
+    -webkit-text-fill-color: #54656f !important;
+  }
+
+  html.qc-ios[data-theme="dark"] .wa-chat-form .wa-rich-editor:empty::before {
+    color: #aebac1 !important;
+    -webkit-text-fill-color: #aebac1 !important;
+  }
+
+  /*
+   * Con teclado abierto reducimos paddings verticales. El keyboard ya queda
+   * fuera del VisualViewport, por lo tanto NO sumamos su altura como bottom.
+   */
+  html.qc-ios.qc-mobile-keyboard-open .wa-chat-header.chat-header {
+    flex: 0 0 54px !important;
+    height: 54px !important;
+    min-height: 54px !important;
+  }
+
+  html.qc-ios.qc-mobile-keyboard-open .chat-footer {
+    padding-top: 5px !important;
+    padding-bottom: max(5px, env(safe-area-inset-bottom, 0px)) !important;
+  }
+
+  html.qc-ios.qc-mobile-keyboard-open .wa-chat-form.chat-form {
+    min-height: 52px !important;
+    padding-top: 5px !important;
+    padding-bottom: 5px !important;
+  }
+
+  html.qc-ios.qc-composer-focused .wa-chat-form,
+  html.qc-ios.qc-composer-focused .wa-chat-form .input-group,
+  html.qc-ios.qc-composer-focused .wa-chat-form .mention-input-wrapper,
+  html.qc-ios.qc-composer-focused .wa-chat-form .wa-rich-input-wrapper {
+    min-width: 0 !important;
+    max-width: 100% !important;
+    overflow: visible !important;
+  }
+}
+
+/* =========================================================
+   QUICK CHAT MOBILE V6 - TOUCH / REPLY iOS
+   ========================================================= */
+@media (max-width: 767px) and (pointer: coarse) {
+  .message-inner {
+    touch-action: manipulation !important;
+    -webkit-tap-highlight-color: transparent !important;
+  }
+
+  /* Los controles conservan sus gestos propios y no cuentan como doble toque. */
+  .message-inner button,
+  .message-inner a,
+  .message-inner video,
+  .message-inner audio,
+  .message-inner .message-action,
+  .message-inner .reply-preview,
+  .message-inner .wa-message-reactions {
+    touch-action: manipulation !important;
+  }
+}
+
+@media (max-width: 767px) {
+  /* La barra de respuesta nunca puede ensanchar el composer en iPhone. */
+  .wa-chat-form.has-reply-compose,
+  .reply-compose-bar,
+  .reply-compose-content,
+  .reply-compose-preview,
+  .reply-compose-author {
+    min-width: 0 !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+  }
+
+  .reply-compose-content {
+    flex: 1 1 auto !important;
+    overflow: hidden !important;
+  }
+
+  .reply-compose-author,
+  .reply-compose-preview {
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    white-space: nowrap !important;
+  }
+
+  html.qc-ios .reply-compose-close {
+    flex: 0 0 40px !important;
+    width: 40px !important;
+    min-width: 40px !important;
+    height: 40px !important;
+    touch-action: manipulation !important;
+  }
+
+  /*
+   * Al seleccionar "Responder" en iPhone NO abrimos el teclado de forma
+   * programática. La barra aparece estable; al tocar el editor Safari abre
+   * el teclado dentro del VisualViewport normal.
+   */
+  html.qc-ios .wa-chat-form.has-reply-compose {
+    scroll-margin-bottom: 0 !important;
+  }
+}
+
+/* =========================================================
+   QUICK CHAT MOBILE V7 - SWIPE TO REPLY
+   ========================================================= */
+@media (max-width: 767px) and (pointer: coarse) {
+  .message-inner {
+    --wa-reply-swipe-x: 0px;
+    position: relative !important;
+    touch-action: pan-y !important;
+    transform: translate3d(var(--wa-reply-swipe-x), 0, 0);
+    transition: transform 170ms cubic-bezier(.2,.8,.2,1);
+    will-change: transform;
+    -webkit-tap-highlight-color: transparent !important;
+  }
+
+  .message-inner.is-reply-swiping {
+    transition: none !important;
+  }
+
+  .message-inner.is-reply-settling {
+    transition: transform 170ms cubic-bezier(.2,.8,.2,1) !important;
+  }
+
+  .wa-swipe-reply-indicator {
+    position: absolute;
+    z-index: 1;
+    left: -38px;
+    top: 50%;
+    display: grid;
+    place-items: center;
+    width: 32px;
+    height: 32px;
+    margin-top: -16px;
+    border-radius: 999px;
+    color: #ffffff;
+    background: rgba(42, 139, 242, 0.82);
+    box-shadow: 0 5px 14px rgba(0, 0, 0, .18);
+    opacity: 0;
+    transform: scale(.78);
+    transition: opacity 120ms ease, transform 120ms ease, background 120ms ease;
+    pointer-events: none;
+  }
+
+  .message-inner.is-reply-swiping .wa-swipe-reply-indicator {
+    opacity: .72;
+    transform: scale(.92);
+  }
+
+  .message-inner.is-reply-ready .wa-swipe-reply-indicator {
+    opacity: 1;
+    transform: scale(1);
+    background: #2a8bf2;
+  }
+
+  .message-inner.is-reply-ready .wa-swipe-reply-indicator i {
+    transform: scale(1.08);
+  }
+
+  /* Imágenes/stickers siguen pudiendo abrirse con un toque normal.
+     El arrastre horizontal pertenece al gesto de respuesta. */
+  .message-inner img,
+  .message-inner .message-sticker-bubble,
+  .message-inner .message-media-bubble {
+    touch-action: pan-y !important;
+    -webkit-user-drag: none;
+  }
+}
+
+/* =========================================================
+   QUICK CHAT MOBILE V7 - COMPOSER iPHONE
+   ========================================================= */
+@media (max-width: 767px) {
+  html.qc-ios.qc-mobile-chat-open .wa-chat-conversation {
+    display: flex !important;
+    flex-direction: column !important;
+    height: 100% !important;
+    min-height: 0 !important;
+    max-height: 100% !important;
+    overflow: hidden !important;
+  }
+
+  html.qc-ios.qc-mobile-chat-open .chat-body {
+    flex: 1 1 0 !important;
+    min-height: 0 !important;
+    height: auto !important;
+    max-height: none !important;
+    overflow-x: hidden !important;
+    overflow-y: auto !important;
+  }
+
+  html.qc-ios.qc-mobile-chat-open .chat-footer {
+    position: relative !important;
+    z-index: 300 !important;
+    flex: 0 0 auto !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+    left: auto !important;
+    right: auto !important;
+    top: auto !important;
+    bottom: auto !important;
+    margin: 0 !important;
+    transform: none !important;
+  }
+
+  html.qc-ios.qc-mobile-keyboard-open .chat-footer,
+  html.qc-ios.qc-composer-focused .chat-footer {
+    visibility: visible !important;
+    opacity: 1 !important;
+    pointer-events: auto !important;
+  }
+
+  html.qc-ios.qc-mobile-keyboard-open .wa-chat-form.chat-form {
+    visibility: visible !important;
+    opacity: 1 !important;
+    transform: none !important;
+  }
+
+  /* Evita que Safari intente crear un segundo scroll horizontal/vertical
+     alrededor del composer cuando el teclado se está animando. */
+  html.qc-ios.qc-composer-focused .wa-chat-form,
+  html.qc-ios.qc-composer-focused .wa-chat-form .row,
+  html.qc-ios.qc-composer-focused .wa-chat-form .col,
+  html.qc-ios.qc-composer-focused .wa-chat-form .input-group,
+  html.qc-ios.qc-composer-focused .wa-chat-form .wa-input-grow,
+  html.qc-ios.qc-composer-focused .wa-chat-form .mention-input-wrapper,
+  html.qc-ios.qc-composer-focused .wa-chat-form .wa-rich-input-wrapper {
+    min-width: 0 !important;
+    max-width: 100% !important;
+    overflow-x: hidden !important;
+  }
+}
+
