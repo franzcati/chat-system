@@ -55,6 +55,9 @@ app.use('/api/messages', messagesRoutes);
 //LOGIN
 app.use('/api/usuario', require('./routes/usuario'));
 
+// MFA / AUTENTICACION EN DOS PASOS
+app.use('/api/mfa', require('./routes/mfa'));
+
 //BUSQUEDA DE CHAT
 const chats = require('./routes/chats');
 app.use('/api/chats', chats);

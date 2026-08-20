@@ -3,12 +3,19 @@ import { useNavigate } from 'react-router-dom';
 import { logDev } from "../utils/logger";
 import axios from 'axios';
 import '../css/Login.css';
+import '../css/MfaSecurity.css';
+import MfaLoginPanel from './MfaLoginPanel';
 
 function Login() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [mfaStep, setMfaStep] = useState('credentials');
+  const [mfaChallenge, setMfaChallenge] = useState('');
+  const [mfaSetupData, setMfaSetupData] = useState(null);
+  const [mfaMethods, setMfaMethods] = useState({ totp: false, email: false, recovery: false });
   const navigate = useNavigate();
 
   // Si la sesión ya existe, volver a / nunca debe mostrar nuevamente el login.
@@ -18,15 +25,27 @@ function Login() {
     }
   }, [navigate]);
 
+  const completeLogin = (usuario) => {
+    if (!usuario?.id) {
+      setError('No se recibió un usuario válido del servidor.');
+      return;
+    }
+
+    localStorage.setItem('usuario', JSON.stringify(usuario));
+    navigate('/mensajes', { replace: true });
+  };
+
   const handleLogin = async (e) => {
     e.preventDefault();
 
     const cleanEmail = email.trim();
-
     if (!cleanEmail.includes('@')) {
       setError('Email inválido');
       return;
     }
+
+    setLoading(true);
+    setError('');
 
     try {
       const res = await axios.post('/api/usuario/login', {
@@ -34,21 +53,42 @@ function Login() {
         contrasena: password,
       });
 
-      logDev('Login exitoso', { usuarioId: res.data?.usuario?.id });
-      setError('');
-      // ✅ Guardar usuario en localStorage
-      localStorage.setItem('usuario', JSON.stringify(res.data.usuario));
+      if (res.data?.mfa_required) {
+        const challenge = res.data?.challenge;
+        if (!challenge) throw new Error('El servidor no devolvió el desafío MFA.');
 
-      // Redirigir a /mensajes
-      navigate('/mensajes', { replace: true });
-    } catch (err) {
-      if (err.response) {
-        setError(err.response.data.error); // Mensaje del servidor
-      } else {
-        setError('Error de conexión');
+        setMfaChallenge(challenge);
+        setMfaMethods({
+          totp: Boolean(res.data?.mfa_methods?.totp),
+          email: Boolean(res.data?.mfa_methods?.email),
+          recovery: Boolean(res.data?.mfa_methods?.recovery),
+        });
+
+        // FASE 3B: en el primer ingreso NO forzamos Authenticator.
+        // El panel permitirá escoger Authenticator o correo.
+        setMfaSetupData(null);
+        setMfaStep(res.data?.mfa_action === 'setup' ? 'setup' : 'verify');
+        return;
       }
+
+      logDev('Login exitoso', { usuarioId: res.data?.usuario?.id });
+      completeLogin(res.data?.usuario);
+    } catch (err) {
+      setError(err.response?.data?.error || err.message || 'Error de conexión');
+    } finally {
+      setLoading(false);
     }
   };
+
+  const cancelMfa = () => {
+    setMfaStep('credentials');
+    setMfaChallenge('');
+    setMfaSetupData(null);
+    setMfaMethods({ totp: false, email: false, recovery: false });
+    setPassword('');
+    setError('');
+  };
+
 
   return (
     <main className="quick-login">
@@ -153,7 +193,7 @@ function Login() {
         </svg>
       </div>
 
-      <section className="quick-login-card" aria-labelledby="quick-login-title">
+      <section className={`quick-login-card ${mfaStep !== 'credentials' ? 'qc-mfa-card' : ''}`} aria-labelledby="quick-login-title">
         <div className="quick-brand">
           <span className="quick-brand-logo" aria-hidden="true">
             <img src="/logo-quick-chat.png" alt="" />
@@ -163,12 +203,6 @@ function Login() {
           </span>
         </div>
 
-        <header className="quick-login-header">
-          <h1 id="quick-login-title" className="quick-title">Iniciar sesión</h1>
-          <p className="quick-subtitle">Bienvenido de vuelta, nos alegra verte</p>
-          <span className="quick-title-line" />
-        </header>
-
         {error && (
           <p className="quick-error" role="alert">
             <i className="fa-solid fa-circle-exclamation" aria-hidden="true" />
@@ -176,59 +210,80 @@ function Login() {
           </p>
         )}
 
-        <form onSubmit={handleLogin} className="quick-login-form">
-          <div className="quick-input-group">
-            <label htmlFor="email-input" className="quick-input-icon" aria-label="Correo electrónico">
-              <i className="fa-regular fa-envelope" aria-hidden="true" />
-            </label>
-            <input
-              id="email-input"
-              type="email"
-              placeholder="Correo electrónico"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              autoComplete="email"
-              required
-            />
-          </div>
+        {mfaStep === 'credentials' ? (
+          <>
+          <header className="quick-login-header">
+            <h1 id="quick-login-title" className="quick-title">Iniciar sesión</h1>
+            <p className="quick-subtitle">Bienvenido de vuelta, nos alegra verte</p>
+            <span className="quick-title-line" />
+          </header>
 
-          <div className="quick-input-group quick-input-password">
-            <label htmlFor="password-input" className="quick-input-icon" aria-label="Contraseña">
-              <i className="fa-solid fa-lock" aria-hidden="true" />
-            </label>
-            <input
-              id="password-input"
-              type={showPassword ? 'text' : 'password'}
-              placeholder="Contraseña"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              autoComplete="current-password"
-              required
-            />
-            <button
-              type="button"
-              className="quick-password-toggle"
-              onClick={() => setShowPassword((currentValue) => !currentValue)}
-              aria-label={showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
-              aria-pressed={showPassword}
-            >
-              <i className={showPassword ? 'fa-regular fa-eye-slash' : 'fa-regular fa-eye'} aria-hidden="true" />
+          <form onSubmit={handleLogin} className="quick-login-form">
+            <div className="quick-input-group">
+              <label htmlFor="email-input" className="quick-input-icon" aria-label="Correo electrónico">
+                <i className="fa-regular fa-envelope" aria-hidden="true" />
+              </label>
+              <input
+                id="email-input"
+                type="email"
+                placeholder="Correo electrónico"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                autoComplete="email"
+                required
+              />
+            </div>
+
+            <div className="quick-input-group quick-input-password">
+              <label htmlFor="password-input" className="quick-input-icon" aria-label="Contraseña">
+                <i className="fa-solid fa-lock" aria-hidden="true" />
+              </label>
+              <input
+                id="password-input"
+                type={showPassword ? 'text' : 'password'}
+                placeholder="Contraseña"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                autoComplete="current-password"
+                required
+              />
+              <button
+                type="button"
+                className="quick-password-toggle"
+                onClick={() => setShowPassword((currentValue) => !currentValue)}
+                aria-label={showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
+                aria-pressed={showPassword}
+              >
+                <i className={showPassword ? 'fa-regular fa-eye-slash' : 'fa-regular fa-eye'} aria-hidden="true" />
+              </button>
+            </div>
+
+            <button type="submit" className="quick-login-button" disabled={loading}>
+              <i className="fa-solid fa-bolt" aria-hidden="true" />
+              <span>{loading ? 'Verificando...' : 'Ingresar'}</span>
             </button>
-          </div>
+          </form>
 
-          <button type="submit" className="quick-login-button">
-            <i className="fa-solid fa-bolt" aria-hidden="true" />
-            <span>Ingresar</span>
-          </button>
-        </form>
-
-        <a
-          href="#recuperar-contrasena"
-          className="quick-forgot-link"
-          onClick={(event) => event.preventDefault()}
-        >
-          ¿Olvidaste tu contraseña?
-        </a>
+          <a
+            href="#recuperar-contrasena"
+            className="quick-forgot-link"
+            onClick={(event) => event.preventDefault()}
+          >
+            ¿Olvidaste tu contraseña?
+          </a>
+          </>
+        ) : (
+          <MfaLoginPanel
+            mode={mfaStep}
+            challenge={mfaChallenge}
+            setupData={mfaSetupData}
+            methods={mfaMethods}
+            accountFallback={email.trim()}
+            onComplete={completeLogin}
+            onCancel={cancelMfa}
+            onError={setError}
+          />
+        )}
 
         <div className="quick-secure-line" aria-hidden="true">
           <span />

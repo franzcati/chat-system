@@ -1,0 +1,629 @@
+.qc-devices-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 30050;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(2, 6, 23, 0.62);
+  backdrop-filter: blur(10px);
+}
+
+.qc-devices-modal {
+  width: min(720px, calc(100vw - 32px));
+  max-height: min(760px, calc(100dvh - 40px));
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  border-radius: 26px;
+  background: #f8fafc;
+  color: #0f172a;
+  box-shadow: 0 30px 90px rgba(2, 6, 23, 0.38);
+}
+
+.qc-devices-header {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 14px;
+  padding: 22px 24px 16px;
+}
+
+.qc-devices-icon {
+  width: 48px;
+  height: 48px;
+  display: grid;
+  place-items: center;
+  border-radius: 16px;
+  background: linear-gradient(135deg, #38bdf8, #6d4aff);
+  color: white;
+  font-size: 20px;
+}
+
+.qc-devices-header h2 { margin: 0; font-size: 24px; }
+.qc-devices-header p { margin: 4px 0 0; color: #64748b; font-size: 14px; }
+.qc-devices-close {
+  width: 42px; height: 42px; border: 0; border-radius: 50%; cursor: pointer;
+  background: #e2e8f0; color: #334155; font-size: 18px;
+}
+
+.qc-devices-info {
+  margin: 0 24px 14px;
+  padding: 12px 14px;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  border-radius: 14px;
+  background: #e0f2fe;
+  color: #075985;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.qc-devices-error {
+  margin: 0 24px 14px;
+  padding: 11px 13px;
+  border-radius: 12px;
+  background: #fee2e2;
+  color: #991b1b;
+  font-size: 13px;
+}
+
+.qc-devices-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 4px 24px 20px;
+}
+
+.qc-device-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 15px;
+  margin-top: 10px;
+  border: 1px solid #e2e8f0;
+  border-radius: 18px;
+  background: white;
+}
+
+.qc-device-card.is-current { border-color: #7dd3fc; box-shadow: 0 0 0 2px rgba(56,189,248,.10); }
+.qc-device-main { min-width: 0; display: flex; align-items: center; gap: 12px; }
+.qc-device-computer {
+  flex: 0 0 44px; width: 44px; height: 44px; display: grid; place-items: center;
+  border-radius: 14px; background: #eef2ff; color: #4f46e5;
+}
+.qc-device-copy { min-width: 0; display: grid; gap: 2px; }
+.qc-device-title-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.qc-device-copy strong { color: #172554; }
+.qc-device-copy small { color: #64748b; }
+.qc-current-badge {
+  padding: 3px 8px; border-radius: 999px; background: #dcfce7; color: #166534;
+  font-size: 11px; font-weight: 800;
+}
+.qc-device-revoke {
+  flex: 0 0 auto; border: 0; border-radius: 12px; padding: 10px 12px; cursor: pointer;
+  background: #fee2e2; color: #b91c1c; font-weight: 800;
+}
+.qc-device-revoke:disabled { opacity: .6; cursor: wait; }
+.qc-devices-empty { padding: 34px 12px; text-align: center; color: #64748b; }
+.qc-devices-footer {
+  display: flex; justify-content: flex-end; gap: 10px; padding: 15px 24px;
+  border-top: 1px solid #e2e8f0; background: rgba(248,250,252,.95);
+}
+.qc-devices-footer button {
+  border: 0; border-radius: 12px; padding: 10px 16px; cursor: pointer; font-weight: 800;
+}
+.qc-devices-footer button.primary { background: #2563eb; color: white; }
+
+html[data-theme="dark"] .qc-devices-modal,
+body.dark .qc-devices-modal {
+  background: #111827; color: #e5e7eb; border-color: rgba(148,163,184,.18);
+}
+html[data-theme="dark"] .qc-device-card,
+body.dark .qc-device-card { background: #182235; border-color: #334155; }
+html[data-theme="dark"] .qc-device-copy strong,
+body.dark .qc-device-copy strong { color: #f8fafc; }
+html[data-theme="dark"] .qc-devices-close,
+body.dark .qc-devices-close { background: #253047; color: #e2e8f0; }
+html[data-theme="dark"] .qc-devices-footer,
+body.dark .qc-devices-footer { background: #111827; border-color: #334155; }
+
+@media (max-width: 767px) {
+  .qc-devices-backdrop { padding: 0; place-items: stretch; }
+  .qc-devices-modal {
+    width: 100vw; max-width: 100vw; height: 100dvh; max-height: 100dvh;
+    border: 0; border-radius: 0;
+  }
+  .qc-devices-header { padding: calc(16px + env(safe-area-inset-top, 0px)) 16px 14px; }
+  .qc-devices-header h2 { font-size: 20px; }
+  .qc-devices-info, .qc-devices-error { margin-left: 16px; margin-right: 16px; }
+  .qc-devices-list { padding-left: 16px; padding-right: 16px; }
+  .qc-device-card { align-items: stretch; flex-direction: column; }
+  .qc-device-revoke { width: 100%; min-height: 44px; }
+  .qc-devices-footer {
+    padding: 12px 16px calc(12px + env(safe-area-inset-bottom, 0px));
+  }
+}
+
+/* =========================================================
+   QUICKCHAT MFA FASE 3 - correo alternativo
+   ========================================================= */
+.qc-devices-notice {
+  margin: 0 24px 14px;
+  padding: 11px 13px;
+  border-radius: 12px;
+  background: #dcfce7;
+  color: #166534;
+  font-size: 13px;
+}
+.qc-email-security-card {
+  margin: 4px 0 22px;
+  padding: 18px;
+  border: 1px solid #dbeafe;
+  border-radius: 20px;
+  background: linear-gradient(180deg, #ffffff, #f8fbff);
+}
+.qc-email-security-heading {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 12px;
+}
+.qc-email-security-icon {
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  border-radius: 14px;
+  background: #e0edff;
+  color: #2563eb;
+  font-size: 18px;
+}
+.qc-email-security-heading h3,
+.qc-devices-section-title h3 { margin: 0; color: #172554; font-size: 16px; }
+.qc-email-security-heading p,
+.qc-devices-section-title p { margin: 4px 0 0; color: #64748b; font-size: 12px; line-height: 1.4; }
+.qc-email-verified-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 8px;
+  border-radius: 999px;
+  background: #dcfce7;
+  color: #166534;
+  font-size: 11px;
+  font-weight: 800;
+}
+.qc-email-security-loading { padding: 18px 0 4px; color: #64748b; }
+.qc-email-current {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin-top: 16px;
+  padding: 12px;
+  border-radius: 14px;
+  background: #eff6ff;
+}
+.qc-email-current > div { min-width: 0; display: grid; gap: 2px; }
+.qc-email-current span, .qc-email-current small { color: #64748b; font-size: 11px; }
+.qc-email-current strong { overflow-wrap: anywhere; color: #1e3a8a; }
+.qc-email-current button {
+  flex: 0 0 auto;
+  border: 0;
+  border-radius: 10px;
+  padding: 8px 10px;
+  background: #fee2e2;
+  color: #b91c1c;
+  font-weight: 800;
+  cursor: pointer;
+}
+.qc-email-field { display: grid; gap: 7px; margin-top: 16px; }
+.qc-email-field > span { color: #475569; font-size: 12px; font-weight: 800; }
+.qc-email-field input {
+  width: 100%;
+  min-height: 46px;
+  padding: 0 13px;
+  border: 1px solid #cbd5e1;
+  border-radius: 12px;
+  outline: none;
+  background: white;
+  color: #0f172a;
+  font-size: 14px;
+}
+.qc-email-field input:focus { border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59, 130, 246, .10); }
+.qc-email-primary {
+  width: 100%;
+  min-height: 44px;
+  margin-top: 12px;
+  border: 0;
+  border-radius: 12px;
+  background: #2563eb;
+  color: #fff;
+  font-weight: 800;
+  cursor: pointer;
+}
+.qc-email-primary i { margin-right: 8px; }
+.qc-email-primary:disabled { opacity: .55; cursor: not-allowed; }
+.qc-email-verify-box { margin-top: 12px; padding: 12px; border-radius: 14px; background: #eef6ff; }
+.qc-email-verify-box p { margin: 0 0 10px; color: #475569; font-size: 12px; }
+.qc-email-code-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }
+.qc-email-code-row input {
+  min-width: 0;
+  height: 46px;
+  border: 1px solid #bfdbfe;
+  border-radius: 11px;
+  outline: none;
+  text-align: center;
+  color: #0f172a;
+  background: #fff;
+  font: 800 20px/1 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  letter-spacing: .20em;
+}
+.qc-email-code-row button {
+  min-height: 46px;
+  border: 0;
+  border-radius: 11px;
+  padding: 0 15px;
+  background: #16a34a;
+  color: #fff;
+  font-weight: 800;
+  cursor: pointer;
+}
+.qc-email-code-row button:disabled { opacity: .55; cursor: not-allowed; }
+.qc-email-resend {
+  display: block;
+  margin: 8px auto 0;
+  border: 0;
+  background: transparent;
+  color: #2563eb;
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+}
+.qc-email-resend:disabled { opacity: .5; cursor: not-allowed; }
+.qc-devices-section-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 4px 0 8px;
+}
+.qc-devices-section-title button {
+  width: 36px;
+  height: 36px;
+  border: 0;
+  border-radius: 10px;
+  background: #e2e8f0;
+  color: #475569;
+  cursor: pointer;
+}
+html[data-theme="dark"] .qc-email-security-card,
+body.dark .qc-email-security-card { background: linear-gradient(180deg, #182235, #131c2d); border-color: #334155; }
+html[data-theme="dark"] .qc-email-security-heading h3,
+body.dark .qc-email-security-heading h3,
+html[data-theme="dark"] .qc-devices-section-title h3,
+body.dark .qc-devices-section-title h3 { color: #f8fafc; }
+html[data-theme="dark"] .qc-email-current,
+body.dark .qc-email-current,
+html[data-theme="dark"] .qc-email-verify-box,
+body.dark .qc-email-verify-box { background: #1e293b; }
+html[data-theme="dark"] .qc-email-current strong,
+body.dark .qc-email-current strong { color: #bfdbfe; }
+html[data-theme="dark"] .qc-email-field input,
+body.dark .qc-email-field input,
+html[data-theme="dark"] .qc-email-code-row input,
+body.dark .qc-email-code-row input { background: #111827; color: #f8fafc; border-color: #475569; }
+html[data-theme="dark"] .qc-devices-notice,
+body.dark .qc-devices-notice { background: rgba(22, 101, 52, .25); color: #bbf7d0; }
+@media (max-width: 767px) {
+  .qc-devices-notice { margin-left: 16px; margin-right: 16px; }
+  .qc-email-security-card { padding: 14px; border-radius: 17px; }
+  .qc-email-security-heading { grid-template-columns: auto 1fr; }
+  .qc-email-verified-badge { grid-column: 1 / -1; justify-self: start; }
+  .qc-email-current { align-items: stretch; flex-direction: column; }
+  .qc-email-current button { width: 100%; min-height: 42px; }
+  .qc-email-code-row { grid-template-columns: 1fr; }
+  .qc-email-code-row button { width: 100%; }
+}
+
+/* =========================================================
+   QUICKCHAT MFA FASE 3B - MÉTODOS MULTI-MÉTODO
+   ========================================================= */
+.qc-security-methods-summary {
+  margin: 4px 0 18px;
+  padding: 16px;
+  border: 1px solid #dbeafe;
+  border-radius: 20px;
+  background: linear-gradient(180deg, #ffffff, #f8fbff);
+}
+
+.qc-method-summary-card {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+}
+
+.qc-method-summary-icon {
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  border-radius: 14px;
+  font-size: 18px;
+}
+
+.qc-method-summary-icon.blue {
+  color: #1d4ed8;
+  background: #dbeafe;
+}
+
+.qc-method-summary-card > div {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.qc-method-summary-card strong {
+  color: #172554;
+}
+
+.qc-method-summary-card small {
+  color: #64748b;
+}
+
+.qc-method-status {
+  padding: 5px 8px;
+  border-radius: 999px;
+  background: #f1f5f9;
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.qc-method-status.active {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.qc-method-add-button {
+  width: 100%;
+  min-height: 42px;
+  margin-top: 13px;
+  border: 0;
+  border-radius: 12px;
+  background: #2563eb;
+  color: #fff;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.qc-method-add-button i {
+  margin-right: 7px;
+}
+
+.qc-method-add-button:disabled {
+  opacity: .55;
+  cursor: not-allowed;
+}
+
+.qc-totp-inline-setup {
+  margin-top: 14px;
+  padding: 13px;
+  border-radius: 15px;
+  background: #eff6ff;
+}
+
+.qc-totp-inline-grid {
+  display: grid;
+  grid-template-columns: 132px minmax(0, 1fr);
+  gap: 14px;
+  align-items: center;
+}
+
+.qc-totp-inline-grid img {
+  width: 132px;
+  height: 132px;
+  object-fit: contain;
+  border-radius: 10px;
+  background: #fff;
+}
+
+.qc-totp-inline-copy {
+  min-width: 0;
+  display: grid;
+  gap: 7px;
+}
+
+.qc-totp-inline-copy strong {
+  color: #172554;
+}
+
+.qc-totp-inline-copy > span {
+  color: #64748b;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.qc-totp-manual-key {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+}
+
+.qc-totp-manual-key code {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: #1e3a8a;
+  font-size: 11px;
+}
+
+.qc-totp-manual-key button {
+  flex: 0 0 auto;
+  width: 34px;
+  height: 34px;
+  border: 0;
+  border-radius: 9px;
+  background: #dbeafe;
+  color: #1d4ed8;
+  cursor: pointer;
+}
+
+.qc-totp-code-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.qc-totp-code-row input {
+  min-width: 0;
+  height: 46px;
+  border: 1px solid #bfdbfe;
+  border-radius: 11px;
+  outline: none;
+  background: #fff;
+  color: #0f172a;
+  text-align: center;
+  font: 800 20px/1 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  letter-spacing: .20em;
+}
+
+.qc-totp-code-row button {
+  min-height: 46px;
+  border: 0;
+  border-radius: 11px;
+  padding: 0 16px;
+  background: #16a34a;
+  color: #fff;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.qc-totp-code-row button:disabled {
+  opacity: .55;
+  cursor: not-allowed;
+}
+
+.qc-inline-cancel {
+  display: block;
+  margin: 8px auto 0;
+  border: 0;
+  background: transparent;
+  color: #64748b;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.qc-only-method-warning {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  margin: 10px 0 0;
+  padding: 9px 10px;
+  border-radius: 11px;
+  background: #fff7ed;
+  color: #9a3412;
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+html[data-theme="dark"] .qc-security-methods-summary,
+body.dark .qc-security-methods-summary {
+  background: linear-gradient(180deg, #182235, #131c2d);
+  border-color: #334155;
+}
+
+html[data-theme="dark"] .qc-method-summary-card strong,
+body.dark .qc-method-summary-card strong,
+html[data-theme="dark"] .qc-totp-inline-copy strong,
+body.dark .qc-totp-inline-copy strong {
+  color: #f8fafc;
+}
+
+html[data-theme="dark"] .qc-totp-inline-setup,
+body.dark .qc-totp-inline-setup {
+  background: #1e293b;
+}
+
+html[data-theme="dark"] .qc-totp-code-row input,
+body.dark .qc-totp-code-row input {
+  background: #111827;
+  color: #f8fafc;
+  border-color: #475569;
+}
+
+html[data-theme="dark"] .qc-only-method-warning,
+body.dark .qc-only-method-warning {
+  background: rgba(154, 52, 18, .25);
+  color: #fed7aa;
+}
+
+@media (max-width: 767px) {
+  .qc-method-summary-card {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .qc-method-status {
+    grid-column: 1 / -1;
+    justify-self: start;
+  }
+
+  .qc-totp-inline-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .qc-totp-inline-grid img {
+    width: min(190px, 100%);
+    height: auto;
+    justify-self: center;
+  }
+
+  .qc-totp-code-row {
+    grid-template-columns: 1fr;
+  }
+
+  .qc-totp-code-row button {
+    width: 100%;
+  }
+}
+
+/* =========================================================
+   QUICKCHAT MFA FASE 4 - CÓDIGOS DE RECUPERACIÓN
+   ========================================================= */
+.qc-recovery-security-card {
+  margin: 4px 0 22px;
+  padding: 18px;
+  border: 1px solid #ddd6fe;
+  border-radius: 20px;
+  background: linear-gradient(180deg, #ffffff, #faf8ff);
+}
+.qc-recovery-security-heading { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 12px; }
+.qc-recovery-security-icon { width: 44px; height: 44px; display: grid; place-items: center; border-radius: 14px; background: #ede9fe; color: #7c3aed; font-size: 18px; }
+.qc-recovery-security-heading h3 { margin: 0; color: #312e81; font-size: 16px; }
+.qc-recovery-security-heading p { margin: 4px 0 0; color: #64748b; font-size: 12px; line-height: 1.4; }
+.qc-recovery-count-badge { padding: 5px 8px; border-radius: 999px; background: #f3e8ff; color: #6b21a8; font-size: 11px; font-weight: 800; white-space: nowrap; }
+.qc-recovery-generate, .qc-recovery-copy { width: 100%; min-height: 42px; margin-top: 13px; border: 0; border-radius: 12px; background: #7c3aed; color: #fff; font-weight: 800; cursor: pointer; }
+.qc-recovery-copy { background: #334155; }
+.qc-recovery-generate i, .qc-recovery-copy i { margin-right: 7px; }
+.qc-recovery-generate:disabled { opacity: .55; cursor: not-allowed; }
+.qc-recovery-codes-once { margin-top: 14px; padding: 13px; border-radius: 15px; background: #f5f3ff; }
+.qc-recovery-warning { display: flex; gap: 8px; align-items: flex-start; color: #7c2d12; background: #fff7ed; border-radius: 10px; padding: 9px 10px; font-size: 11px; line-height: 1.4; }
+.qc-recovery-code-grid { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 8px; margin-top: 11px; }
+.qc-recovery-code-grid code { display: block; padding: 9px 8px; border-radius: 10px; background: #fff; border: 1px solid #ddd6fe; color: #4c1d95; text-align: center; font-weight: 900; letter-spacing: .08em; }
+html[data-theme="dark"] .qc-recovery-security-card, body.dark .qc-recovery-security-card { background: linear-gradient(180deg, #182235, #131c2d); border-color: #4c3d73; }
+html[data-theme="dark"] .qc-recovery-security-heading h3, body.dark .qc-recovery-security-heading h3 { color: #ede9fe; }
+html[data-theme="dark"] .qc-recovery-codes-once, body.dark .qc-recovery-codes-once { background: #241b3a; }
+html[data-theme="dark"] .qc-recovery-code-grid code, body.dark .qc-recovery-code-grid code { background: #111827; border-color: #5b4b80; color: #ddd6fe; }
+@media (max-width: 767px) {
+  .qc-recovery-security-card { padding: 14px; border-radius: 17px; }
+  .qc-recovery-security-heading { grid-template-columns: auto 1fr; }
+  .qc-recovery-count-badge { grid-column: 1 / -1; justify-self: start; }
+  .qc-recovery-code-grid { grid-template-columns: 1fr; }
+}
+

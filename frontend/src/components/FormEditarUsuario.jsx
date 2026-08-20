@@ -1,10 +1,15 @@
 import { useState, useEffect } from "react";
+import "../css/MfaAdmin.css";
 
-export default function FormEditarUsuario({ editando, setEditando, obtenerUsuarios, rolUsuarioActual }) {
+export default function FormEditarUsuario({ editando, setEditando, obtenerUsuarios, rolUsuarioActual, usuarioActualId }) {
 
   const [proyectosDisponibles, setProyectosDisponibles] = useState([]);
   const [roles, setRoles] = useState([]);
   const [permisosRoles, setPermisosRoles] = useState([]);
+  const [mfaAdminStatus, setMfaAdminStatus] = useState(null);
+  const [mfaAdminLoading, setMfaAdminLoading] = useState(false);
+  const [mfaAdminError, setMfaAdminError] = useState("");
+  const [mfaResetLoading, setMfaResetLoading] = useState(false);
 
   // 🔹 Estado del usuario
   const [form, setForm] = useState({
@@ -35,6 +40,65 @@ export default function FormEditarUsuario({ editando, setEditando, obtenerUsuari
     return permisosDeRol.some(p => p.permiso === permiso);
   };
 
+  const cargarEstadoMfaAdmin = async () => {
+    if (!editando?.id || !usuarioActualId || !tienePermiso("gestionar_mfa")) return;
+
+    setMfaAdminLoading(true);
+    setMfaAdminError("");
+    try {
+      const res = await fetch(`/api/mfa/admin/users/${editando.id}/status`, {
+        credentials: "include",
+        headers: {
+          "X-QC-User-Id": String(usuarioActualId),
+        },
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "No se pudo consultar MFA");
+      setMfaAdminStatus(data);
+    } catch (error) {
+      setMfaAdminError(error.message || "No se pudo consultar MFA");
+    } finally {
+      setMfaAdminLoading(false);
+    }
+  };
+
+  const restablecerMfaAdmin = async () => {
+    if (!editando?.id || !usuarioActualId || !tienePermiso("gestionar_mfa")) return;
+
+    const first = window.confirm(
+      `¿Restablecer toda la seguridad MFA de ${editando.nombre || editando.usuario || "este usuario"}?\n\nSe revocarán Authenticator, correo MFA, dispositivos confiables y códigos de recuperación. Los mensajes y la contraseña NO se modificarán.`
+    );
+    if (!first) return;
+
+    const typed = window.prompt('Para confirmar escribe exactamente: RESTABLECER');
+    if (typed !== 'RESTABLECER') {
+      alert('Operación cancelada.');
+      return;
+    }
+
+    setMfaResetLoading(true);
+    setMfaAdminError("");
+    try {
+      const res = await fetch(`/api/mfa/admin/users/${editando.id}/reset`, {
+        method: "POST",
+        credentials: "include",
+        headers: {
+          "Content-Type": "application/json",
+          "X-QC-User-Id": String(usuarioActualId),
+        },
+        body: JSON.stringify({ confirm: true }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "No se pudo restablecer MFA");
+      alert(data.mensaje || "MFA restablecido correctamente");
+      await cargarEstadoMfaAdmin();
+    } catch (error) {
+      setMfaAdminError(error.message || "No se pudo restablecer MFA");
+    } finally {
+      setMfaResetLoading(false);
+    }
+  };
+
   // ===============================
   //   Cargar proyectos + roles
   // ===============================
@@ -49,6 +113,12 @@ export default function FormEditarUsuario({ editando, setEditando, obtenerUsuari
     fetch("/api/roles").then(r => r.json()).then(setRoles);
     fetch("/api/roles_permisos").then(r => r.json()).then(setPermisosRoles);
   }, []);
+
+  useEffect(() => {
+    if (editando?.id && usuarioActualId && tienePermiso("gestionar_mfa")) {
+      cargarEstadoMfaAdmin();
+    }
+  }, [editando?.id, usuarioActualId, permisosRoles]);
 
   // ===============================
   //   Handlers de usuario
@@ -562,6 +632,79 @@ export default function FormEditarUsuario({ editando, setEditando, obtenerUsuari
 
           </div>
         </div>
+
+        {/* ====================== */}
+        {/*   SEGURIDAD MFA ADMIN */}
+        {/* ====================== */}
+        {editando?.id && tienePermiso("gestionar_mfa") && (
+          <div className="col-span-2 qc-mfa-admin-card">
+            <div className="qc-mfa-admin-head">
+              <div className="qc-mfa-admin-icon">
+                <i className="bi bi-shield-lock" aria-hidden="true" />
+              </div>
+              <div>
+                <h4>Seguridad MFA</h4>
+                <p>Estado de autenticación en dos pasos y herramientas de recuperación administrativa.</p>
+              </div>
+              <button
+                type="button"
+                className="qc-mfa-admin-refresh"
+                onClick={cargarEstadoMfaAdmin}
+                disabled={mfaAdminLoading}
+                title="Actualizar estado MFA"
+              >
+                <i className={`bi bi-arrow-clockwise ${mfaAdminLoading ? "qc-spin" : ""}`} />
+              </button>
+            </div>
+
+            {mfaAdminError && <div className="qc-mfa-admin-error">{mfaAdminError}</div>}
+
+            {mfaAdminLoading && !mfaAdminStatus ? (
+              <div className="qc-mfa-admin-loading">Consultando seguridad...</div>
+            ) : mfaAdminStatus ? (
+              <>
+                <div className="qc-mfa-admin-stats">
+                  <div><span>Authenticator</span><strong>{mfaAdminStatus.totp_enabled ? "Activo" : "No configurado"}</strong></div>
+                  <div><span>Correo MFA</span><strong>{mfaAdminStatus.email_enabled ? (mfaAdminStatus.masked_email || "Activo") : "No configurado"}</strong></div>
+                  <div><span>Dispositivos</span><strong>{mfaAdminStatus.trusted_devices || 0}</strong></div>
+                  <div><span>Códigos recuperación</span><strong>{mfaAdminStatus.recovery_codes_available || 0}</strong></div>
+                </div>
+
+                {Array.isArray(mfaAdminStatus.audit) && mfaAdminStatus.audit.length > 0 && (
+                  <div className="qc-mfa-admin-audit">
+                    <h5>Actividad de seguridad reciente</h5>
+                    <div className="qc-mfa-admin-audit-list">
+                      {mfaAdminStatus.audit.slice(0, 6).map((item) => (
+                        <div key={item.id} className="qc-mfa-admin-audit-row">
+                          <span className={`qc-mfa-audit-dot ${item.resultado === "ok" ? "ok" : "fail"}`} />
+                          <div>
+                            <strong>{item.evento}</strong>
+                            <small>{item.metodo || "sistema"} · {item.created_at ? new Date(item.created_at).toLocaleString("es-PE") : ""}</small>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                <div className="qc-mfa-admin-danger">
+                  <div>
+                    <strong>Restablecer autenticación MFA</strong>
+                    <p>Revoca Authenticator, correo MFA, dispositivos y códigos de recuperación. La cuenta deberá configurar seguridad nuevamente en su próximo login.</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={restablecerMfaAdmin}
+                    disabled={mfaResetLoading}
+                  >
+                    <i className="bi bi-arrow-counterclockwise" />
+                    {mfaResetLoading ? "Restableciendo..." : "Restablecer MFA"}
+                  </button>
+                </div>
+              </>
+            ) : null}
+          </div>
+        )}
 
         {/* BOTONES DE ACCIÓN */}
         <div className="col-span-2 flex justify-end gap-3 mt-5">

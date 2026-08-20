@@ -5,6 +5,7 @@ import toast from "react-hot-toast";
 import { cambiarEstadoPresenciaSocket } from "../socket";
 import { getAvatarUrl } from "../utils/url";
 import { useTheme } from "../context/ThemeContext";
+import TrustedDevicesModal from "./TrustedDevicesModal";
 
 const EXPIRATION_OPTIONS = [
   { value: "never", label: "No eliminar" },
@@ -594,6 +595,7 @@ const SidebarProfilePanel = ({ usuario, show, onClose, onLogout, onUsuarioUpdate
   const [statusFooterExiting, setStatusFooterExiting] = useState(false);
   const [profileFooterExiting, setProfileFooterExiting] = useState(false);
   const [bioModalOpen, setBioModalOpen] = useState(false);
+  const [trustedDevicesOpen, setTrustedDevicesOpen] = useState(false);
   const cropDragRef = useRef(null);
 
   const userId = usuario?.id;
@@ -791,13 +793,14 @@ const SidebarProfilePanel = ({ usuario, show, onClose, onLogout, onUsuarioUpdate
         else if (imagePicker) setImagePicker(null);
         else if (statusModalOpen) closeStatusModal();
         else if (editOpen) closeEditModal();
+        else if (trustedDevicesOpen) setTrustedDevicesOpen(false);
         else if (bioModalOpen) setBioModalOpen(false);
         else onClose?.();
       }
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [show, cropEditor, imagePicker, statusModalOpen, editOpen, bioModalOpen, onClose, closeStatusModal, closeEditModal]);
+  }, [show, cropEditor, imagePicker, statusModalOpen, editOpen, trustedDevicesOpen, bioModalOpen, onClose, closeStatusModal, closeEditModal]);
 
   useEffect(() => {
     return () => {
@@ -1173,6 +1176,11 @@ const SidebarProfilePanel = ({ usuario, show, onClose, onLogout, onUsuarioUpdate
                 <span>{currentPresence.label} / estado</span>
                 <i className="fa-solid fa-chevron-right" />
               </button>
+              <button type="button" onClick={() => setTrustedDevicesOpen(true)}>
+                <i className="fa-solid fa-shield-halved" />
+                <span>Seguridad y dispositivos</span>
+                <i className="fa-solid fa-chevron-right" />
+              </button>
             </div>
 
             <div className="wa-profile-actions-card muted">
@@ -1469,6 +1477,13 @@ const SidebarProfilePanel = ({ usuario, show, onClose, onLogout, onUsuarioUpdate
             </div>
           </div>
         </div>
+      ))}
+
+      {renderModalPortal(trustedDevicesOpen && (
+        <TrustedDevicesModal
+          usuarioId={userId}
+          onClose={() => setTrustedDevicesOpen(false)}
+        />
       ))}
 
       {renderModalPortal(cropEditor && (() => {

@@ -1,6 +1,9 @@
 const express = require('express');
 const router = express.Router();
 const pool = require('../db');
+const { createMfaChallenge } = require('../utils/mfaService');
+const { findTrustedDevice } = require('../utils/trustedDeviceService');
+const { auditMfa } = require('../utils/mfaAuditService');
 
 const DEFAULT_CHAT_PERMISSIONS = {
   crear_grupos: 0,
@@ -63,7 +66,21 @@ function estadoNormalizado(value) {
   return String(value || '').trim().toLowerCase();
 }
 
-// Ruta para login
+async function prepararUsuarioRespuesta(usuarioDb) {
+  const { contrasena: _contrasena, ...usuarioSinContrasena } = usuarioDb;
+  const usuario = {
+    ...usuarioSinContrasena,
+    permisos_chat: normalizarPermisosChat(usuarioSinContrasena.permisos_chat),
+  };
+
+  const [permisos] = await pool.query(
+    'SELECT permiso FROM roles_permisos WHERE rol_id = ?',
+    [usuario.rol_id]
+  );
+  usuario.rol_permisos = permisos.map((p) => p.permiso);
+  return usuario;
+}
+
 router.post('/login', async (req, res) => {
   const correoNormalizado = normalizarCorreo(req.body?.correo);
   const contrasena = req.body?.contrasena;
@@ -95,47 +112,162 @@ router.post('/login', async (req, res) => {
     );
 
     if (rows.length === 0) {
+      await auditMfa(pool, req, {
+        event: 'LOGIN_EMAIL_NOT_FOUND',
+        success: false,
+      });
       return res.status(404).json({ error: 'El correo ingresado no existe' });
     }
 
-    // Primero validamos la contraseña. Si coincide pero la cuenta no está
-    // aprobada, NO permitimos el acceso. La versión anterior tenía un fallback
-    // que podía autenticar cuentas con estado distinto de "aprobado".
     const usuarioContrasena = rows.find((row) => contrasenasCoinciden(row.contrasena, contrasena));
 
     if (!usuarioContrasena) {
+      await auditMfa(pool, req, {
+        event: 'LOGIN_PASSWORD_FAILED',
+        targetUserId: rows[0]?.id || null,
+        success: false,
+      });
       return res.status(401).json({ error: 'Contraseña incorrecta' });
     }
 
+    await auditMfa(pool, req, {
+      event: 'LOGIN_PASSWORD_OK',
+      targetUserId: usuarioContrasena.id,
+      success: true,
+    });
+
     const estado = estadoNormalizado(usuarioContrasena.estado);
     if (estado !== 'aprobado') {
+      await auditMfa(pool, req, {
+        event: 'LOGIN_ACCOUNT_INACTIVE',
+        targetUserId: usuarioContrasena.id,
+        success: false,
+      });
       return res.status(403).json({
         code: 'ACCOUNT_INACTIVE',
         error: 'Tu cuenta está desactivada o todavía no ha sido aprobada. Comunícate con un administrador.'
       });
     }
 
-    // La contraseña sólo se usa para validar el login. Nunca debe salir en la respuesta HTTP.
-    const { contrasena: _contrasena, ...usuarioSinContrasena } = usuarioContrasena;
-    const usuario = {
-      ...usuarioSinContrasena,
-      permisos_chat: normalizarPermisosChat(usuarioSinContrasena.permisos_chat),
-    };
-
-    const [permisos] = await pool.query(
-      'SELECT permiso FROM roles_permisos WHERE rol_id = ?',
-      [usuario.rol_id]
+    const [mfaRows] = await pool.query(
+      `SELECT
+          mfa_required,
+          mfa_enabled,
+          secret_encrypted,
+          recovery_email,
+          email_enabled,
+          email_verified_at
+       FROM usuario_mfa
+       WHERE usuario_id = ?
+       LIMIT 1`,
+      [usuarioContrasena.id]
     );
 
-    usuario.rol_permisos = permisos.map((p) => p.permiso);
+    const mfa = mfaRows[0] || null;
 
-    res.json({
+    // En esta versión mfa_enabled representa exclusivamente el método TOTP.
+    // email_enabled representa exclusivamente el método por correo.
+    const totpEnabled =
+      Number(mfa?.mfa_enabled || 0) === 1 &&
+      Boolean(mfa?.secret_encrypted);
+
+    const emailEnabled =
+      Number(mfa?.email_enabled || 0) === 1 &&
+      Boolean(String(mfa?.recovery_email || '').trim()) &&
+      Boolean(mfa?.email_verified_at);
+
+    const mfaRequired = Number(mfa?.mfa_required || 0) === 1;
+    const hasAnyMethod = totpEnabled || emailEnabled;
+
+    let recoveryEnabled = false;
+    if (hasAnyMethod) {
+      const [recoveryRows] = await pool.query(
+        `SELECT COUNT(*) AS available
+           FROM usuario_mfa_recovery_codes
+          WHERE usuario_id = ?
+            AND used_at IS NULL
+            AND revoked_at IS NULL`,
+        [usuarioContrasena.id]
+      );
+      recoveryEnabled = Number(recoveryRows[0]?.available || 0) > 0;
+    }
+
+    if (mfaRequired || hasAnyMethod) {
+      const setupRequired = mfaRequired && !hasAnyMethod;
+
+      // Si ya existe al menos un método y este navegador fue autorizado antes,
+      // la contraseña completa el login sin pedir el segundo factor nuevamente.
+      if (!setupRequired) {
+        const trustedDevice = await findTrustedDevice(
+          pool,
+          req,
+          res,
+          usuarioContrasena.id,
+          { touch: true }
+        );
+
+        if (trustedDevice) {
+          const usuario = await prepararUsuarioRespuesta(usuarioContrasena);
+
+          await auditMfa(pool, req, {
+            event: 'LOGIN_TRUSTED_DEVICE',
+            targetUserId: usuarioContrasena.id,
+            method: 'trusted_device',
+            success: true,
+            metadata: { trusted_device_id: Number(trustedDevice.id) },
+          });
+
+          return res.json({
+            mensaje: 'Inicio de sesión exitoso en dispositivo confiable',
+            usuario,
+            mfa_required: false,
+            mfa_trusted_device: true,
+            trusted_device_id: Number(trustedDevice.id),
+            mfa_methods: {
+              totp: totpEnabled,
+              email: emailEnabled,
+              recovery: recoveryEnabled,
+            },
+          });
+        }
+      }
+
+      const challenge = createMfaChallenge({
+        userId: usuarioContrasena.id,
+        purpose: setupRequired ? 'setup' : 'verify',
+      });
+
+      await auditMfa(pool, req, {
+        event: 'MFA_CHALLENGE_ISSUED',
+        targetUserId: usuarioContrasena.id,
+        method: setupRequired ? 'setup' : 'verify',
+        success: true,
+      });
+
+      return res.json({
+        mensaje: setupRequired
+          ? 'Elige cómo proteger esta cuenta.'
+          : 'Este es un dispositivo nuevo. Verifica tu identidad.',
+        mfa_required: true,
+        mfa_action: setupRequired ? 'setup' : 'verify',
+        challenge,
+        mfa_methods: {
+          totp: totpEnabled,
+          email: emailEnabled,
+          recovery: recoveryEnabled,
+        },
+      });
+    }
+
+    const usuario = await prepararUsuarioRespuesta(usuarioContrasena);
+
+    return res.json({
       mensaje: 'Inicio de sesión exitoso',
       usuario,
     });
   } catch (error) {
     console.error('Error en login:', error);
-    res.status(500).json({ error: 'Error interno del servidor' });
+    return res.status(500).json({ error: 'Error interno del servidor' });
   }
 });
 

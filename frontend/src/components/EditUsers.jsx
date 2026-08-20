@@ -275,6 +275,7 @@ const EditUsers = ({ usuarioLogueado, proyectos = [] }) => {
               setEditando={setEditando}
               obtenerUsuarios={obtenerUsuarios}
               rolUsuarioActual={usuarioLogueado?.rol_id}
+              usuarioActualId={usuarioLogueado?.id}
             />
           </div>
         )}

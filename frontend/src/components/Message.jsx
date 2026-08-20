@@ -829,6 +829,22 @@ const Message = ({
     }
   };
 
+  // En PC conservamos doble click para responder. En pantallas táctiles
+  // no se usa doble toque: allí responde el gesto de deslizar a la derecha.
+  const handleDesktopDoubleClick = (event) => {
+    if (selectionMode || mensajeData?.eliminado || typeof onReply !== "function") return;
+
+    const desktopPointer =
+      typeof window !== "undefined"
+      && window.matchMedia("(hover: hover) and (pointer: fine)").matches;
+
+    if (!desktopPointer) return;
+
+    event.preventDefault?.();
+    event.stopPropagation?.();
+    handleReply(event);
+  };
+
   // version oscura de emoji
   const { theme } = useTheme();
   const emojiTheme = theme === "dark" ? "dark" : "light";
@@ -2102,7 +2118,7 @@ const Message = ({
     return blocks;
   };
 
-  //REPRODUCCION DE AUDIO 
+  //REPRODUCCION DE AUDIO
   const formatAudioTime = (seconds) => {
     if (!seconds || Number.isNaN(seconds)) return "0:00";
     const mins = Math.floor(seconds / 60);
@@ -2372,6 +2388,7 @@ const Message = ({
         ref={messageRef}
         className="message-inner"
         style={{ position: "relative" }}
+        onDoubleClick={selectionMode ? undefined : handleDesktopDoubleClick}
         onTouchStart={selectionMode ? undefined : handleReplyTouchStart}
         onTouchMove={selectionMode ? undefined : handleReplyTouchMove}
         onTouchEnd={selectionMode ? undefined : handleReplyTouchEnd}

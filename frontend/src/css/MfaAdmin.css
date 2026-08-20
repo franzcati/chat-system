@@ -1,0 +1,43 @@
+.qc-mfa-admin-card {
+  margin-top: 18px;
+  padding: 18px;
+  border: 1px solid #dbeafe;
+  border-radius: 18px;
+  background: linear-gradient(180deg, #ffffff, #f8fbff);
+}
+.qc-mfa-admin-head { display: grid; grid-template-columns: auto 1fr auto; gap: 12px; align-items: center; }
+.qc-mfa-admin-icon { width: 46px; height: 46px; display: grid; place-items: center; border-radius: 14px; background: #dbeafe; color: #1d4ed8; font-size: 20px; }
+.qc-mfa-admin-head h4 { margin: 0; color: #172554; font-weight: 800; }
+.qc-mfa-admin-head p { margin: 3px 0 0; color: #64748b; font-size: 12px; }
+.qc-mfa-admin-refresh { width: 38px; height: 38px; border: 0; border-radius: 10px; background: #e2e8f0; color: #475569; cursor: pointer; }
+.qc-spin { display: inline-block; animation: qc-spin 1s linear infinite; }
+@keyframes qc-spin { to { transform: rotate(360deg); } }
+.qc-mfa-admin-error { margin-top: 12px; padding: 10px 12px; border-radius: 11px; background: #fee2e2; color: #991b1b; font-size: 12px; }
+.qc-mfa-admin-loading { margin-top: 14px; color: #64748b; font-size: 13px; }
+.qc-mfa-admin-stats { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 10px; margin-top: 15px; }
+.qc-mfa-admin-stats > div { min-width: 0; padding: 11px; border-radius: 12px; background: #eff6ff; display: grid; gap: 3px; }
+.qc-mfa-admin-stats span { color: #64748b; font-size: 11px; }
+.qc-mfa-admin-stats strong { color: #1e3a8a; font-size: 13px; overflow-wrap: anywhere; }
+.qc-mfa-admin-audit { margin-top: 15px; padding: 13px; border-radius: 14px; background: #f8fafc; }
+.qc-mfa-admin-audit h5 { margin: 0 0 9px; color: #334155; font-size: 13px; font-weight: 800; }
+.qc-mfa-admin-audit-list { display: grid; gap: 7px; }
+.qc-mfa-admin-audit-row { display: grid; grid-template-columns: auto 1fr; gap: 8px; align-items: start; }
+.qc-mfa-audit-dot { width: 8px; height: 8px; margin-top: 5px; border-radius: 999px; background: #ef4444; }
+.qc-mfa-audit-dot.ok { background: #22c55e; }
+.qc-mfa-admin-audit-row div { min-width: 0; display: grid; gap: 1px; }
+.qc-mfa-admin-audit-row strong { color: #334155; font-size: 11px; }
+.qc-mfa-admin-audit-row small { color: #94a3b8; font-size: 10px; overflow-wrap: anywhere; }
+.qc-mfa-admin-danger { margin-top: 15px; padding: 13px; border: 1px solid #fecaca; border-radius: 14px; background: #fff7f7; display: flex; align-items: center; justify-content: space-between; gap: 14px; }
+.qc-mfa-admin-danger strong { color: #991b1b; }
+.qc-mfa-admin-danger p { margin: 4px 0 0; color: #7f1d1d; font-size: 11px; line-height: 1.45; }
+.qc-mfa-admin-danger button { flex: 0 0 auto; min-height: 40px; border: 0; border-radius: 11px; padding: 0 13px; background: #dc2626; color: #fff; font-weight: 800; cursor: pointer; }
+.qc-mfa-admin-danger button i { margin-right: 6px; }
+.qc-mfa-admin-danger button:disabled { opacity: .55; cursor: not-allowed; }
+@media (max-width: 900px) { .qc-mfa-admin-stats { grid-template-columns: repeat(2, minmax(0,1fr)); } }
+@media (max-width: 640px) {
+  .qc-mfa-admin-head { grid-template-columns: auto 1fr; }
+  .qc-mfa-admin-refresh { grid-column: 1 / -1; width: 100%; }
+  .qc-mfa-admin-stats { grid-template-columns: 1fr; }
+  .qc-mfa-admin-danger { align-items: stretch; flex-direction: column; }
+  .qc-mfa-admin-danger button { width: 100%; }
+}

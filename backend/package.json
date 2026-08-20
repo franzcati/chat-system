@@ -18,6 +18,8 @@
     "mariadb": "^3.4.2",
     "multer": "^2.0.2",
     "mysql2": "^3.14.1",
+    "nodemailer": "^9.0.5",
+    "qrcode": "^1.5.4",
     "sequelize": "^6.37.7",
     "socket.io": "^4.8.1"
   },
