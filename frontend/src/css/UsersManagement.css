@@ -1310,3 +1310,347 @@
     transition: none;
   }
 }
+
+/* =========================================================
+   EDITOR DE USUARIOS INDEPENDIENTE DE ChatBox.css
+   ---------------------------------------------------------
+   FormEditarUsuario reutiliza algunas primitivas visuales del tema antiguo
+   (.btn-icon, gx-5, tamaños de h5/h6, etc.). Esas reglas estaban únicamente
+   en ChatBox.css y, al cargarse ChatBox de forma lazy, el editor cambiaba de
+   tamaño/espaciado después de seleccionar una conversación.
+
+   Se replican AQUÍ, con scope .qc-users-edit-card, para que Administración
+   tenga un layout estable sin contaminar el resto de la aplicación.
+   ========================================================= */
+.qc-users-edit-card .btn {
+  line-height: 1.6;
+  border-width: 2px;
+  border-radius: .6rem;
+}
+
+.qc-users-edit-card .btn-icon {
+  line-height: 0;
+  display: inline-flex;
+  justify-content: center;
+  align-items: center;
+  padding: 0 !important;
+}
+
+.qc-users-edit-card .btn-icon > svg {
+  width: 1rem;
+  height: 1rem;
+}
+
+.qc-users-edit-card .g-5,
+.qc-users-edit-card .gx-5 {
+  --bs-gutter-x: 1rem;
+}
+
+.qc-users-edit-card h5,
+.qc-users-edit-card .h5 {
+  font-size: .9375rem;
+}
+
+.qc-users-edit-card h6,
+.qc-users-edit-card .h6 {
+  font-size: .875rem;
+}
+
+.qc-users-edit-card p {
+  margin-top: 0;
+  margin-bottom: .5rem;
+}
+
+.qc-users-edit-card p:last-child {
+  margin-bottom: 0;
+}
+
+.qc-users-edit-card .py-6 {
+  padding-top: 1.25rem !important;
+  padding-bottom: 1.25rem !important;
+}
+
+.qc-users-edit-card .form-control {
+  padding: .59375rem 1.125rem;
+  font-size: .9375rem;
+  font-weight: 400;
+  line-height: 1.6;
+}
+
+/* Los iconos y textos de cada tarjeta no deben cambiar de tamaño cuando
+   posteriormente se descargue el CSS del chat. */
+.qc-users-edit-card .card .btn-icon,
+.qc-users-edit-card .card .btn-icon.btn-sm {
+  flex: 0 0 auto;
+}
+
+.qc-users-edit-card .card-body {
+  min-width: 0;
+}
+
+.qc-users-edit-card .row > .col {
+  min-width: 0;
+}
+
+/* =========================================================
+   EDITOR V3 - LAYOUT AUTÓNOMO Y ESTABLE
+   ---------------------------------------------------------
+   No depende de .row/.col/.btn-icon de App.css o ChatBox.css.
+   Esto evita que la pantalla cambie de forma al abrir el primer chat.
+   ========================================================= */
+
+/* ---------- Roles ---------- */
+.qc-users-edit-card .qc-edit-role-card {
+  min-width: 0;
+  overflow: hidden;
+}
+
+.qc-users-edit-card .qc-edit-role-body {
+  min-height: 110px;
+  padding: 1rem 1.15rem !important;
+  display: flex !important;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+
+.qc-users-edit-card .qc-edit-role-icon {
+  width: 22px;
+  height: 22px;
+  margin: 0 0 8px;
+  padding: 0;
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 22px;
+  color: var(--qc-users-muted);
+  background: transparent !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  line-height: 1;
+}
+
+.qc-users-edit-card .qc-edit-role-icon svg {
+  display: block;
+  width: 16px !important;
+  height: 16px !important;
+  max-width: 16px;
+  max-height: 16px;
+}
+
+.qc-users-edit-card .qc-edit-role-body h5 {
+  margin: 0 0 4px !important;
+  line-height: 1.25;
+}
+
+.qc-users-edit-card .qc-edit-role-body p {
+  margin: 0 !important;
+  line-height: 1.35;
+}
+
+/* ---------- Permisos ---------- */
+.qc-users-edit-card .qc-edit-permission-card {
+  min-width: 0;
+  overflow: hidden;
+}
+
+.qc-users-edit-card .qc-edit-permission-body {
+  padding: .95rem 1.15rem !important;
+}
+
+.qc-users-edit-card .qc-edit-permission-row {
+  width: 100%;
+  min-height: 56px;
+  display: grid !important;
+  grid-template-columns: 24px minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: 14px;
+}
+
+.qc-users-edit-card .qc-edit-permission-icon {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  align-self: center;
+  color: var(--qc-users-muted);
+  background: transparent !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  line-height: 1;
+}
+
+.qc-users-edit-card .qc-edit-permission-icon svg {
+  display: block;
+  width: 15px !important;
+  height: 15px !important;
+}
+
+.qc-users-edit-card .qc-edit-permission-copy {
+  min-width: 0;
+  align-self: center;
+}
+
+.qc-users-edit-card .qc-edit-permission-copy h5 {
+  margin: 0 0 4px !important;
+  line-height: 1.25;
+}
+
+.qc-users-edit-card .qc-edit-permission-copy p {
+  margin: 0 !important;
+  line-height: 1.35;
+}
+
+.qc-users-edit-card .qc-edit-permission-switch {
+  min-width: 42px;
+  display: flex !important;
+  align-items: center;
+  justify-content: flex-end;
+  align-self: center;
+  margin-left: auto;
+}
+
+.qc-users-edit-card .qc-edit-permission-switch .form-check {
+  width: auto !important;
+  min-height: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  display: flex !important;
+  align-items: center;
+  justify-content: center;
+}
+
+.qc-users-edit-card .qc-edit-permission-switch .form-check-input {
+  float: none !important;
+  width: 2.15rem !important;
+  height: 1.2rem !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border-radius: 999px !important;
+  flex: 0 0 auto;
+  cursor: pointer;
+}
+
+/* ---------- Proyectos ---------- */
+.qc-users-edit-card .qc-edit-project-card,
+.qc-users-edit-card .qc-edit-project-create {
+  min-width: 0;
+  overflow: hidden;
+}
+
+.qc-users-edit-card .qc-edit-project-body {
+  width: 100%;
+  min-height: 68px;
+  padding: .8rem 1rem !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 12px;
+}
+
+.qc-users-edit-card .qc-edit-project-main {
+  min-width: 0;
+  flex: 1 1 auto;
+  display: flex !important;
+  align-items: center !important;
+  gap: 12px;
+}
+
+.qc-users-edit-card .qc-edit-project-icon {
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  flex: 0 0 22px;
+  display: grid;
+  place-items: center;
+  color: var(--qc-users-muted);
+  background: transparent !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  line-height: 1;
+}
+
+.qc-users-edit-card .qc-edit-project-icon svg {
+  display: block;
+  width: 15px !important;
+  height: 15px !important;
+}
+
+.qc-users-edit-card .qc-edit-project-copy {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.qc-users-edit-card .qc-edit-project-copy h6 {
+  margin: 0 0 3px !important;
+  line-height: 1.25;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.qc-users-edit-card .qc-edit-project-copy p {
+  margin: 0 !important;
+  line-height: 1.3;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.qc-users-edit-card .qc-edit-project-check {
+  flex: 0 0 auto;
+  display: flex !important;
+  align-items: center;
+  justify-content: flex-end;
+  margin-left: auto;
+}
+
+.qc-users-edit-card .qc-edit-project-check .form-check-input {
+  float: none !important;
+  width: 1.15rem !important;
+  height: 1.15rem !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  flex: 0 0 auto;
+  cursor: pointer;
+}
+
+.qc-users-edit-card .qc-edit-project-create {
+  min-height: 68px;
+  gap: 5px;
+}
+
+.qc-users-edit-card .qc-edit-project-create > svg {
+  width: 16px !important;
+  height: 16px !important;
+  color: var(--qc-users-muted);
+}
+
+.qc-users-edit-card .qc-edit-project-create > p {
+  margin: 0 !important;
+}
+
+/* En pantallas angostas, conservar la misma jerarquía sin colapsar controles. */
+@media (max-width: 640px) {
+  .qc-users-edit-card .qc-edit-role-body {
+    min-height: 96px;
+  }
+
+  .qc-users-edit-card .qc-edit-permission-body {
+    padding: .8rem .9rem !important;
+  }
+
+  .qc-users-edit-card .qc-edit-permission-row {
+    grid-template-columns: 22px minmax(0, 1fr) auto;
+    column-gap: 10px;
+  }
+}
+
+.qc-users-edit-card .qc-edit-project-create:hover {
+  background: var(--qc-users-soft) !important;
+  filter: brightness(1.04);
+}

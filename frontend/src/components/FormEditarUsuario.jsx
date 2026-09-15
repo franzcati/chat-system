@@ -386,12 +386,11 @@ export default function FormEditarUsuario({ editando, setEditando, obtenerUsuari
             {roles.map((r) => (
               <div
                 key={r.id}
-                className={`card shadow-sm cursor-pointer border ${form.rol_id === r.id ? "border-primary" : ""}`}
+                className={`card shadow-sm cursor-pointer border qc-edit-role-card ${form.rol_id === r.id ? "border-primary" : ""}`}
                 onClick={() => setForm({ ...form, rol_id: r.id })}
               >
-                <div className="card-body text-center">
-                  <div className="mb-2 flex justify-center">
-                    <div className="btn btn-dark btn-icon btn-sm">
+                <div className="card-body text-center qc-edit-role-body">
+                  <div className="qc-edit-role-icon">
                       {/* ICONOS SEGÚN ROL */}
                       {r.id === 1 && (
                         <svg xmlns="http://www.w3.org/2000/svg"
@@ -428,7 +427,6 @@ export default function FormEditarUsuario({ editando, setEditando, obtenerUsuari
                           <circle cx="12" cy="7" r="4" />
                         </svg>
                       )}
-                    </div>
                   </div>
 
                   <h5 className="mb-1 text-capitalize">{r.nombre}</h5>
@@ -447,22 +445,20 @@ export default function FormEditarUsuario({ editando, setEditando, obtenerUsuari
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {PERMISOS_UI.map((p) => (
-              <div key={p.campo} className="card border-0 shadow-sm">
-                <div className="card-body">
-                  <div className="row gx-5">
-                    <div className="col-auto">
-                      <div className="btn btn-sm btn-icon btn-dark">
-                        {p.icono}
-                      </div>
+              <div key={p.campo} className="card border-0 shadow-sm qc-edit-permission-card">
+                <div className="card-body qc-edit-permission-body">
+                  <div className="qc-edit-permission-row">
+                    <div className="qc-edit-permission-icon" aria-hidden="true">
+                      {p.icono}
                     </div>
 
-                    <div className="col">
+                    <div className="qc-edit-permission-copy">
                       <h5>{p.titulo}</h5>
                       <p className="text-muted small">{p.descripcion}</p>
                     </div>
 
-                    <div className="col-auto align-self-center">
-                      <div className="form-check form-switch ps-0">
+                    <div className="qc-edit-permission-switch">
+                      <div className="form-check form-switch">
                         <input
                           className="form-check-input"
                           type="checkbox"
@@ -473,7 +469,6 @@ export default function FormEditarUsuario({ editando, setEditando, obtenerUsuari
                         />
                       </div>
                     </div>
-
                   </div>
                 </div>
               </div>
@@ -492,10 +487,8 @@ export default function FormEditarUsuario({ editando, setEditando, obtenerUsuari
             {/* BOTÓN CREAR PROYECTO */}
             {tienePermiso("crear_proyectos") && (
               <div
-                className="card shadow-sm border flex flex-col justify-center items-center py-6 cursor-pointer 
-                            hover:bg-gray-50 transition"
-                onMouseEnter={(e) => (e.currentTarget.style.background = "#f0f0f0")}
-                onMouseLeave={(e) => (e.currentTarget.style.background = "#fff")}
+                className="card shadow-sm border flex flex-col justify-center items-center py-6 cursor-pointer
+                            hover:bg-gray-50 transition qc-edit-project-create"
                 onClick={abrirCrearProyecto}
               >
                 <svg xmlns="http://www.w3.org/2000/svg"
@@ -520,14 +513,14 @@ export default function FormEditarUsuario({ editando, setEditando, obtenerUsuari
             {proyectosDisponibles.map((p) => (
             <div
                 key={p.id}
-                className="card shadow-sm border relative cursor-pointer group"
+                className="card shadow-sm border relative cursor-pointer group qc-edit-project-card"
                 onClick={() => handleCheckboxProyecto(p.id)}
             >
-                <div className="card-body flex justify-between items-center">
+                <div className="card-body qc-edit-project-body">
 
                 {/* IZQUIERDA: icono carpeta + textos */}
-                <div className="flex items-center gap-3">
-                    <div className="btn btn-dark btn-icon btn-sm">
+                <div className="qc-edit-project-main">
+                    <div className="qc-edit-project-icon" aria-hidden="true">
                     <svg xmlns="http://www.w3.org/2000/svg"
                         width="20" height="20" fill="none"
                         stroke="currentColor" strokeWidth="2"
@@ -539,14 +532,14 @@ export default function FormEditarUsuario({ editando, setEditando, obtenerUsuari
                     </svg>
                     </div>
 
-                    <div>
+                    <div className="qc-edit-project-copy">
                     <h6 className="fw-bold">{p.nombre}</h6>
                     <p className="small text-muted">{p.descripcion}</p>
                     </div>
                 </div>
 
                     {/* DERECHA: checkbox*/}
-                    <div className="flex flex-col items-end gap-2">
+                    <div className="qc-edit-project-check">
                         {/* checkbox asignación */}
                         <input
                         type="checkbox"
@@ -556,7 +549,7 @@ export default function FormEditarUsuario({ editando, setEditando, obtenerUsuari
                         onClick={(e) => e.stopPropagation()}
                         />
 
-                        
+
                     </div>
                 </div>
 
@@ -591,7 +584,7 @@ export default function FormEditarUsuario({ editando, setEditando, obtenerUsuari
                         <line x1="10" y1="11" x2="10" y2="17" />
                         <line x1="14" y1="11" x2="14" y2="17" />
                     </svg>
-                     
+
                 </button>
                 )}
 

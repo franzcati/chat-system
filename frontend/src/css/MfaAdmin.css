@@ -41,3 +41,61 @@
   .qc-mfa-admin-danger { align-items: stretch; flex-direction: column; }
   .qc-mfa-admin-danger button { width: 100%; }
 }
+
+/* =========================================================
+   Integración del panel MFA con el tema de Gestión de usuarios
+   ========================================================= */
+:root[data-theme="dark"] .qc-mfa-admin-card {
+  border-color: var(--qc-users-border, rgba(100, 130, 255, 0.22));
+  background: linear-gradient(180deg, rgba(8, 18, 42, 0.96), rgba(5, 14, 34, 0.96));
+}
+
+:root[data-theme="dark"] .qc-mfa-admin-icon {
+  background: rgba(14, 165, 255, 0.14);
+  color: #7dd3fc;
+}
+
+:root[data-theme="dark"] .qc-mfa-admin-head h4,
+:root[data-theme="dark"] .qc-mfa-admin-audit h5,
+:root[data-theme="dark"] .qc-mfa-admin-audit-row strong {
+  color: var(--qc-users-text, #f8fafc);
+}
+
+:root[data-theme="dark"] .qc-mfa-admin-head p,
+:root[data-theme="dark"] .qc-mfa-admin-loading,
+:root[data-theme="dark"] .qc-mfa-admin-stats span,
+:root[data-theme="dark"] .qc-mfa-admin-audit-row small {
+  color: var(--qc-users-muted, #aeb8d8);
+}
+
+:root[data-theme="dark"] .qc-mfa-admin-refresh {
+  background: rgba(30, 41, 59, 0.9);
+  color: #cbd5e1;
+}
+
+:root[data-theme="dark"] .qc-mfa-admin-stats > div {
+  background: rgba(15, 31, 65, 0.82);
+  border: 1px solid rgba(96, 165, 250, 0.12);
+}
+
+:root[data-theme="dark"] .qc-mfa-admin-stats strong {
+  color: #bfdbfe;
+}
+
+:root[data-theme="dark"] .qc-mfa-admin-audit {
+  background: rgba(3, 12, 29, 0.62);
+  border: 1px solid rgba(100, 130, 255, 0.14);
+}
+
+:root[data-theme="dark"] .qc-mfa-admin-danger {
+  border-color: rgba(248, 113, 113, 0.34);
+  background: rgba(127, 29, 29, 0.16);
+}
+
+:root[data-theme="dark"] .qc-mfa-admin-danger strong {
+  color: #fecaca;
+}
+
+:root[data-theme="dark"] .qc-mfa-admin-danger p {
+  color: #fca5a5 !important;
+}

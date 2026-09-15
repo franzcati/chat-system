@@ -48,3 +48,76 @@
   border-color: transparent;
   outline: none;
 }
+
+/* =========================================================
+   PREVIEWS COMPARTIDOS: lista de chats + respuestas del chat
+   ---------------------------------------------------------
+   Estas reglas antes vivían sólo en ChatBox.css. Como ChatBox se carga con
+   React.lazy(), la lista mostraba el icono de Foto/Video pegado al texto hasta
+   abrir la primera conversación. Al vivir aquí, el preview tiene exactamente
+   el mismo layout desde el primer render.
+   ========================================================= */
+.wa-preview-line {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  max-width: 100%;
+  color: inherit;
+  line-height: 1.25;
+}
+
+.wa-preview-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 14px;
+  min-width: 14px;
+  font-size: 13px;
+  line-height: 1;
+  opacity: 0.88;
+}
+
+.wa-preview-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chat-list-preview-line {
+  max-width: 100%;
+  color: inherit;
+}
+
+/* Mismo contraste que aplicaba ChatBox.css después de abrir un chat. */
+:root[data-theme="light"] .wa-chat-list-title {
+  color: #111b21 !important;
+  font-weight: 600 !important;
+}
+
+:root[data-theme="light"] .wa-chat-list-preview,
+:root[data-theme="light"] .wa-chat-list-preview .wa-preview-line,
+:root[data-theme="light"] .wa-chat-list-preview .wa-preview-label,
+:root[data-theme="light"] .wa-preview-prefix,
+:root[data-theme="light"] .wa-chat-list-time,
+:root[data-theme="light"] .wa-empty-filter,
+:root[data-theme="light"] .card-list .text-muted {
+  color: #54656f !important;
+  font-weight: 400 !important;
+}
+
+:root[data-theme="light"] .wa-chat-list-time.has-unread {
+  color: #00a884 !important;
+  font-weight: 700 !important;
+}
+
+:root[data-theme="light"] .wa-chat-list-preview .wa-preview-prefix {
+  font-weight: 500 !important;
+}
+
+:root[data-theme="light"] .wa-chat-list-card.active .wa-chat-list-preview,
+:root[data-theme="light"] .wa-chat-list-card:hover .wa-chat-list-preview {
+  color: #3b4a54 !important;
+}
