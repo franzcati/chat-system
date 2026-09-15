@@ -17,6 +17,9 @@ const GroupAvatar = ({
       src={getAvatarUrl(groupImage)}
       alt={groupName}
       className="wa-group-avatar-main-img"
+      loading="lazy"
+      decoding="async"
+      fetchPriority="low"
     />
   ) : (
     <div className="wa-group-avatar-default" aria-hidden="true">

@@ -198,35 +198,64 @@ const getMediaTransformVars = (value, kind = "cover") => {
 const ProfileMedia = ({ src, transform, kind = "cover", alt = "" }) => {
   if (!src) return null;
   const normalized = normalizeCropTransform(transform, kind);
+  const fetchPriority = kind === "avatar" ? "high" : "low";
   return (
     <span className={`wa-profile-media ${normalized.fit === "contain" ? "is-contain" : "is-cover"}`} style={getMediaTransformVars(normalized, kind)}>
-      {normalized.fit === "contain" && <img className="wa-profile-media-bg" src={src} alt="" aria-hidden="true" draggable="false" />}
-      <img className="wa-profile-media-img" src={src} alt={alt} draggable="false" />
+      {normalized.fit === "contain" && (
+        <img
+          className="wa-profile-media-bg"
+          src={src}
+          alt=""
+          aria-hidden="true"
+          draggable="false"
+          decoding="async"
+          fetchPriority="low"
+        />
+      )}
+      <img
+        className="wa-profile-media-img"
+        src={src}
+        alt={alt}
+        draggable="false"
+        decoding="async"
+        fetchPriority={fetchPriority}
+      />
     </span>
   );
 };
 
-const preloadImage = (src) =>
-  new Promise((resolve) => {
-    if (!src || typeof Image === "undefined") {
-      resolve();
-      return;
-    }
+const PROFILE_CACHE_TTL_MS = 60 * 1000;
+const profileMemoryCache = new Map();
+const profileRequests = new Map();
 
-    const image = new Image();
-    image.onload = resolve;
-    image.onerror = resolve;
-    image.src = src;
+const getCachedProfile = (usuarioId) => {
+  const key = String(usuarioId);
+  const cached = profileMemoryCache.get(key);
+  if (!cached) return null;
+  if (Date.now() - Number(cached.updatedAt || 0) > PROFILE_CACHE_TTL_MS) {
+    profileMemoryCache.delete(key);
+    return null;
+  }
+  return cached.data || null;
+};
 
-    if (image.complete) resolve();
-  });
+const requestProfile = (usuarioId) => {
+  const key = String(usuarioId);
+  if (profileRequests.has(key)) return profileRequests.get(key);
 
-const preloadProfileMedia = (profile) => {
-  const urls = [getAvatarUrl(profile?.url_imagen), getAvatarUrl(profile?.perfil_cartel)].filter(Boolean);
+  const request = axios
+    .get(`/api/usuarios/${usuarioId}/perfil`)
+    .then((res) => {
+      const data = res.data || null;
+      if (data) {
+        profileMemoryCache.set(key, { data, updatedAt: Date.now() });
+      }
+      return data;
+    })
+    .finally(() => profileRequests.delete(key));
 
-  if (!urls.length) return Promise.resolve();
-
-  return Promise.all(urls.map(preloadImage)).then(() => undefined);
+  profileRequests.set(key, request);
+  return request;
 };
 
 const escapeHtml = (value = "") =>
@@ -296,39 +325,39 @@ const ProfileModal = ({ usuario, miUsuario, show, onClose, onLogout, onEnviarMen
   const { theme: appTheme } = useTheme();
   const defaultTheme = useMemo(() => getDefaultProfileTheme(appTheme), [appTheme]);
   const [perfilCompleto, setPerfilCompleto] = useState(null);
-  const [perfilPreparado, setPerfilPreparado] = useState({ id: null, listo: false });
+  const [cargandoPerfil, setCargandoPerfil] = useState(false);
 
   useEffect(() => {
     if (!show || !usuario?.id) {
       setPerfilCompleto(null);
-      setPerfilPreparado({ id: null, listo: false });
+      setCargandoPerfil(false);
       return undefined;
     }
 
     let activo = true;
     const usuarioId = usuario.id;
+    const cached = getCachedProfile(usuarioId);
 
-    setPerfilCompleto(null);
-    setPerfilPreparado({ id: usuarioId, listo: false });
+    // El modal aparece inmediatamente con los datos que ya trae el mensaje/chat.
+    // Los detalles extendidos (bio, portada, tema) llegan en segundo plano.
+    setPerfilCompleto(cached);
+    setCargandoPerfil(!cached);
 
-    axios
-      .get(`/api/usuarios/${usuarioId}/perfil`)
-      .then(async (res) => {
-        const datosPerfil = res.data || null;
-        await preloadProfileMedia({ ...(usuario || {}), ...(datosPerfil || {}) });
+    if (cached) {
+      return () => {
+        activo = false;
+      };
+    }
 
-        if (activo) {
-          setPerfilCompleto(datosPerfil);
-          setPerfilPreparado({ id: usuarioId, listo: true });
-        }
+    requestProfile(usuarioId)
+      .then((datosPerfil) => {
+        if (activo) setPerfilCompleto(datosPerfil);
       })
-      .catch(async () => {
-        await preloadProfileMedia(usuario || {});
-
-        if (activo) {
-          setPerfilCompleto(null);
-          setPerfilPreparado({ id: usuarioId, listo: true });
-        }
+      .catch(() => {
+        if (activo) setPerfilCompleto(null);
+      })
+      .finally(() => {
+        if (activo) setCargandoPerfil(false);
       });
 
     return () => {
@@ -361,7 +390,6 @@ const ProfileModal = ({ usuario, miUsuario, show, onClose, onLogout, onEnviarMen
   ]);
 
   if (!show || !usuario) return null;
-  if (!perfilPreparado.listo || perfilPreparado.id !== usuario.id) return null;
 
   const esMiPerfil = perfilVisible?.id === miUsuario?.id;
   const profileName = getFullName(perfilVisible);
@@ -385,7 +413,7 @@ const ProfileModal = ({ usuario, miUsuario, show, onClose, onLogout, onEnviarMen
 
   return (
     <div className="wa-profile-modal-backdrop wa-profile-bio-full-layer wa-user-profile-layer" role="presentation">
-      <div className="wa-profile-bio-full-modal wa-user-profile-modal" role="dialog" aria-label={`Perfil de ${profileName}`} style={mergedStyle}>
+      <div className="wa-profile-bio-full-modal wa-user-profile-modal" role="dialog" aria-label={`Perfil de ${profileName}`} aria-busy={cargandoPerfil} style={mergedStyle}>
         <button type="button" className="wa-profile-modal-close" onClick={onClose} aria-label="Cerrar perfil">
           <i className="fa-solid fa-xmark" />
         </button>

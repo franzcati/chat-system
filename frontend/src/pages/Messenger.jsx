@@ -2,13 +2,14 @@ import React, { useState, useEffect, useRef, useCallback, lazy, Suspense } from 
 import { useNavigate } from 'react-router-dom'; // 👈
 import { logDev } from "../utils/logger";
 import "../css/MessengerShell.css";
+import "../css/SharedControls.css";
 import Sidebar from './Sidebar';
 import ChatList from './ChatList';
+import ProfileModal from "../components/ProfileModal";
 import socket, { conectarUsuarioSocket, emitirActividadUsuario } from "../socket";
 
 const ChatBox = lazy(() => import('./ChatBox'));
 const CreateChat = lazy(() => import('../components/CreateChat'));
-const ProfileModal = lazy(() => import("../components/ProfileModal"));
 const AddUsers = lazy(() => import("../components/AddUsers"));
 const EditUsers = lazy(() => import("../components/EditUsers"));
 
@@ -57,7 +58,7 @@ const Messenger = () => {
     const root = document.documentElement;
     const syncChatOpenClass = () => {
       const mobile = window.matchMedia("(max-width: 767px)").matches;
-      root.classList.toggle("qc-mobile-chat-open", Boolean(selectedChat) && mobile);
+      root.classList.toggle("qc-mobile-chat-open", activeTab === "chat" && Boolean(selectedChat) && mobile);
     };
 
     syncChatOpenClass();
@@ -67,7 +68,7 @@ const Messenger = () => {
       window.removeEventListener("resize", syncChatOpenClass);
       root.classList.remove("qc-mobile-chat-open");
     };
-  }, [selectedChat]);
+  }, [activeTab, selectedChat]);
 
   // Mantiene el alto REAL del navegador móvil.
   // Safari/iPhone no siempre redimensiona el layout viewport cuando aparece
@@ -445,8 +446,10 @@ const Messenger = () => {
     };
   }, [usuario?.id]);
 
+  const isVisibleChatOpen = activeTab === "chat" && Boolean(selectedChat);
+
   return (
-    <div className={`flex h-screen bg-[#f8f9fd] wa-messenger-root ${selectedChat ? "has-selected-chat" : "no-selected-chat"} active-tab-${activeTab}`}>
+    <div className={`flex h-screen bg-[#f8f9fd] wa-messenger-root ${isVisibleChatOpen ? "has-selected-chat" : "no-selected-chat"} active-tab-${activeTab}`}>
       {/* Sidebar con iconos */}
       <Sidebar
         usuario={usuario}
@@ -475,7 +478,7 @@ const Messenger = () => {
         </Suspense>
       )}
       {activeTab === "add-user" && (
-        <div className="flex-1">
+        <div className="flex-1 wa-admin-stage">
           <Suspense fallback={<LazyPanelFallback />}>
             <AddUsers
               proyectos={proyectos}        // 👈 AHORA SÍ SE PASAN LOS PROYECTOS
@@ -485,7 +488,7 @@ const Messenger = () => {
         </div>
       )}
       {activeTab === "edit-user" && (
-        <div className="flex-1">
+        <div className="flex-1 wa-admin-stage">
           <Suspense fallback={<LazyPanelFallback />}>
             <EditUsers
               proyectos={proyectos}
@@ -550,30 +553,28 @@ const Messenger = () => {
 
       {/* 🔹 Modal de perfil */}
       {showModal && (
-        <Suspense fallback={null}>
-          <ProfileModal
-            usuario={perfilSeleccionado}
-            miUsuario={usuario}
-            show={showModal}
-            onClose={() => setShowModal(false)}
-            onLogout={() => {
-              localStorage.removeItem("usuario");
-              navigate("/", { replace: true });
-            }}
-            onEnviarMensaje={(usuarioDestino) => {
-              handleSelectChat({
-                tipo: "privado",
-                usuario_id: usuarioDestino.id,
-                usuario_nombre: `${usuarioDestino.nombre} ${usuarioDestino.apellido}`, // 👈 aquí
-                apellido: usuarioDestino.apellido,
-                url_imagen: usuarioDestino.url_imagen,
-                background: usuarioDestino.background,
-                correo: usuarioDestino.correo,
-              });
-              setShowModal(false);
-            }}
-          />
-        </Suspense>
+        <ProfileModal
+          usuario={perfilSeleccionado}
+          miUsuario={usuario}
+          show={showModal}
+          onClose={() => setShowModal(false)}
+          onLogout={() => {
+            localStorage.removeItem("usuario");
+            navigate("/", { replace: true });
+          }}
+          onEnviarMensaje={(usuarioDestino) => {
+            handleSelectChat({
+              tipo: "privado",
+              usuario_id: usuarioDestino.id,
+              usuario_nombre: `${usuarioDestino.nombre} ${usuarioDestino.apellido}`, // 👈 aquí
+              apellido: usuarioDestino.apellido,
+              url_imagen: usuarioDestino.url_imagen,
+              background: usuarioDestino.background,
+              correo: usuarioDestino.correo,
+            });
+            setShowModal(false);
+          }}
+        />
       )}
     </div>
   );

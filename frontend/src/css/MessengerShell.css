@@ -1871,3 +1871,92 @@ body.dark .wa-chat-header .wa-presence-badge,
   }
 }
 
+
+/* =========================================================
+   ADMIN STAGE - scroll independiente del ChatBox lazy
+   ---------------------------------------------------------
+   Los paneles administrativos son hijos de un shell de 100vh cuyo overflow
+   global está bloqueado. El stage administra su propio scroll, así no depende
+   de que ChatBox.css se haya cargado antes.
+   ========================================================= */
+.wa-admin-stage {
+  flex: 1 1 0% !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+  width: auto !important;
+  height: 100vh !important;
+  max-height: 100vh !important;
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+.wa-admin-stage > .qc-users-page {
+  width: 100% !important;
+  min-width: 0 !important;
+  min-height: 100% !important;
+  height: auto !important;
+  overflow: visible !important;
+}
+
+@media (max-width: 767px) {
+  .wa-messenger-root.no-selected-chat > .wa-admin-stage {
+    height: var(--qc-mobile-vh, 100dvh) !important;
+    max-height: var(--qc-mobile-vh, 100dvh) !important;
+    overflow-x: hidden !important;
+    overflow-y: auto !important;
+  }
+
+  .wa-admin-stage > .qc-users-page {
+    min-height: 100% !important;
+  }
+}
+
+/* =========================================================
+   Rendimiento de lista de chats
+   - React monta la lista por bloques desde ChatList.jsx.
+   - content-visibility permite al navegador saltar pintura/layout de
+     tarjetas que ya quedaron lejos del viewport al seguir desplazándose.
+   ========================================================= */
+.wa-chat-list-card {
+  content-visibility: auto;
+  contain-intrinsic-size: 68px;
+}
+
+.wa-chat-list-progressive-sentinel {
+  min-height: 38px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 8px 0 4px;
+  color: rgba(100, 116, 139, 0.72);
+}
+
+.wa-chat-list-progressive-sentinel > span {
+  width: 5px;
+  height: 5px;
+  border-radius: 999px;
+  background: currentColor;
+  animation: wa-chat-list-progressive-pulse 1s ease-in-out infinite;
+}
+
+.wa-chat-list-progressive-sentinel > span:nth-child(2) {
+  animation-delay: 120ms;
+}
+
+.wa-chat-list-progressive-sentinel > span:nth-child(3) {
+  animation-delay: 240ms;
+}
+
+@keyframes wa-chat-list-progressive-pulse {
+  0%, 70%, 100% { opacity: 0.28; transform: translateY(0); }
+  35% { opacity: 0.9; transform: translateY(-2px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wa-chat-list-progressive-sentinel > span {
+    animation: none;
+  }
+}

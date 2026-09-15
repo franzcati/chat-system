@@ -10,6 +10,10 @@ import { Star } from "lucide-react";
 import toast from "react-hot-toast";
 import GroupAvatar from "../components/GroupAvatar";
 
+const CHAT_RENDER_BATCH_SIZE = 24;
+const CHAT_LIST_CACHE_TTL_MS = 5 * 60 * 1000;
+const chatListMemoryCache = new Map();
+
 
 const getRecordTime = (record = {}) => {
   const explicit = Number(record.lastTime);
@@ -161,6 +165,9 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat, addToLi
   const [showAddToExistingList, setShowAddToExistingList] = useState(false);
   const [typingByChat, setTypingByChat] = useState({});
   const [isInitialLoading, setIsInitialLoading] = useState(true);
+  const [visibleChatCount, setVisibleChatCount] = useState(CHAT_RENDER_BATCH_SIZE);
+  const listScrollRef = useRef(null);
+  const loadMoreSentinelRef = useRef(null);
   const typingPreviewTimersRef = useRef({});
   const processedSocketMessagesRef = useRef(new Set());
   const chatItemRefs = useRef(new Map());
@@ -595,6 +602,22 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat, addToLi
     if (!userId) return;
     let cancelled = false;
 
+    const cacheKey = String(userId);
+    const cached = chatListMemoryCache.get(cacheKey);
+    const hasFreshCache = Boolean(
+      cached && Date.now() - Number(cached.updatedAt || 0) < CHAT_LIST_CACHE_TTL_MS
+    );
+
+    if (hasFreshCache) {
+      setMensajes(Array.isArray(cached.mensajes) ? cached.mensajes : []);
+      setGrupos(Array.isArray(cached.grupos) ? cached.grupos : []);
+      setFavoritos(Array.isArray(cached.favoritos) ? cached.favoritos : []);
+      setSilenciados(Array.isArray(cached.silenciados) ? cached.silenciados : []);
+      setChatEstados(Array.isArray(cached.chatEstados) ? cached.chatEstados : []);
+      setChatLists(Array.isArray(cached.chatLists) ? cached.chatLists : []);
+      setIsInitialLoading(false);
+    }
+
     const fetchData = async ({ showLoading = false, force = false } = {}) => {
       const now = Date.now();
       if (!force && now - lastRefreshAtRef.current < 1500) return;
@@ -621,6 +644,15 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat, addToLi
                   console.error("❌ También falló /api/chats/:userId:", legacyError);
                   return { ok: false, data: [] };
                 }
+              })
+              .then((result) => {
+                // Primer pintado progresivo: si los privados llegan antes que los
+                // grupos/preferencias, la lista ya se muestra y no espera a todo.
+                if (!cancelled && result.data.length > 0) {
+                  setMensajes(dedupeMessagesById(result.data));
+                  setIsInitialLoading(false);
+                }
+                return result;
               }),
             axios
               .get(`/api/grupos/usuario-resumen/${userId}`)
@@ -634,6 +666,15 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat, addToLi
                   console.error("❌ También falló /api/grupos/usuario/:userId:", legacyError);
                   return { ok: false, data: [] };
                 }
+              })
+              .then((result) => {
+                // Los grupos se incorporan apenas responden, sin bloquear los chats
+                // privados que ya puedan estar visibles.
+                if (!cancelled && result.data.length > 0) {
+                  setGrupos(dedupeGroupsById(result.data));
+                  setIsInitialLoading(false);
+                }
+                return result;
               }),
             Promise.allSettled([
               axios.get(`/api/chats/favoritos/${userId}`),
@@ -716,7 +757,7 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat, addToLi
       }
     };
 
-    fetchData({ showLoading: true, force: true });
+    fetchData({ showLoading: !hasFreshCache, force: true });
 
     // Recuperar lo ocurrido mientras el socket estuvo desconectado, sin disparar
     // varias cargas simultáneas durante una ráfaga de reconexiones.
@@ -728,6 +769,31 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat, addToLi
       socket.off("connect", handleReconnect);
     };
   }, [userId]);
+
+  // Caché en memoria del navegador: al volver desde Administración/Perfil a
+  // Chats, la lista reaparece al instante y luego se refresca en segundo plano.
+  useEffect(() => {
+    if (!userId || isInitialLoading) return;
+
+    chatListMemoryCache.set(String(userId), {
+      updatedAt: Date.now(),
+      mensajes,
+      grupos,
+      favoritos,
+      silenciados,
+      chatEstados,
+      chatLists,
+    });
+  }, [
+    userId,
+    isInitialLoading,
+    mensajes,
+    grupos,
+    favoritos,
+    silenciados,
+    chatEstados,
+    chatLists,
+  ]);
 
   // -------------------------------
   // 🔹 Unificar privados + grupos
@@ -1872,6 +1938,43 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat, addToLi
     return true;
   });
 
+  // Renderizado progresivo tipo WhatsApp: sólo montamos el primer bloque de
+  // conversaciones. Al acercarse al final del scroll se agregan más. Esto evita
+  // crear cientos de nodos <img> (incluidos GIF animados) durante el arranque.
+  const visibleChats = filteredChats.slice(0, visibleChatCount);
+
+  useEffect(() => {
+    setVisibleChatCount(CHAT_RENDER_BATCH_SIZE);
+  }, [activeFilter, activeCustomListId, searchTerm]);
+
+  useEffect(() => {
+    if (visibleChatCount >= filteredChats.length) return undefined;
+    if (typeof window === "undefined" || !("IntersectionObserver" in window)) {
+      setVisibleChatCount(filteredChats.length);
+      return undefined;
+    }
+
+    const sentinel = loadMoreSentinelRef.current;
+    if (!sentinel) return undefined;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (!entries.some((entry) => entry.isIntersecting)) return;
+        setVisibleChatCount((current) =>
+          Math.min(current + CHAT_RENDER_BATCH_SIZE, filteredChats.length)
+        );
+      },
+      {
+        root: listScrollRef.current,
+        rootMargin: "360px 0px",
+        threshold: 0.01,
+      }
+    );
+
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [filteredChats.length, visibleChatCount]);
+
   const unreadTotal = uniqueChats.reduce(
     (total, chat) => total + Math.max(0, Number(chat.mensajes_no_leidos || 0)),
     0
@@ -1959,6 +2062,9 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat, addToLi
             alt={title}
             className="avatar-img rounded-circle"
             style={{ width: "44px", height: "44px", objectFit: "cover" }}
+            loading="lazy"
+            decoding="async"
+            fetchPriority="low"
           />
           {renderPresenceBadge(chat.usuario_id)}
         </div>
@@ -2628,7 +2734,7 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat, addToLi
     <aside className="sidebar bg-light">
       <div className="tab-pane fade h-100 active show" id="tab-content-chats" role="tabpanel">
         <div className="d-flex flex-column h-100 position-relative">
-          <div className="hide-scrollbar">
+          <div className="hide-scrollbar" ref={listScrollRef}>
             <div className="container py-4">
               <div className="mb-8">
                 <h2 className="fw-bold m-0">Chats</h2>
@@ -2815,6 +2921,9 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat, addToLi
                           alt={u.nombre}
                           className="rounded-circle me-2"
                           style={{ width: "40px", height: "40px", objectFit: "cover" }}
+                          loading="lazy"
+                          decoding="async"
+                          fetchPriority="low"
                         />
                       ) : (
                         <div
@@ -2853,7 +2962,20 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat, addToLi
                     ))}
                   </div>
                 ) : filteredChats.length > 0 ? (
-                  filteredChats.map(renderChatItem)
+                  <>
+                    {visibleChats.map(renderChatItem)}
+                    {visibleChats.length < filteredChats.length && (
+                      <div
+                        ref={loadMoreSentinelRef}
+                        className="wa-chat-list-progressive-sentinel"
+                        aria-label="Cargando más conversaciones"
+                      >
+                        <span />
+                        <span />
+                        <span />
+                      </div>
+                    )}
+                  </>
                 ) : (
                   <div className="wa-empty-filter">
                     <i className="fa-regular fa-comment-dots" aria-hidden="true" />

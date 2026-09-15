@@ -1139,40 +1139,6 @@ body .main-content {
     padding-right: 0;
 }
 
-.form-check-input {
-    width: 1.25em;
-    height: 1.25em;
-    margin-top: .175em;
-    vertical-align: top;
-    background-color: #ebf1f7;
-    background-repeat: no-repeat;
-    background-position: center;
-    background-size: contain;
-    border: 0;
-    -webkit-appearance: none;
-    -moz-appearance: none;
-    appearance: none;
-    -webkit-print-color-adjust: exact;
-    color-adjust: exact;
-    -webkit-transition: background-color .15s ease-in-out, background-position .15s ease-in-out, border-color .15s ease-in-out, -webkit-box-shadow .15s ease-in-out;
-    transition: background-color .15s ease-in-out, background-position .15s ease-in-out, border-color .15s ease-in-out, -webkit-box-shadow .15s ease-in-out;
-    transition: background-color .15s ease-in-out, background-position .15s ease-in-out, border-color .15s ease-in-out, box-shadow .15s ease-in-out;
-    transition: background-color .15s ease-in-out, background-position .15s ease-in-out, border-color .15s ease-in-out, box-shadow .15s ease-in-out, -webkit-box-shadow .15s ease-in-out;
-}
-
-.form-check .form-check-input {
-    float: left;
-    margin-left: -1.75em;
-
-}
-
-.form-check-input[type=checkbox] {
-    border-radius: 30%;
-    box-shadow: none;  /* quita la sombra por defecto de Bootstrap */
-    border-color: transparent; /* quita borde visible */
-    outline: none;     /* quita el outline */
-}
-
 .miembros-offcanvas {
   position: fixed;
   top: 0;
