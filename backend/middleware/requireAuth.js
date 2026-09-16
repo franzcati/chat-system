@@ -133,6 +133,38 @@ function requirePermission(...requiredPermissions) {
   };
 }
 
+function requireAnyPermission(...permissions) {
+  const required = permissions
+    .flat()
+    .map((item) => String(item || "").trim())
+    .filter(Boolean);
+
+  return function anyPermissionMiddleware(req, res, next) {
+    if (!req.auth?.usuario) {
+      return res.status(401).json({
+        code: "AUTH_REQUIRED",
+        error: "Debes iniciar sesión nuevamente",
+      });
+    }
+
+    if (required.length === 0) {
+      return next();
+    }
+
+    const actuales = new Set(req.auth.permisos || []);
+    const permitido = required.some((permiso) => actuales.has(permiso));
+
+    if (!permitido) {
+      return res.status(403).json({
+        code: "PERMISSION_DENIED",
+        error: "No tienes permisos para realizar esta operación",
+      });
+    }
+
+    next();
+  };
+}
+
 function hasPermission(req, permission) {
   const permiso = String(permission || "").trim();
   if (!permiso) return false;
@@ -144,5 +176,6 @@ function hasPermission(req, permission) {
 module.exports = {
   requireAuth,
   requirePermission,
+  requireAnyPermission,
   hasPermission,
 };

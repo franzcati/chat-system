@@ -63,6 +63,7 @@ const chats = require('./routes/chats');
 app.use('/api/chats', chats);
 
 //PROYECTOS
+app.use("/api/proyecto/admin", require("./routes/proyectoAdmin"));
 app.use("/api/proyecto", require("./routes/proyecto"));
 
 //AGREGAR USUARIOS NUEVOS
