@@ -443,6 +443,291 @@ router.get("/:id", async (req, res) => {
 });
 
 
+
+// ============================================================
+// VISTA PREVIA DE CAMBIO DE DOMINIO
+// GET /api/proyecto/admin/:id/domain-impact?dominio=nuevo.com
+//
+// IMPORTANTE:
+// Esta ruta NO modifica ningún dato.
+// Solo calcula usuarios afectados, excluidos y conflictos.
+// ============================================================
+router.get(
+  "/:id/domain-impact",
+  requirePermission("editar_proyectos"),
+  async (req, res) => {
+    try {
+      const proyectoId = Number.parseInt(req.params.id, 10);
+
+      if (!Number.isInteger(proyectoId) || proyectoId <= 0) {
+        return res.status(400).json({
+          code: "INVALID_PROJECT_ID",
+          error: "El identificador del proyecto no es válido",
+        });
+      }
+
+      const instanciaId = Number(req.instanciaActual.id);
+
+      const dominioResult = normalizarDominioProyecto(req.query?.dominio);
+
+      if (!dominioResult.ok) {
+        return res.status(400).json({
+          code: "INVALID_PROJECT_DOMAIN",
+          error: dominioResult.error,
+        });
+      }
+
+      const dominioNuevo = dominioResult.value;
+
+      const [projectRows] = await pool.query(
+        `SELECT
+           id,
+           nombre,
+           dominio,
+           instancia_id,
+           estado
+         FROM proyecto
+         WHERE id = ?
+           AND instancia_id = ?
+         LIMIT 1`,
+        [proyectoId, instanciaId]
+      );
+
+      if (!projectRows.length) {
+        return res.status(404).json({
+          code: "PROJECT_NOT_FOUND",
+          error: "Proyecto no encontrado en esta instancia",
+        });
+      }
+
+      const proyecto = projectRows[0];
+      const dominioActual = String(proyecto.dominio || "")
+        .trim()
+        .toLowerCase();
+
+      const mismoDominio = dominioActual === dominioNuevo;
+
+      const conflictos = [];
+
+      const proyectoOtraInstancia =
+        await buscarDominioEnOtraInstancia(
+          dominioNuevo,
+          instanciaId,
+          proyectoId
+        );
+
+      if (proyectoOtraInstancia) {
+        conflictos.push({
+          tipo: "DOMAIN_USED_BY_OTHER_INSTANCE",
+          mensaje:
+            "El nuevo dominio está siendo utilizado por un proyecto de otra instancia",
+          proyecto_id: Number(proyectoOtraInstancia.id),
+          proyecto_nombre: proyectoOtraInstancia.nombre,
+          instancia_id: Number(proyectoOtraInstancia.instancia_id),
+        });
+      }
+
+      const [userRows] = await pool.query(
+        `SELECT
+           id,
+           nombre,
+           apellido,
+           correo,
+           usuario_base,
+           proyecto_principal_id,
+           instancia_id,
+           correo_gestionado_proyecto
+         FROM usuario
+         WHERE proyecto_principal_id = ?
+         ORDER BY id`,
+        [proyectoId]
+      );
+
+      const usuariosExcluidos = [];
+      const candidatos = [];
+
+      for (const row of userRows) {
+        const gestionado =
+          Number(row.correo_gestionado_proyecto || 0) === 1;
+
+        if (!gestionado) {
+          usuariosExcluidos.push({
+            id: Number(row.id),
+            nombre: row.nombre,
+            apellido: row.apellido,
+            correo_actual: row.correo,
+            usuario_base: row.usuario_base,
+            motivo: "correo_gestionado_proyecto=0",
+          });
+
+          continue;
+        }
+
+        const usuarioBase = String(row.usuario_base || "")
+          .trim()
+          .toLowerCase();
+
+        if (
+          !usuarioBase ||
+          usuarioBase.length > 100 ||
+          !/^[a-z0-9._+-]+$/.test(usuarioBase)
+        ) {
+          conflictos.push({
+            tipo: "INVALID_USUARIO_BASE",
+            usuario_id: Number(row.id),
+            correo_actual: row.correo,
+            usuario_base: row.usuario_base,
+            mensaje:
+              "El usuario gestionado no tiene un usuario_base válido",
+          });
+
+          continue;
+        }
+
+        candidatos.push({
+          id: Number(row.id),
+          nombre: row.nombre,
+          apellido: row.apellido,
+          correo_actual: row.correo,
+          usuario_base: usuarioBase,
+          correo_nuevo: `${usuarioBase}@${dominioNuevo}`,
+        });
+      }
+
+      // ------------------------------------------------------
+      // Detectar si dos usuarios afectados producirían
+      // exactamente el mismo correo nuevo.
+      // ------------------------------------------------------
+      const targets = new Map();
+
+      for (const usuario of candidatos) {
+        const key = usuario.correo_nuevo.toLowerCase();
+
+        if (!targets.has(key)) {
+          targets.set(key, []);
+        }
+
+        targets.get(key).push(usuario);
+      }
+
+      for (const [correoNuevo, usuarios] of targets.entries()) {
+        if (usuarios.length > 1) {
+          conflictos.push({
+            tipo: "DUPLICATE_GENERATED_EMAIL",
+            correo: correoNuevo,
+            usuarios: usuarios.map((usuario) => ({
+              id: usuario.id,
+              correo_actual: usuario.correo_actual,
+              usuario_base: usuario.usuario_base,
+            })),
+            mensaje:
+              "Más de un usuario generaría el mismo correo electrónico",
+          });
+        }
+      }
+
+      // ------------------------------------------------------
+      // Buscar si los correos nuevos ya pertenecen a otros
+      // usuarios existentes en la tabla usuario.
+      // ------------------------------------------------------
+      const correosObjetivo = [...new Set(
+        candidatos.map((usuario) =>
+          usuario.correo_nuevo.toLowerCase()
+        )
+      )];
+
+      if (correosObjetivo.length > 0) {
+        const placeholders = correosObjetivo
+          .map(() => "?")
+          .join(",");
+
+        const [existingRows] = await pool.query(
+          `SELECT
+             id,
+             correo
+           FROM usuario
+           WHERE LOWER(correo) IN (${placeholders})`,
+          correosObjetivo
+        );
+
+        for (const existente of existingRows) {
+          const correoExistente = String(existente.correo || "")
+            .trim()
+            .toLowerCase();
+
+          const afectados = candidatos.filter(
+            (usuario) =>
+              usuario.correo_nuevo.toLowerCase() ===
+              correoExistente
+          );
+
+          for (const afectado of afectados) {
+            // Si el correo ya es del mismo usuario, no es conflicto.
+            if (Number(existente.id) === Number(afectado.id)) {
+              continue;
+            }
+
+            conflictos.push({
+              tipo: "EMAIL_ALREADY_EXISTS",
+              usuario_id: afectado.id,
+              usuario_base: afectado.usuario_base,
+              correo_nuevo: afectado.correo_nuevo,
+              usuario_conflicto_id: Number(existente.id),
+              correo_conflicto: existente.correo,
+              mensaje:
+                "El correo resultante ya pertenece a otro usuario",
+            });
+          }
+        }
+      }
+
+      const puedeConfirmar =
+        !mismoDominio &&
+        conflictos.length === 0;
+
+      return res.json({
+        proyecto: {
+          id: Number(proyecto.id),
+          nombre: proyecto.nombre,
+          instancia_id: Number(proyecto.instancia_id),
+          dominio_actual: dominioActual || null,
+          dominio_nuevo: dominioNuevo,
+          estado: proyecto.estado,
+        },
+
+        impacto: {
+          usuarios_principales: userRows.length,
+          usuarios_gestionados: userRows.filter(
+            (usuario) =>
+              Number(usuario.correo_gestionado_proyecto || 0) === 1
+          ).length,
+          usuarios_actualizables: candidatos.length,
+          usuarios_excluidos: usuariosExcluidos.length,
+          conflictos: conflictos.length,
+        },
+
+        usuarios_a_actualizar: candidatos,
+        usuarios_excluidos: usuariosExcluidos,
+        conflictos,
+
+        mismo_dominio: mismoDominio,
+        puede_confirmar: puedeConfirmar,
+      });
+    } catch (error) {
+      console.error(
+        "Error calculando impacto de cambio de dominio:",
+        error
+      );
+
+      return res.status(500).json({
+        code: "PROJECT_DOMAIN_IMPACT_ERROR",
+        error:
+          "No se pudo calcular el impacto del cambio de dominio",
+      });
+    }
+  }
+);
+
 // ============================================================
 // CREAR PROYECTO
 // POST /api/proyecto/admin
