@@ -139,14 +139,25 @@ const Sidebar = ({ usuario, active, setActive, onUsuarioUpdate, unreadTotal = 0,
     return canCrearUsuarios || canEditarUsuarios || canCrearGrupo || canCrearProyectos ? "Administrador" : "Usuario";
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
     logDev("Sesión cerrada");
+
+    try {
+      await fetch("/api/usuario/logout", {
+        method: "POST",
+        credentials: "include",
+      });
+    } catch (error) {
+      console.warn("No se pudo cerrar la sesión en el servidor:", error);
+    }
+
     try {
       localStorage.removeItem("usuario");
       socket.disconnect();
     } catch (error) {
       console.warn("No se pudo limpiar completamente la sesión:", error);
     }
+
     window.location.replace("/");
   };
 

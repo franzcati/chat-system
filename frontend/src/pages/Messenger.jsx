@@ -558,8 +558,23 @@ const Messenger = () => {
           miUsuario={usuario}
           show={showModal}
           onClose={() => setShowModal(false)}
-          onLogout={() => {
-            localStorage.removeItem("usuario");
+          onLogout={async () => {
+            try {
+              await fetch("/api/usuario/logout", {
+                method: "POST",
+                credentials: "include",
+              });
+            } catch (error) {
+              console.warn("No se pudo cerrar la sesión en el servidor:", error);
+            }
+
+            try {
+              localStorage.removeItem("usuario");
+              socket.disconnect();
+            } catch (error) {
+              console.warn("No se pudo limpiar completamente la sesión:", error);
+            }
+
             navigate("/", { replace: true });
           }}
           onEnviarMensaje={(usuarioDestino) => {

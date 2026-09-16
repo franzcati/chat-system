@@ -39,6 +39,7 @@ const {
   hashRecoveryCode,
 } = require("../utils/mfaRecoveryService");
 const { auditMfa } = require("../utils/mfaAuditService");
+const { setAuthSession } = require("../utils/sessionAuth");
 
 const router = express.Router();
 const SETUP_MAX_AGE_MINUTES = 15;
@@ -487,6 +488,8 @@ router.post("/setup/verify", async (req, res) => {
       metadata: { trusted_device_id: Number(trustedDevice?.id || 0) || null },
     });
 
+    setAuthSession(req, res, userId);
+
     return res.json({
       mensaje: "Google Authenticator activado correctamente.",
       mfa_enabled: true,
@@ -592,6 +595,8 @@ router.post("/verify-login", async (req, res) => {
       success: true,
       metadata: { trusted_device_id: Number(trustedDevice?.id || 0) || null },
     });
+
+    setAuthSession(req, res, userId);
 
     return res.json({
       mensaje: "Verificación de seguridad correcta.",
@@ -1164,6 +1169,8 @@ router.post("/email/enroll/verify", async (req, res) => {
       metadata: { trusted_device_id: Number(trustedDevice?.id || 0) || null },
     });
 
+    setAuthSession(req, res, userId);
+
     return res.json({
       mensaje:
         "Correo alternativo verificado y activado correctamente.",
@@ -1331,6 +1338,8 @@ router.post("/email/login/verify", async (req, res) => {
       success: true,
       metadata: { trusted_device_id: Number(trustedDevice?.id || 0) || null },
     });
+
+    setAuthSession(req, res, userId);
 
     return res.json({
       mensaje: "Código por correo correcto.",
@@ -1851,6 +1860,8 @@ router.post("/recovery/verify-login", async (req, res) => {
       success: true,
       metadata: { trusted_device_id: Number(trustedDevice?.id || 0) || null },
     });
+
+    setAuthSession(req, res, userId);
 
     return res.json({
       mensaje: "Código de recuperación correcto.",

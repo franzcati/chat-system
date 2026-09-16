@@ -4,7 +4,7 @@ const express = require('express');
 const cors = require('cors');
 const app = express();
 
-app.set("trust proxy", true);
+app.set("trust proxy", "loopback");
 
 const defaultAllowedOrigins = [
   "http://quickchat.click",

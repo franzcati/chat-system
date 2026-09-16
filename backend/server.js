@@ -13,6 +13,7 @@ const mensajesRoutes = require("./routes/mensajes");
 const mensajesGruposRoutes = require("./routes/mensajesGrupo");
 
 const PORT = process.env.PORT || 5000;
+const BIND_HOST = process.env.BIND_HOST || "127.0.0.1";
 
 // Crear servidor HTTP con Express
 const server = http.createServer(app);
@@ -46,7 +47,7 @@ async function startServer() {
     const allowSchemaAlter = String(process.env.DB_SYNC_ALTER || "false").toLowerCase() === "true";
     await sequelize.sync(allowSchemaAlter ? { alter: true } : {});
 
-    server.listen(PORT, () => {
+    server.listen(PORT, BIND_HOST, () => {
       logDev(`🚀 Servidor corriendo en puerto ${PORT}`);
       logDev(`🌐 Accesible desde chatvista.click`);
     });

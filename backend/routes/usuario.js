@@ -1,6 +1,8 @@
 const express = require('express');
 const router = express.Router();
 const pool = require('../db');
+const { setAuthSession, clearAuthSession } = require("../utils/sessionAuth");
+const { requireAuth } = require("../middleware/requireAuth");
 const { createMfaChallenge } = require('../utils/mfaService');
 const { findTrustedDevice } = require('../utils/trustedDeviceService');
 const { auditMfa } = require('../utils/mfaAuditService');
@@ -80,6 +82,33 @@ async function prepararUsuarioRespuesta(usuarioDb) {
   usuario.rol_permisos = permisos.map((p) => p.permiso);
   return usuario;
 }
+
+
+// SESIÓN ACTUAL
+router.get('/session', requireAuth, async (req, res) => {
+  return res.json({
+    authenticated: true,
+    usuario: {
+      id: req.auth.usuario.id,
+      nombre: req.auth.usuario.nombre,
+      apellido: req.auth.usuario.apellido,
+      correo: req.auth.usuario.correo,
+      rol_id: req.auth.usuario.rol_id,
+      instancia_id: req.auth.usuario.instancia_id,
+      rol_permisos: req.auth.permisos,
+    },
+    session: req.auth.session,
+  });
+});
+
+// CERRAR SESIÓN
+router.post('/logout', async (req, res) => {
+  clearAuthSession(req, res);
+
+  return res.json({
+    mensaje: 'Sesión cerrada correctamente',
+  });
+});
 
 router.post('/login', async (req, res) => {
   const correoNormalizado = normalizarCorreo(req.body?.correo);
@@ -217,6 +246,8 @@ router.post('/login', async (req, res) => {
             metadata: { trusted_device_id: Number(trustedDevice.id) },
           });
 
+          setAuthSession(req, res, usuario.id);
+
           return res.json({
             mensaje: 'Inicio de sesión exitoso en dispositivo confiable',
             usuario,
@@ -260,6 +291,8 @@ router.post('/login', async (req, res) => {
     }
 
     const usuario = await prepararUsuarioRespuesta(usuarioContrasena);
+
+    setAuthSession(req, res, usuario.id);
 
     return res.json({
       mensaje: 'Inicio de sesión exitoso',
