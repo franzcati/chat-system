@@ -728,6 +728,402 @@ router.get(
   }
 );
 
+
+// ============================================================
+// CONFIRMAR CAMBIO DE DOMINIO
+// POST /api/proyecto/admin/:id/change-domain
+//
+// Body:
+// {
+//   "dominio": "nuevo-dominio.com",
+//   "confirmar": true
+// }
+//
+// Recalcula todo dentro de una transacción antes de modificar.
+// ============================================================
+router.post(
+  "/:id/change-domain",
+  requirePermission("editar_proyectos"),
+  async (req, res) => {
+    const proyectoId = Number.parseInt(req.params.id, 10);
+
+    if (!Number.isInteger(proyectoId) || proyectoId <= 0) {
+      return res.status(400).json({
+        code: "INVALID_PROJECT_ID",
+        error: "El identificador del proyecto no es válido",
+      });
+    }
+
+    if (req.body?.confirmar !== true) {
+      return res.status(400).json({
+        code: "PROJECT_DOMAIN_CONFIRMATION_REQUIRED",
+        error: "Debes confirmar explícitamente el cambio de dominio",
+      });
+    }
+
+    const dominioResult = normalizarDominioProyecto(req.body?.dominio);
+
+    if (!dominioResult.ok) {
+      return res.status(400).json({
+        code: "INVALID_PROJECT_DOMAIN",
+        error: dominioResult.error,
+      });
+    }
+
+    const dominioNuevo = dominioResult.value;
+    const instanciaId = Number(req.instanciaActual.id);
+
+    const connection = await pool.getConnection();
+    let transactionStarted = false;
+
+    try {
+      await connection.beginTransaction();
+      transactionStarted = true;
+
+      // Bloquear el proyecto para evitar cambios concurrentes
+      // mientras se vuelve a calcular el impacto.
+      const [projectRows] = await connection.query(
+        `SELECT
+           id,
+           nombre,
+           dominio,
+           instancia_id,
+           estado
+         FROM proyecto
+         WHERE id = ?
+           AND instancia_id = ?
+         LIMIT 1
+         FOR UPDATE`,
+        [proyectoId, instanciaId]
+      );
+
+      if (!projectRows.length) {
+        await connection.rollback();
+        transactionStarted = false;
+
+        return res.status(404).json({
+          code: "PROJECT_NOT_FOUND",
+          error: "Proyecto no encontrado en esta instancia",
+        });
+      }
+
+      const proyecto = projectRows[0];
+      const dominioAnterior = String(proyecto.dominio || "")
+        .trim()
+        .toLowerCase();
+
+      if (dominioAnterior === dominioNuevo) {
+        await connection.rollback();
+        transactionStarted = false;
+
+        return res.status(400).json({
+          code: "PROJECT_DOMAIN_UNCHANGED",
+          error: "El nuevo dominio es igual al dominio actual",
+        });
+      }
+
+      // No permitir reutilizar accidentalmente el mismo dominio
+      // en otra instancia / portal.
+      const [otherProjectRows] = await connection.query(
+        `SELECT
+           id,
+           nombre,
+           instancia_id
+         FROM proyecto
+         WHERE dominio = ?
+           AND instancia_id <> ?
+           AND id <> ?
+         LIMIT 1`,
+        [dominioNuevo, instanciaId, proyectoId]
+      );
+
+      if (otherProjectRows.length) {
+        await connection.rollback();
+        transactionStarted = false;
+
+        return res.status(409).json({
+          code: "PROJECT_DOMAIN_OTHER_INSTANCE",
+          error: "Ese dominio ya está siendo utilizado por un proyecto de otra instancia",
+          conflicto: {
+            proyecto_id: Number(otherProjectRows[0].id),
+            proyecto_nombre: otherProjectRows[0].nombre,
+            instancia_id: Number(otherProjectRows[0].instancia_id),
+          },
+        });
+      }
+
+      // Bloquear los usuarios principales del proyecto durante
+      // toda la operación.
+      const [userRows] = await connection.query(
+        `SELECT
+           id,
+           nombre,
+           apellido,
+           correo,
+           usuario_base,
+           proyecto_principal_id,
+           instancia_id,
+           correo_gestionado_proyecto
+         FROM usuario
+         WHERE proyecto_principal_id = ?
+         ORDER BY id
+         FOR UPDATE`,
+        [proyectoId]
+      );
+
+      const usuariosExcluidos = [];
+      const candidatos = [];
+      const conflictos = [];
+
+      for (const row of userRows) {
+        const gestionado =
+          Number(row.correo_gestionado_proyecto || 0) === 1;
+
+        if (!gestionado) {
+          usuariosExcluidos.push({
+            id: Number(row.id),
+            nombre: row.nombre,
+            apellido: row.apellido,
+            correo_actual: row.correo,
+            usuario_base: row.usuario_base,
+            motivo: "correo_gestionado_proyecto=0",
+          });
+
+          continue;
+        }
+
+        const usuarioBase = String(row.usuario_base || "")
+          .trim()
+          .toLowerCase();
+
+        if (
+          !usuarioBase ||
+          usuarioBase.length > 100 ||
+          !/^[a-z0-9._+-]+$/.test(usuarioBase)
+        ) {
+          conflictos.push({
+            tipo: "INVALID_USUARIO_BASE",
+            usuario_id: Number(row.id),
+            correo_actual: row.correo,
+            usuario_base: row.usuario_base,
+            mensaje: "El usuario gestionado no tiene un usuario_base válido",
+          });
+
+          continue;
+        }
+
+        candidatos.push({
+          id: Number(row.id),
+          nombre: row.nombre,
+          apellido: row.apellido,
+          usuario_base: usuarioBase,
+          correo_actual: row.correo,
+          correo_nuevo: `${usuarioBase}@${dominioNuevo}`,
+        });
+      }
+
+      // Detectar duplicados generados dentro del mismo lote.
+      const targets = new Map();
+
+      for (const usuario of candidatos) {
+        const key = usuario.correo_nuevo.toLowerCase();
+
+        if (!targets.has(key)) {
+          targets.set(key, []);
+        }
+
+        targets.get(key).push(usuario);
+      }
+
+      for (const [correoNuevo, usuarios] of targets.entries()) {
+        if (usuarios.length > 1) {
+          conflictos.push({
+            tipo: "DUPLICATE_GENERATED_EMAIL",
+            correo: correoNuevo,
+            usuarios: usuarios.map((usuario) => ({
+              id: usuario.id,
+              usuario_base: usuario.usuario_base,
+              correo_actual: usuario.correo_actual,
+            })),
+            mensaje: "Más de un usuario generaría el mismo correo electrónico",
+          });
+        }
+      }
+
+      // Buscar conflictos con cualquier correo que ya exista.
+      const correosObjetivo = [
+        ...new Set(
+          candidatos.map((usuario) =>
+            usuario.correo_nuevo.toLowerCase()
+          )
+        ),
+      ];
+
+      if (correosObjetivo.length > 0) {
+        const placeholders = correosObjetivo
+          .map(() => "?")
+          .join(",");
+
+        const [existingRows] = await connection.query(
+          `SELECT id, correo
+           FROM usuario
+           WHERE LOWER(correo) IN (${placeholders})
+           FOR UPDATE`,
+          correosObjetivo
+        );
+
+        for (const existente of existingRows) {
+          const correoExistente = String(existente.correo || "")
+            .trim()
+            .toLowerCase();
+
+          const afectados = candidatos.filter(
+            (usuario) =>
+              usuario.correo_nuevo.toLowerCase() ===
+              correoExistente
+          );
+
+          for (const afectado of afectados) {
+            // Su propio correo actual no genera conflicto.
+            if (Number(existente.id) === Number(afectado.id)) {
+              continue;
+            }
+
+            conflictos.push({
+              tipo: "EMAIL_ALREADY_EXISTS",
+              usuario_id: afectado.id,
+              usuario_base: afectado.usuario_base,
+              correo_nuevo: afectado.correo_nuevo,
+              usuario_conflicto_id: Number(existente.id),
+              correo_conflicto: existente.correo,
+              mensaje: "El correo resultante ya pertenece a otro usuario",
+            });
+          }
+        }
+      }
+
+      // Ante cualquier conflicto no se modifica absolutamente nada.
+      if (conflictos.length > 0) {
+        await connection.rollback();
+        transactionStarted = false;
+
+        return res.status(409).json({
+          code: "PROJECT_DOMAIN_CONFLICTS",
+          error: "Existen conflictos que impiden cambiar el dominio",
+          impacto: {
+            usuarios_principales: userRows.length,
+            usuarios_gestionados: candidatos.length + conflictos.filter(
+              (item) => item.tipo === "INVALID_USUARIO_BASE"
+            ).length,
+            usuarios_actualizables: candidatos.length,
+            usuarios_excluidos: usuariosExcluidos.length,
+            conflictos: conflictos.length,
+          },
+          conflictos,
+        });
+      }
+
+      // Actualizar únicamente usuarios gestionados por proyecto.
+      for (const usuario of candidatos) {
+        await connection.query(
+          `UPDATE usuario
+           SET correo = ?
+           WHERE id = ?
+             AND proyecto_principal_id = ?
+             AND correo_gestionado_proyecto = 1`,
+          [
+            usuario.correo_nuevo,
+            usuario.id,
+            proyectoId,
+          ]
+        );
+      }
+
+      // Actualizar dominio del proyecto.
+      await connection.query(
+        `UPDATE proyecto
+         SET dominio = ?
+         WHERE id = ?
+           AND instancia_id = ?`,
+        [dominioNuevo, proyectoId, instanciaId]
+      );
+
+      // Auditoría del cambio.
+      await connection.query(
+        `INSERT INTO proyecto_dominio_historial (
+           proyecto_id,
+           dominio_anterior,
+           dominio_nuevo,
+           usuario_admin_id
+         )
+         VALUES (?, ?, ?, ?)`,
+        [
+          proyectoId,
+          dominioAnterior || null,
+          dominioNuevo,
+          req.auth.userId,
+        ]
+      );
+
+      await connection.commit();
+      transactionStarted = false;
+
+      return res.json({
+        mensaje: "Dominio del proyecto actualizado correctamente",
+        proyecto: {
+          id: Number(proyecto.id),
+          nombre: proyecto.nombre,
+          instancia_id: Number(proyecto.instancia_id),
+          dominio_anterior: dominioAnterior || null,
+          dominio_nuevo: dominioNuevo,
+        },
+        impacto: {
+          usuarios_principales: userRows.length,
+          usuarios_actualizados: candidatos.length,
+          usuarios_excluidos: usuariosExcluidos.length,
+          conflictos: 0,
+        },
+        usuarios_actualizados: candidatos.map((usuario) => ({
+          id: usuario.id,
+          correo_anterior: usuario.correo_actual,
+          correo_nuevo: usuario.correo_nuevo,
+        })),
+        usuarios_excluidos: usuariosExcluidos,
+      });
+    } catch (error) {
+      if (transactionStarted) {
+        try {
+          await connection.rollback();
+        } catch (rollbackError) {
+          console.error(
+            "Error ejecutando rollback de cambio de dominio:",
+            rollbackError
+          );
+        }
+      }
+
+      if (error?.code === "ER_DUP_ENTRY") {
+        return res.status(409).json({
+          code: "PROJECT_DOMAIN_EMAIL_DUPLICATE",
+          error: "Se detectó un correo duplicado y no se realizó ningún cambio",
+        });
+      }
+
+      console.error(
+        "Error confirmando cambio de dominio:",
+        error
+      );
+
+      return res.status(500).json({
+        code: "PROJECT_DOMAIN_CHANGE_ERROR",
+        error: "No se pudo cambiar el dominio del proyecto",
+      });
+    } finally {
+      connection.release();
+    }
+  }
+);
+
 // ============================================================
 // CREAR PROYECTO
 // POST /api/proyecto/admin
