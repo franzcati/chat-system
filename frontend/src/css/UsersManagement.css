@@ -1654,3 +1654,1321 @@
   background: var(--qc-users-soft) !important;
   filter: brightness(1.04);
 }
+
+/* ==========================================================
+   GESTION ADMINISTRATIVA SEGURA DE USUARIOS
+   ========================================================== */
+
+.qc-user-admin-form {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.qc-user-admin-section {
+  padding: 20px;
+  border: 1px solid rgba(130, 150, 190, 0.22);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.qc-user-admin-section-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.qc-user-admin-section-head h4,
+.qc-user-admin-section-head p {
+  margin: 0;
+}
+
+.qc-user-admin-section-head h4 {
+  font-size: 15px;
+  font-weight: 800;
+}
+
+.qc-user-admin-section-head p {
+  margin-top: 3px;
+  color: #7b89a5;
+  font-size: 11px;
+}
+
+.qc-user-admin-section-icon {
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  border-radius: 11px;
+  color: white;
+  background: linear-gradient(135deg, #009cff, #633cff);
+  box-shadow: 0 8px 20px rgba(64, 88, 255, 0.18);
+}
+
+.qc-user-admin-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 15px;
+}
+
+.qc-user-admin-span-2 {
+  grid-column: 1 / -1;
+}
+
+.qc-user-admin-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.qc-user-admin-field > span {
+  color: #18243e;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.qc-user-admin-field small {
+  color: #8390aa;
+  font-size: 9px;
+}
+
+.qc-user-admin-field input,
+.qc-user-admin-field select {
+  width: 100%;
+  min-height: 43px;
+  padding: 0 12px;
+  border: 1px solid #cfdaed;
+  border-radius: 10px;
+  outline: none;
+  color: #1c2942;
+  background: #f9fbff;
+}
+
+.qc-user-admin-field input:focus,
+.qc-user-admin-field select:focus {
+  border-color: #168cff;
+  box-shadow: 0 0 0 3px rgba(22, 140, 255, 0.08);
+}
+
+.qc-user-readonly,
+.qc-user-email-preview {
+  min-height: 43px;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 0 12px;
+  border: 1px solid #d7e0ef;
+  border-radius: 10px;
+  background: #f4f7fc;
+}
+
+.qc-user-email-preview {
+  min-height: 50px;
+  color: #0878dc;
+  background: rgba(0, 148, 255, 0.07);
+  border-color: rgba(0, 148, 255, 0.22);
+}
+
+.qc-user-account-mode {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.qc-user-account-mode button {
+  display: grid;
+  grid-template-columns: 32px 1fr;
+  grid-template-rows: auto auto;
+  column-gap: 9px;
+  padding: 13px;
+  border: 1px solid #d6dfef;
+  border-radius: 11px;
+  color: #27334a;
+  text-align: left;
+  background: #fbfcff;
+}
+
+.qc-user-account-mode button > i {
+  grid-row: 1 / 3;
+  display: grid;
+  place-items: center;
+  font-size: 18px;
+}
+
+.qc-user-account-mode button strong,
+.qc-user-account-mode button small {
+  display: block;
+}
+
+.qc-user-account-mode button small {
+  color: #8290aa;
+  font-size: 9px;
+}
+
+.qc-user-account-mode button.is-active {
+  border-color: #168cff;
+  background: rgba(22, 140, 255, 0.08);
+  box-shadow: 0 0 0 2px rgba(22, 140, 255, 0.06);
+}
+
+.qc-user-project-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.qc-user-project-option {
+  min-width: 0;
+  min-height: 68px;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 10px;
+  border: 1px solid #d7e0ef;
+  border-radius: 11px;
+  color: #26334c;
+  text-align: left;
+  background: #fbfcff;
+}
+
+.qc-user-project-option.is-selected {
+  border-color: rgba(22, 140, 255, 0.48);
+  background: rgba(22, 140, 255, 0.07);
+}
+
+.qc-user-project-option.is-principal {
+  border-color: rgba(118, 63, 255, 0.45);
+  background: rgba(118, 63, 255, 0.07);
+  cursor: default;
+}
+
+.qc-user-project-check {
+  width: 31px;
+  height: 31px;
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  border-radius: 9px;
+  color: #168cff;
+  background: rgba(22, 140, 255, 0.09);
+}
+
+.qc-user-project-copy {
+  min-width: 0;
+  flex: 1;
+}
+
+.qc-user-project-copy strong,
+.qc-user-project-copy small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.qc-user-project-copy strong {
+  font-size: 10px;
+}
+
+.qc-user-project-copy small {
+  margin-top: 2px;
+  color: #8390aa;
+  font-size: 8px;
+}
+
+.qc-user-principal-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: 0 0 auto;
+  padding: 4px 7px;
+  border-radius: 999px;
+  color: #7747ee;
+  font-size: 8px;
+  font-weight: 800;
+  background: rgba(119, 71, 238, 0.09);
+}
+
+.qc-user-project-summary {
+  display: flex;
+  gap: 15px;
+  margin-top: 12px;
+  color: #8490a8;
+  font-size: 9px;
+}
+
+.qc-user-project-summary strong {
+  color: #168cff;
+}
+
+.qc-user-role-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.qc-user-role-grid button {
+  min-height: 100px;
+  padding: 12px;
+  border: 1px solid #d8e0ed;
+  border-radius: 12px;
+  color: #27334a;
+  background: #fbfcff;
+}
+
+.qc-user-role-grid button > i {
+  display: block;
+  margin-bottom: 6px;
+  color: #168cff;
+  font-size: 20px;
+}
+
+.qc-user-role-grid button strong,
+.qc-user-role-grid button small {
+  display: block;
+}
+
+.qc-user-role-grid button small {
+  margin-top: 3px;
+  color: #8995ac;
+  font-size: 8px;
+}
+
+.qc-user-role-grid button.is-selected {
+  border-color: #168cff;
+  background: rgba(22, 140, 255, 0.08);
+}
+
+.qc-user-permission-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.qc-user-permission-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 68px;
+  padding: 11px;
+  border: 1px solid #d8e0ed;
+  border-radius: 11px;
+  background: #fbfcff;
+}
+
+.qc-user-permission-icon {
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  border-radius: 9px;
+  color: #168cff;
+  background: rgba(22, 140, 255, 0.09);
+}
+
+.qc-user-permission-option > span:nth-child(2) {
+  min-width: 0;
+  flex: 1;
+}
+
+.qc-user-permission-option strong,
+.qc-user-permission-option small {
+  display: block;
+}
+
+.qc-user-permission-option strong {
+  font-size: 10px;
+}
+
+.qc-user-permission-option small {
+  margin-top: 2px;
+  color: #8793aa;
+  font-size: 8px;
+}
+
+.qc-user-permission-option input {
+  width: 17px;
+  height: 17px;
+}
+
+.qc-user-admin-loading {
+  padding: 18px;
+  color: #8490a8;
+  text-align: center;
+}
+
+.qc-user-admin-error {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 11px 13px;
+  border: 1px solid rgba(222, 55, 83, 0.28);
+  border-radius: 10px;
+  color: #c4314b;
+  background: rgba(222, 55, 83, 0.07);
+  font-size: 10px;
+}
+
+.qc-user-admin-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+@media (max-width: 850px) {
+  .qc-user-admin-grid,
+  .qc-user-account-mode,
+  .qc-user-permission-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .qc-user-project-grid,
+  .qc-user-role-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .qc-user-admin-span-2 {
+    grid-column: auto;
+  }
+}
+
+@media (max-width: 520px) {
+  .qc-user-project-grid,
+  .qc-user-role-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ==========================================================
+   AJUSTES FINALES FORMULARIO USUARIOS
+   Hover + Light/Dark + botones
+   ========================================================== */
+
+/* ----------------------------------------------------------
+   TRANSICIONES
+   ---------------------------------------------------------- */
+
+.qc-user-account-mode button,
+.qc-user-project-option,
+.qc-user-role-grid button,
+.qc-user-permission-option,
+.qc-user-admin-actions button {
+  transition:
+    background-color .18s ease,
+    border-color .18s ease,
+    color .18s ease,
+    box-shadow .18s ease,
+    transform .18s ease;
+}
+
+
+/* ==========================================================
+   LIGHT MODE
+   ========================================================== */
+
+:root[data-theme="light"] .qc-user-admin-section {
+  background: rgba(255, 255, 255, .88);
+  border-color: #dce5f3;
+  box-shadow:
+    0 8px 26px rgba(38, 63, 110, .035);
+}
+
+:root[data-theme="light"] .qc-user-admin-section-head h4 {
+  color: #18243e;
+}
+
+:root[data-theme="light"] .qc-user-admin-section-head p {
+  color: #7888a6;
+}
+
+
+/* ---------- Cuenta gestionada / manual ---------- */
+
+:root[data-theme="light"] .qc-user-account-mode button {
+  color: #26344f !important;
+  background: #f8faff !important;
+  border-color: #d6e0ef !important;
+}
+
+:root[data-theme="light"] .qc-user-account-mode button strong {
+  color: #24324c !important;
+}
+
+:root[data-theme="light"] .qc-user-account-mode button small {
+  color: #8290aa !important;
+}
+
+:root[data-theme="light"] .qc-user-account-mode button > i {
+  color: #60718f !important;
+}
+
+/* IMPORTANTE:
+   evita que el hover global vuelva negro el botón */
+:root[data-theme="light"] .qc-user-account-mode button:hover:not(.is-active) {
+  color: #18243e !important;
+  background: #eef5ff !important;
+  border-color: #9fc9ff !important;
+  box-shadow:
+    0 5px 16px rgba(22, 140, 255, .08) !important;
+  transform: translateY(-1px);
+}
+
+:root[data-theme="light"] .qc-user-account-mode button:hover:not(.is-active) strong {
+  color: #18243e !important;
+}
+
+:root[data-theme="light"] .qc-user-account-mode button:hover:not(.is-active) small {
+  color: #647797 !important;
+}
+
+:root[data-theme="light"] .qc-user-account-mode button:hover:not(.is-active) > i {
+  color: #168cff !important;
+}
+
+:root[data-theme="light"] .qc-user-account-mode button.is-active {
+  color: #17345c !important;
+  background:
+    linear-gradient(
+      135deg,
+      rgba(22, 140, 255, .10),
+      rgba(105, 64, 255, .06)
+    ) !important;
+  border-color: #168cff !important;
+  box-shadow:
+    0 0 0 2px rgba(22, 140, 255, .055) !important;
+}
+
+:root[data-theme="light"] .qc-user-account-mode button.is-active strong {
+  color: #16375f !important;
+}
+
+:root[data-theme="light"] .qc-user-account-mode button.is-active > i {
+  color: #168cff !important;
+}
+
+
+/* ---------- Proyectos ---------- */
+
+:root[data-theme="light"] .qc-user-project-option {
+  color: #26344d !important;
+  background: #fbfcff !important;
+  border-color: #dae3f1 !important;
+}
+
+:root[data-theme="light"] .qc-user-project-option strong {
+  color: #26344d !important;
+}
+
+:root[data-theme="light"] .qc-user-project-option small {
+  color: #8190a9 !important;
+}
+
+:root[data-theme="light"] .qc-user-project-option:hover:not(.is-principal) {
+  color: #192945 !important;
+  background: #eef6ff !important;
+  border-color: #9ac8ff !important;
+  box-shadow:
+    0 5px 15px rgba(22, 140, 255, .07) !important;
+  transform: translateY(-1px);
+}
+
+:root[data-theme="light"] .qc-user-project-option:hover:not(.is-principal) strong {
+  color: #192945 !important;
+}
+
+:root[data-theme="light"] .qc-user-project-option:hover:not(.is-principal) small {
+  color: #647897 !important;
+}
+
+:root[data-theme="light"] .qc-user-project-option.is-selected:not(.is-principal) {
+  background: rgba(22, 140, 255, .075) !important;
+  border-color: rgba(22, 140, 255, .45) !important;
+}
+
+:root[data-theme="light"] .qc-user-project-option.is-principal {
+  color: #49358b !important;
+  background:
+    linear-gradient(
+      135deg,
+      rgba(119, 71, 238, .08),
+      rgba(75, 104, 255, .06)
+    ) !important;
+  border-color: rgba(119, 71, 238, .42) !important;
+}
+
+
+/* ---------- Roles ---------- */
+
+:root[data-theme="light"] .qc-user-role-grid button {
+  color: #26344d !important;
+  background: #fbfcff !important;
+  border-color: #dae3f1 !important;
+}
+
+:root[data-theme="light"] .qc-user-role-grid button:hover:not(.is-selected) {
+  color: #182942 !important;
+  background: #eef6ff !important;
+  border-color: #9fcaff !important;
+  transform: translateY(-1px);
+}
+
+:root[data-theme="light"] .qc-user-role-grid button strong {
+  color: inherit !important;
+}
+
+:root[data-theme="light"] .qc-user-role-grid button.is-selected {
+  color: #17365d !important;
+  background:
+    linear-gradient(
+      135deg,
+      rgba(22, 140, 255, .11),
+      rgba(105, 64, 255, .06)
+    ) !important;
+  border-color: #168cff !important;
+}
+
+
+/* ==========================================================
+   DARK MODE
+   ========================================================== */
+
+:root[data-theme="dark"] .qc-user-admin-form {
+  color: #eaf2ff;
+}
+
+
+/* ---------- contenedores ---------- */
+
+:root[data-theme="dark"] .qc-user-admin-section {
+  background:
+    linear-gradient(
+      145deg,
+      rgba(10, 25, 53, .96),
+      rgba(11, 26, 55, .92)
+    ) !important;
+  border-color: #20365e !important;
+  box-shadow:
+    0 12px 32px rgba(0, 0, 0, .16);
+}
+
+:root[data-theme="dark"] .qc-user-admin-section-head h4 {
+  color: #f3f7ff !important;
+}
+
+:root[data-theme="dark"] .qc-user-admin-section-head p {
+  color: #8da2c7 !important;
+}
+
+
+/* ---------- campos ---------- */
+
+:root[data-theme="dark"] .qc-user-admin-field > span {
+  color: #dce8fb !important;
+}
+
+:root[data-theme="dark"] .qc-user-admin-field small {
+  color: #8196ba !important;
+}
+
+:root[data-theme="dark"] .qc-user-admin-field input,
+:root[data-theme="dark"] .qc-user-admin-field select {
+  color: #ecf4ff !important;
+  background: #0d1e3d !important;
+  border-color: #29436d !important;
+}
+
+:root[data-theme="dark"] .qc-user-admin-field input::placeholder {
+  color: #7186a9 !important;
+}
+
+:root[data-theme="dark"] .qc-user-admin-field input:focus,
+:root[data-theme="dark"] .qc-user-admin-field select:focus {
+  background: #102344 !important;
+  border-color: #268fff !important;
+  box-shadow:
+    0 0 0 3px rgba(38, 143, 255, .12) !important;
+}
+
+:root[data-theme="dark"] .qc-user-admin-field select option {
+  color: #eaf2ff;
+  background: #0d1e3d;
+}
+
+
+/* ---------- dominio / correo preview ---------- */
+
+:root[data-theme="dark"] .qc-user-readonly {
+  color: #cbd9ee !important;
+  background: #10213f !important;
+  border-color: #29436d !important;
+}
+
+:root[data-theme="dark"] .qc-user-readonly i {
+  color: #58aaff !important;
+}
+
+:root[data-theme="dark"] .qc-user-email-preview {
+  color: #66b6ff !important;
+  background:
+    linear-gradient(
+      135deg,
+      rgba(15, 112, 211, .16),
+      rgba(65, 73, 193, .11)
+    ) !important;
+  border-color: rgba(65, 156, 255, .35) !important;
+}
+
+:root[data-theme="dark"] .qc-user-email-preview strong {
+  color: #61b6ff !important;
+}
+
+
+/* ---------- modo de cuenta ---------- */
+
+:root[data-theme="dark"] .qc-user-account-mode button {
+  color: #dfeaff !important;
+  background: #0e203f !important;
+  border-color: #29436d !important;
+}
+
+:root[data-theme="dark"] .qc-user-account-mode button strong {
+  color: #eaf2ff !important;
+}
+
+:root[data-theme="dark"] .qc-user-account-mode button small {
+  color: #8399bd !important;
+}
+
+:root[data-theme="dark"] .qc-user-account-mode button > i {
+  color: #79aee6 !important;
+}
+
+/* evita el fondo negro del hover */
+:root[data-theme="dark"] .qc-user-account-mode button:hover:not(.is-active) {
+  color: #ffffff !important;
+  background: #142b50 !important;
+  border-color: #3a6aa1 !important;
+  box-shadow:
+    0 7px 20px rgba(0, 0, 0, .16) !important;
+  transform: translateY(-1px);
+}
+
+:root[data-theme="dark"] .qc-user-account-mode button:hover:not(.is-active) strong {
+  color: #ffffff !important;
+}
+
+:root[data-theme="dark"] .qc-user-account-mode button:hover:not(.is-active) small {
+  color: #a7b9d5 !important;
+}
+
+:root[data-theme="dark"] .qc-user-account-mode button:hover:not(.is-active) > i {
+  color: #5eb3ff !important;
+}
+
+:root[data-theme="dark"] .qc-user-account-mode button.is-active {
+  color: #eff7ff !important;
+  background:
+    linear-gradient(
+      135deg,
+      rgba(24, 113, 213, .24),
+      rgba(102, 67, 236, .17)
+    ) !important;
+  border-color: #278dff !important;
+  box-shadow:
+    inset 0 0 0 1px rgba(89, 173, 255, .08),
+    0 6px 18px rgba(0, 98, 214, .08) !important;
+}
+
+
+/* ---------- proyectos ---------- */
+
+:root[data-theme="dark"] .qc-user-project-option {
+  color: #dce8fb !important;
+  background: #0e203e !important;
+  border-color: #273f67 !important;
+}
+
+:root[data-theme="dark"] .qc-user-project-option strong {
+  color: #e8f1ff !important;
+}
+
+:root[data-theme="dark"] .qc-user-project-option small {
+  color: #8096ba !important;
+}
+
+:root[data-theme="dark"] .qc-user-project-check {
+  color: #60aeff !important;
+  background: rgba(33, 135, 241, .12) !important;
+}
+
+:root[data-theme="dark"] .qc-user-project-option:hover:not(.is-principal) {
+  color: #ffffff !important;
+  background: #142b50 !important;
+  border-color: #35679f !important;
+  box-shadow:
+    0 7px 20px rgba(0, 0, 0, .14) !important;
+  transform: translateY(-1px);
+}
+
+:root[data-theme="dark"] .qc-user-project-option:hover:not(.is-principal) strong {
+  color: #ffffff !important;
+}
+
+:root[data-theme="dark"] .qc-user-project-option:hover:not(.is-principal) small {
+  color: #9fb2d1 !important;
+}
+
+:root[data-theme="dark"] .qc-user-project-option.is-selected:not(.is-principal) {
+  background: rgba(24, 126, 229, .16) !important;
+  border-color: rgba(55, 154, 255, .46) !important;
+}
+
+:root[data-theme="dark"] .qc-user-project-option.is-principal {
+  color: #eee9ff !important;
+  background:
+    linear-gradient(
+      135deg,
+      rgba(104, 65, 226, .22),
+      rgba(66, 87, 219, .14)
+    ) !important;
+  border-color: rgba(139, 103, 255, .52) !important;
+}
+
+:root[data-theme="dark"] .qc-user-project-option.is-principal strong {
+  color: #f0edff !important;
+}
+
+:root[data-theme="dark"] .qc-user-principal-badge {
+  color: #c7b5ff !important;
+  background: rgba(123, 83, 240, .18) !important;
+}
+
+
+/* ---------- resumen proyectos ---------- */
+
+:root[data-theme="dark"] .qc-user-project-summary {
+  color: #8299bb !important;
+}
+
+:root[data-theme="dark"] .qc-user-project-summary strong {
+  color: #52abff !important;
+}
+
+
+/* ---------- roles ---------- */
+
+:root[data-theme="dark"] .qc-user-role-grid button {
+  color: #dce8fb !important;
+  background: #0e203e !important;
+  border-color: #273f67 !important;
+}
+
+:root[data-theme="dark"] .qc-user-role-grid button strong {
+  color: #e8f1ff !important;
+}
+
+:root[data-theme="dark"] .qc-user-role-grid button small {
+  color: #8096ba !important;
+}
+
+:root[data-theme="dark"] .qc-user-role-grid button:hover:not(.is-selected) {
+  color: #ffffff !important;
+  background: #142b50 !important;
+  border-color: #35679f !important;
+  transform: translateY(-1px);
+}
+
+:root[data-theme="dark"] .qc-user-role-grid button.is-selected {
+  color: #ffffff !important;
+  background:
+    linear-gradient(
+      135deg,
+      rgba(23, 125, 230, .22),
+      rgba(92, 68, 220, .14)
+    ) !important;
+  border-color: #298fff !important;
+}
+
+
+/* ---------- permisos ---------- */
+
+:root[data-theme="dark"] .qc-user-permission-option {
+  color: #dce8fb !important;
+  background: #0e203e !important;
+  border-color: #273f67 !important;
+}
+
+:root[data-theme="dark"] .qc-user-permission-option strong {
+  color: #e8f1ff !important;
+}
+
+:root[data-theme="dark"] .qc-user-permission-option small {
+  color: #8096ba !important;
+}
+
+:root[data-theme="dark"] .qc-user-permission-icon {
+  color: #5db0ff !important;
+  background: rgba(31, 132, 237, .13) !important;
+}
+
+
+/* ==========================================================
+   BOTONES DE ACCION
+   estilo coherente con "Nuevo usuario"
+   ========================================================== */
+
+.qc-user-admin-actions {
+  padding-top: 3px;
+  align-items: center;
+}
+
+.qc-user-admin-actions .btn {
+  min-width: 150px;
+  min-height: 48px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 15px !important;
+  font-size: 14px;
+  font-weight: 800;
+  line-height: 1;
+  border: 0 !important;
+}
+
+.qc-user-admin-actions .btn-primary {
+  color: #fff !important;
+  background:
+    linear-gradient(
+      105deg,
+      #0aa7ff 0%,
+      #168cff 38%,
+      #554fff 72%,
+      #7641f3 100%
+    ) !important;
+  box-shadow:
+    0 10px 24px rgba(51, 101, 255, .22) !important;
+}
+
+.qc-user-admin-actions .btn-primary:hover:not(:disabled) {
+  color: #fff !important;
+  background:
+    linear-gradient(
+      105deg,
+      #18b1ff 0%,
+      #258fff 38%,
+      #615aff 72%,
+      #8250ff 100%
+    ) !important;
+  box-shadow:
+    0 13px 29px rgba(51, 101, 255, .30) !important;
+  transform: translateY(-1px);
+}
+
+.qc-user-admin-actions .btn-primary:active:not(:disabled) {
+  transform: translateY(0);
+  box-shadow:
+    0 7px 17px rgba(51, 101, 255, .22) !important;
+}
+
+.qc-user-admin-actions .btn-primary:disabled {
+  opacity: .55;
+  cursor: not-allowed;
+}
+
+:root[data-theme="light"] .qc-user-admin-actions .btn-secondary {
+  color: #344158 !important;
+  background: #eef2f7 !important;
+  border: 1px solid #d2dce9 !important;
+}
+
+:root[data-theme="light"] .qc-user-admin-actions .btn-secondary:hover {
+  color: #1e2a40 !important;
+  background: #e2e9f2 !important;
+}
+
+:root[data-theme="dark"] .qc-user-admin-actions .btn-secondary {
+  color: #dbe7f8 !important;
+  background: #233554 !important;
+  border: 1px solid #32496f !important;
+}
+
+:root[data-theme="dark"] .qc-user-admin-actions .btn-secondary:hover {
+  color: #ffffff !important;
+  background: #2c4165 !important;
+}
+
+
+/* ---------- error ---------- */
+
+:root[data-theme="dark"] .qc-user-admin-error {
+  color: #ffb7c1 !important;
+  background: rgba(193, 43, 69, .12) !important;
+  border-color: rgba(255, 91, 116, .30) !important;
+}
+
+
+/* ---------- Responsive pequeño ---------- */
+
+@media (max-width: 650px) {
+  .qc-user-admin-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .qc-user-admin-actions .btn {
+    width: 100%;
+    min-width: 0;
+  }
+}
+
+/* ==========================================================
+   AJUSTE DARK FINAL
+   Igualar profundidad visual con Seguridad MFA
+   ========================================================== */
+
+:root[data-theme="dark"] {
+  --qc-user-panel-dark: #07152f;
+  --qc-user-panel-border: #1a365f;
+  --qc-user-card-dark: #0d2243;
+  --qc-user-card-hover: #122b50;
+}
+
+
+/* ----------------------------------------------------------
+   SECCIONES PRINCIPALES
+   mismo nivel visual que Seguridad MFA
+   ---------------------------------------------------------- */
+
+:root[data-theme="dark"] .qc-user-admin-section {
+  background:
+    linear-gradient(
+      145deg,
+      #07152f 0%,
+      #081832 100%
+    ) !important;
+
+  border-color:
+    var(--qc-user-panel-border) !important;
+
+  box-shadow:
+    0 12px 28px rgba(0, 0, 0, .14) !important;
+}
+
+
+/* también dejamos MFA exactamente en la misma familia visual */
+
+:root[data-theme="dark"] .qc-mfa-admin-card {
+  background:
+    linear-gradient(
+      145deg,
+      #07152f 0%,
+      #081832 100%
+    ) !important;
+
+  border-color:
+    var(--qc-user-panel-border) !important;
+}
+
+
+/* ----------------------------------------------------------
+   TITULOS
+   ---------------------------------------------------------- */
+
+:root[data-theme="dark"]
+.qc-user-admin-section-head h4 {
+  color: #f4f8ff !important;
+}
+
+:root[data-theme="dark"]
+.qc-user-admin-section-head p {
+  color: #91a6c8 !important;
+}
+
+
+/* ----------------------------------------------------------
+   PERMISOS DEL CHAT
+   ---------------------------------------------------------- */
+
+:root[data-theme="dark"]
+.qc-user-permission-option {
+  background:
+    linear-gradient(
+      135deg,
+      #0d2243,
+      #0c2040
+    ) !important;
+
+  border-color: #24466f !important;
+
+  box-shadow:
+    inset 0 1px 0
+    rgba(255, 255, 255, .015) !important;
+}
+
+:root[data-theme="dark"]
+.qc-user-permission-option:hover {
+  background:
+    linear-gradient(
+      135deg,
+      #122b50,
+      #102747
+    ) !important;
+
+  border-color: #346da5 !important;
+}
+
+
+/* iconos de permisos */
+
+:root[data-theme="dark"]
+.qc-user-permission-icon {
+  background:
+    rgba(14, 116, 216, .16) !important;
+
+  color: #5fb5ff !important;
+}
+
+
+/* ----------------------------------------------------------
+   TARJETAS DE PROYECTOS
+   ---------------------------------------------------------- */
+
+:root[data-theme="dark"]
+.qc-user-project-option {
+  background:
+    var(--qc-user-card-dark) !important;
+
+  border-color: #24466f !important;
+}
+
+:root[data-theme="dark"]
+.qc-user-project-option:hover:not(.is-principal) {
+  background:
+    var(--qc-user-card-hover) !important;
+
+  border-color: #3773aa !important;
+}
+
+
+/* ----------------------------------------------------------
+   ROLES
+   ---------------------------------------------------------- */
+
+:root[data-theme="dark"]
+.qc-user-role-grid button {
+  background:
+    var(--qc-user-card-dark) !important;
+
+  border-color: #24466f !important;
+}
+
+:root[data-theme="dark"]
+.qc-user-role-grid button:hover:not(.is-selected) {
+  background:
+    var(--qc-user-card-hover) !important;
+
+  border-color: #3773aa !important;
+}
+
+
+/* ----------------------------------------------------------
+   MODO DE CORREO
+   ---------------------------------------------------------- */
+
+:root[data-theme="dark"]
+.qc-user-account-mode button {
+  background:
+    var(--qc-user-card-dark) !important;
+
+  border-color: #24466f !important;
+}
+
+:root[data-theme="dark"]
+.qc-user-account-mode button:hover:not(.is-active) {
+  background:
+    var(--qc-user-card-hover) !important;
+
+  border-color: #3773aa !important;
+}
+
+
+/* ----------------------------------------------------------
+   CAMPOS
+   algo más oscuros para no romper la jerarquía
+   ---------------------------------------------------------- */
+
+:root[data-theme="dark"]
+.qc-user-admin-field input,
+:root[data-theme="dark"]
+.qc-user-admin-field select {
+  background: #091b38 !important;
+  border-color: #25466e !important;
+}
+
+:root[data-theme="dark"]
+.qc-user-readonly {
+  background: #0a1e3b !important;
+  border-color: #25466e !important;
+}
+
+
+/* ----------------------------------------------------------
+   PREVIEW CORREO
+   ---------------------------------------------------------- */
+
+:root[data-theme="dark"]
+.qc-user-email-preview {
+  background:
+    linear-gradient(
+      135deg,
+      rgba(7, 105, 213, .18),
+      rgba(77, 71, 220, .13)
+    ) !important;
+
+  border-color:
+    rgba(62, 157, 255, .38) !important;
+}
+
+
+/* ----------------------------------------------------------
+   MFA - tarjetas internas
+   ---------------------------------------------------------- */
+
+:root[data-theme="dark"]
+.qc-mfa-admin-stats > div {
+  background:
+    linear-gradient(
+      135deg,
+      #0d2243,
+      #0c2040
+    ) !important;
+
+  border-color: #24466f !important;
+}
+
+/* ==========================================================
+   AJUSTE FINAL DARK
+   MFA queda como referencia visual
+   y las demás secciones adoptan ese mismo tono
+   ========================================================== */
+
+:root[data-theme="dark"] {
+  --qc-user-panel-reference-bg: linear-gradient(145deg, #081a36 0%, #0a2042 100%);
+  --qc-user-panel-reference-border: rgba(52, 113, 184, 0.34);
+  --qc-user-inner-card-bg: #10284d;
+  --qc-user-inner-card-hover: #14315b;
+  --qc-user-inner-card-border: rgba(76, 140, 214, 0.28);
+}
+
+/* ----------------------------------------------------------
+   PANEL EXTERNO
+   usar el mismo tono de MFA como referencia
+   ---------------------------------------------------------- */
+
+:root[data-theme="dark"] .qc-user-admin-section,
+:root[data-theme="dark"] .qc-mfa-admin-card {
+  background: var(--qc-user-panel-reference-bg) !important;
+  border: 1px solid var(--qc-user-panel-reference-border) !important;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.18) !important;
+}
+
+/* títulos */
+:root[data-theme="dark"] .qc-user-admin-section-head h4,
+:root[data-theme="dark"] .qc-mfa-admin-card h4 {
+  color: #eef5ff !important;
+}
+
+:root[data-theme="dark"] .qc-user-admin-section-head p,
+:root[data-theme="dark"] .qc-mfa-admin-card p {
+  color: #9cb1d2 !important;
+}
+
+/* ----------------------------------------------------------
+   TARJETAS INTERNAS
+   para que no se vean negras ni demasiado claras
+   ---------------------------------------------------------- */
+
+:root[data-theme="dark"] .qc-user-permission-option,
+:root[data-theme="dark"] .qc-user-project-option,
+:root[data-theme="dark"] .qc-user-role-grid button,
+:root[data-theme="dark"] .qc-user-account-mode button,
+:root[data-theme="dark"] .qc-mfa-admin-stats > div {
+  background: var(--qc-user-inner-card-bg) !important;
+  border: 1px solid var(--qc-user-inner-card-border) !important;
+  color: #eaf2ff !important;
+}
+
+/* hover correcto: azul oscuro, no negro */
+:root[data-theme="dark"] .qc-user-permission-option:hover,
+:root[data-theme="dark"] .qc-user-project-option:hover:not(.is-principal),
+:root[data-theme="dark"] .qc-user-role-grid button:hover:not(.is-selected),
+:root[data-theme="dark"] .qc-user-account-mode button:hover:not(.is-active) {
+  background: var(--qc-user-inner-card-hover) !important;
+  border-color: rgba(94, 165, 245, 0.42) !important;
+  color: #ffffff !important;
+}
+
+/* estados seleccionados */
+:root[data-theme="dark"] .qc-user-role-grid button.is-selected,
+:root[data-theme="dark"] .qc-user-project-option.is-principal,
+:root[data-theme="dark"] .qc-user-account-mode button.is-active {
+  background: linear-gradient(135deg, rgba(33, 86, 164, 0.28), rgba(108, 82, 255, 0.22)) !important;
+  border-color: rgba(95, 171, 255, 0.50) !important;
+  color: #ffffff !important;
+}
+
+/* iconos internos */
+:root[data-theme="dark"] .qc-user-permission-icon,
+:root[data-theme="dark"] .qc-user-admin-section-head .icon-box,
+:root[data-theme="dark"] .qc-mfa-admin-card .icon-box {
+  background: rgba(18, 108, 211, 0.20) !important;
+  color: #61b6ff !important;
+}
+
+/* inputs */
+:root[data-theme="dark"] .qc-user-admin-field input,
+:root[data-theme="dark"] .qc-user-admin-field select,
+:root[data-theme="dark"] .qc-user-admin-field textarea {
+  background: #0a1f3f !important;
+  border: 1px solid rgba(69, 128, 198, 0.34) !important;
+  color: #eef5ff !important;
+}
+
+:root[data-theme="dark"] .qc-user-admin-field input::placeholder,
+:root[data-theme="dark"] .qc-user-admin-field textarea::placeholder {
+  color: #8ea5c8 !important;
+}
+
+/* readonly / previews */
+:root[data-theme="dark"] .qc-user-readonly,
+:root[data-theme="dark"] .qc-user-email-preview {
+  background: rgba(18, 41, 76, 0.85) !important;
+  border: 1px solid rgba(82, 145, 214, 0.28) !important;
+  color: #dce9ff !important;
+}
+
+/* botón guardar: mantener estilo visible */
+:root[data-theme="dark"] .qc-user-admin-actions .btn-primary,
+:root[data-theme="dark"] .qc-user-admin-save {
+  background: linear-gradient(90deg, #1ea0ff 0%, #5f52ff 100%) !important;
+  border: none !important;
+  color: #ffffff !important;
+  box-shadow: 0 10px 22px rgba(34, 126, 255, 0.22) !important;
+}
+
+:root[data-theme="dark"] .qc-user-admin-actions .btn-primary:hover,
+:root[data-theme="dark"] .qc-user-admin-save:hover {
+  filter: brightness(1.05);
+}
+
+/* botón cancelar */
+:root[data-theme="dark"] .qc-user-admin-actions .btn-secondary,
+:root[data-theme="dark"] .qc-user-admin-cancel {
+  background: #2a4269 !important;
+  border: 1px solid rgba(90, 125, 172, 0.34) !important;
+  color: #f1f6ff !important;
+}

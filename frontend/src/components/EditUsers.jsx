@@ -77,9 +77,19 @@ const EditUsers = ({ usuarioLogueado, proyectos = [] }) => {
 
   const obtenerUsuarios = async () => {
     try {
-      const res = await fetch("/api/usuarios");
-      const data = await res.json();
-      const usuariosSeguro = Array.isArray(data) ? data : [];
+      const res = await fetch("/api/usuarios/admin?limit=100", {
+        credentials: "include",
+      });
+
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        throw new Error(data.error || "No se pudieron cargar los usuarios");
+      }
+
+      const usuariosSeguro = Array.isArray(data?.usuarios)
+        ? data.usuarios
+        : [];
 
       setUsuarios(usuariosSeguro);
       setUsuariosOriginal(usuariosSeguro);
@@ -96,8 +106,72 @@ const EditUsers = ({ usuarioLogueado, proyectos = [] }) => {
       nombre: "",
       apellido: "",
       usuario: "",
-      proyectos: [],
+      correo: "",
+      usuario_base: "",
+      rol_id: 4,
+      proyectos_detallados: [],
+      proyecto_principal_id: null,
+      correo_gestionado_proyecto: 1,
+      permisos_chat: {
+        crear_grupos: 0,
+        editar_mensajes: 0,
+        eliminar_mensajes: 0,
+        enviar_audios: 0,
+      },
     });
+  };
+
+  const abrirEditarUsuario = async (user) => {
+    try {
+      const res = await fetch(
+        `/api/usuarios/admin/${user.id}`,
+        { credentials: "include" }
+      );
+
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        throw new Error(
+          data.error || "No se pudo cargar el usuario"
+        );
+      }
+
+      setEditando(data.usuario);
+    } catch (error) {
+      console.error("Error cargando usuario:", error);
+      alert(error.message || "No se pudo cargar el usuario");
+    }
+  };
+
+  const desactivarUsuario = async (id) => {
+    const confirmar = window.confirm(
+      "¿Seguro deseas desactivar este usuario?\n\nSe quitarán sus proyectos asignados, pero sus chats e historial permanecerán."
+    );
+
+    if (!confirmar) return;
+
+    try {
+      const res = await fetch(
+        `/api/usuarios/admin/${id}`,
+        {
+          method: "DELETE",
+          credentials: "include",
+        }
+      );
+
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        throw new Error(
+          data.error || "No se pudo desactivar el usuario"
+        );
+      }
+
+      await obtenerUsuarios();
+    } catch (error) {
+      console.error("Error desactivando usuario:", error);
+      alert(error.message || "No se pudo desactivar el usuario");
+    }
   };
 
   const estadisticas = useMemo(() => {
@@ -235,14 +309,8 @@ const EditUsers = ({ usuarioLogueado, proyectos = [] }) => {
 
             <TablaUsuarios
               usuarios={usuarios}
-              setEditando={setEditando}
-              eliminarUsuario={(id) => {
-                if (confirm("¿Seguro deseas eliminar este usuario?")) {
-                  fetch(`/api/usuarios/${id}`, { method: "DELETE" }).then(() =>
-                    obtenerUsuarios()
-                  );
-                }
-              }}
+              setEditando={abrirEditarUsuario}
+              eliminarUsuario={desactivarUsuario}
             />
           </>
         )}

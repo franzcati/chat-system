@@ -1,644 +1,882 @@
-import { useState, useEffect } from "react";
+import { useEffect, useMemo, useState } from "react";
+import "bootstrap-icons/font/bootstrap-icons.css";
 import "../css/MfaAdmin.css";
 
-export default function FormEditarUsuario({ editando, setEditando, obtenerUsuarios, rolUsuarioActual, usuarioActualId }) {
+const DEFAULT_PERMISSIONS = {
+  crear_grupos: 0,
+  editar_mensajes: 0,
+  eliminar_mensajes: 0,
+  enviar_audios: 0,
+};
+
+const parsePermissions = (value) => {
+  let parsed = value;
+
+  if (typeof parsed === "string") {
+    try {
+      parsed = JSON.parse(parsed);
+    } catch {
+      parsed = {};
+    }
+  }
+
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    parsed = {};
+  }
+
+  return {
+    crear_grupos: Number(parsed.crear_grupos || 0),
+    editar_mensajes: Number(parsed.editar_mensajes || 0),
+    eliminar_mensajes: Number(parsed.eliminar_mensajes || 0),
+    enviar_audios: Number(parsed.enviar_audios || 0),
+  };
+};
+
+const deriveBaseFromEmail = (email) => {
+  const text = String(email || "").trim();
+  if (!text.includes("@")) return text.toLowerCase();
+  return text.split("@")[0].trim().toLowerCase();
+};
+
+const getInitialProjects = (editando) =>
+  Array.isArray(editando?.proyectos_detallados)
+    ? editando.proyectos_detallados
+        .filter((p) => p && p.id != null)
+        .map((p) => Number(p.id))
+    : [];
+
+export default function FormEditarUsuario({
+  editando,
+  setEditando,
+  obtenerUsuarios,
+  rolUsuarioActual,
+  usuarioActualId,
+}) {
+  const esNuevo = !editando?.id;
 
   const [proyectosDisponibles, setProyectosDisponibles] = useState([]);
   const [roles, setRoles] = useState([]);
   const [permisosRoles, setPermisosRoles] = useState([]);
+
+  const [loadingProjects, setLoadingProjects] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [formError, setFormError] = useState("");
+
   const [mfaAdminStatus, setMfaAdminStatus] = useState(null);
   const [mfaAdminLoading, setMfaAdminLoading] = useState(false);
   const [mfaAdminError, setMfaAdminError] = useState("");
   const [mfaResetLoading, setMfaResetLoading] = useState(false);
 
-  // 🔹 Estado del usuario
-  const [form, setForm] = useState({
-    nombre: editando.nombre || "",
-    apellido: editando.apellido || "",
-    usuario: editando.usuario || "",
-    contrasena: "",
-    permisos_chat: editando.permisos_chat || {},
-    proyectos: (editando.proyectos_detallados || [])
-      .filter(p => p && p.id != null)
-      .map(p => Number(p.id)),
-    rol_id: editando.rol_id || 4,
-  });
+  const [form, setForm] = useState(() => ({
+    nombre: editando?.nombre || "",
+    apellido: editando?.apellido || "",
 
-  // 🔹 Estado para creación / edición de proyectos
-  const [mostrarModalProyecto, setMostrarModalProyecto] = useState(false);
-  const [modoProyecto, setModoProyecto] = useState("crear"); // "crear" | "editar"
-  const [proyectoEditando, setProyectoEditando] = useState(null);
-  const [formProyecto, setFormProyecto] = useState({
-    nombre: "",
-    descripcion: "",
-  });
+    usuario_base:
+      editando?.usuario_base ||
+      deriveBaseFromEmail(editando?.correo || editando?.usuario),
+
+    correo:
+      editando?.correo ||
+      editando?.usuario ||
+      "",
+
+    contrasena: "",
+
+    permisos_chat: parsePermissions(
+      editando?.permisos_chat || DEFAULT_PERMISSIONS
+    ),
+
+    proyectos: getInitialProjects(editando),
+
+    proyecto_principal_id:
+      editando?.proyecto_principal_id != null
+        ? Number(editando.proyecto_principal_id)
+        : "",
+
+    correo_gestionado_proyecto: esNuevo
+      ? 1
+      : Number(editando?.correo_gestionado_proyecto || 0),
+
+    rol_id: Number(editando?.rol_id || 4),
+  }));
 
   const tienePermiso = (permiso) => {
     const permisosDeRol = permisosRoles.filter(
-      p => p.rol_id === rolUsuarioActual
+      (p) => Number(p.rol_id) === Number(rolUsuarioActual)
     );
-    return permisosDeRol.some(p => p.permiso === permiso);
+
+    return permisosDeRol.some((p) => p.permiso === permiso);
+  };
+
+  const proyectoPrincipal = useMemo(() => {
+    const id = Number(form.proyecto_principal_id);
+
+    if (!id) return null;
+
+    return (
+      proyectosDisponibles.find(
+        (project) => Number(project.id) === id
+      ) || null
+    );
+  }, [form.proyecto_principal_id, proyectosDisponibles]);
+
+  const correoResultante = useMemo(() => {
+    if (!form.correo_gestionado_proyecto) {
+      return String(form.correo || "").trim();
+    }
+
+    const base = String(form.usuario_base || "")
+      .trim()
+      .toLowerCase();
+
+    const dominio = String(proyectoPrincipal?.dominio || "")
+      .trim()
+      .toLowerCase();
+
+    if (!base || !dominio) return "";
+
+    return `${base}@${dominio}`;
+  }, [
+    form.correo,
+    form.usuario_base,
+    form.correo_gestionado_proyecto,
+    proyectoPrincipal,
+  ]);
+
+  const proyectosSecundarios = useMemo(
+    () =>
+      form.proyectos.filter(
+        (id) =>
+          Number(id) !== Number(form.proyecto_principal_id)
+      ),
+    [form.proyectos, form.proyecto_principal_id]
+  );
+
+  const cargarProyectos = async () => {
+    setLoadingProjects(true);
+
+    try {
+      const res = await fetch("/api/usuarios/admin/projects", {
+        credentials: "include",
+      });
+
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        throw new Error(
+          data.error || "No se pudieron cargar los proyectos"
+        );
+      }
+
+      setProyectosDisponibles(
+        Array.isArray(data.proyectos) ? data.proyectos : []
+      );
+    } catch (error) {
+      console.error("Error cargando proyectos:", error);
+      setFormError(error.message);
+      setProyectosDisponibles([]);
+    } finally {
+      setLoadingProjects(false);
+    }
   };
 
   const cargarEstadoMfaAdmin = async () => {
-    if (!editando?.id || !usuarioActualId || !tienePermiso("gestionar_mfa")) return;
+    if (
+      !editando?.id ||
+      !usuarioActualId ||
+      !tienePermiso("gestionar_mfa")
+    ) {
+      return;
+    }
 
     setMfaAdminLoading(true);
     setMfaAdminError("");
+
     try {
-      const res = await fetch(`/api/mfa/admin/users/${editando.id}/status`, {
-        credentials: "include",
-        headers: {
-          "X-QC-User-Id": String(usuarioActualId),
-        },
-      });
+      const res = await fetch(
+        `/api/mfa/admin/users/${editando.id}/status`,
+        {
+          credentials: "include",
+          headers: {
+            "X-QC-User-Id": String(usuarioActualId),
+          },
+        }
+      );
+
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || "No se pudo consultar MFA");
+
+      if (!res.ok) {
+        throw new Error(
+          data.error || "No se pudo consultar MFA"
+        );
+      }
+
       setMfaAdminStatus(data);
     } catch (error) {
-      setMfaAdminError(error.message || "No se pudo consultar MFA");
+      setMfaAdminError(
+        error.message || "No se pudo consultar MFA"
+      );
     } finally {
       setMfaAdminLoading(false);
     }
   };
 
   const restablecerMfaAdmin = async () => {
-    if (!editando?.id || !usuarioActualId || !tienePermiso("gestionar_mfa")) return;
+    if (
+      !editando?.id ||
+      !usuarioActualId ||
+      !tienePermiso("gestionar_mfa")
+    ) {
+      return;
+    }
 
     const first = window.confirm(
-      `¿Restablecer toda la seguridad MFA de ${editando.nombre || editando.usuario || "este usuario"}?\n\nSe revocarán Authenticator, correo MFA, dispositivos confiables y códigos de recuperación. Los mensajes y la contraseña NO se modificarán.`
+      `¿Restablecer toda la seguridad MFA de ${
+        editando.nombre || editando.usuario || "este usuario"
+      }?\n\nSe revocarán Authenticator, correo MFA, dispositivos confiables y códigos de recuperación. Los mensajes y la contraseña NO se modificarán.`
     );
+
     if (!first) return;
 
-    const typed = window.prompt('Para confirmar escribe exactamente: RESTABLECER');
-    if (typed !== 'RESTABLECER') {
-      alert('Operación cancelada.');
+    const typed = window.prompt(
+      "Para confirmar escribe exactamente: RESTABLECER"
+    );
+
+    if (typed !== "RESTABLECER") {
+      alert("Operación cancelada.");
       return;
     }
 
     setMfaResetLoading(true);
     setMfaAdminError("");
+
     try {
-      const res = await fetch(`/api/mfa/admin/users/${editando.id}/reset`, {
-        method: "POST",
-        credentials: "include",
-        headers: {
-          "Content-Type": "application/json",
-          "X-QC-User-Id": String(usuarioActualId),
-        },
-        body: JSON.stringify({ confirm: true }),
-      });
+      const res = await fetch(
+        `/api/mfa/admin/users/${editando.id}/reset`,
+        {
+          method: "POST",
+          credentials: "include",
+          headers: {
+            "Content-Type": "application/json",
+            "X-QC-User-Id": String(usuarioActualId),
+          },
+          body: JSON.stringify({ confirm: true }),
+        }
+      );
+
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || "No se pudo restablecer MFA");
+
+      if (!res.ok) {
+        throw new Error(
+          data.error || "No se pudo restablecer MFA"
+        );
+      }
+
       alert(data.mensaje || "MFA restablecido correctamente");
       await cargarEstadoMfaAdmin();
     } catch (error) {
-      setMfaAdminError(error.message || "No se pudo restablecer MFA");
+      setMfaAdminError(
+        error.message || "No se pudo restablecer MFA"
+      );
     } finally {
       setMfaResetLoading(false);
     }
   };
 
-  // ===============================
-  //   Cargar proyectos + roles
-  // ===============================
-  const cargarProyectos = async () => {
-    const res = await fetch("/api/proyecto");
-    const data = await res.json();
-    setProyectosDisponibles(data);
-  };
-
   useEffect(() => {
     cargarProyectos();
-    fetch("/api/roles").then(r => r.json()).then(setRoles);
-    fetch("/api/roles_permisos").then(r => r.json()).then(setPermisosRoles);
+
+    fetch("/api/roles")
+      .then((r) => r.json())
+      .then((data) => setRoles(Array.isArray(data) ? data : []))
+      .catch(() => setRoles([]));
+
+    fetch("/api/roles_permisos")
+      .then((r) => r.json())
+      .then((data) =>
+        setPermisosRoles(Array.isArray(data) ? data : [])
+      )
+      .catch(() => setPermisosRoles([]));
   }, []);
 
   useEffect(() => {
-    if (editando?.id && usuarioActualId && tienePermiso("gestionar_mfa")) {
+    if (
+      editando?.id &&
+      usuarioActualId &&
+      tienePermiso("gestionar_mfa")
+    ) {
       cargarEstadoMfaAdmin();
     }
   }, [editando?.id, usuarioActualId, permisosRoles]);
 
-  // ===============================
-  //   Handlers de usuario
-  // ===============================
   const handleChange = (e) => {
-    setForm({ ...form, [e.target.name]: e.target.value });
-  };
+    const { name, value } = e.target;
 
-  const handleCheckboxProyecto = (id) => {
-    let nuevos = [...form.proyectos];
-    if (nuevos.includes(id)) {
-      nuevos = nuevos.filter(x => x !== id);
-    } else {
-      nuevos.push(id);
-    }
-    setForm({ ...form, proyectos: nuevos });
+    setForm((prev) => ({
+      ...prev,
+      [name]: value,
+    }));
   };
 
   const handlePermiso = (permiso, checked) => {
-    setForm({
-      ...form,
+    setForm((prev) => ({
+      ...prev,
       permisos_chat: {
-        ...form.permisos_chat,
-        [permiso]: checked
+        ...prev.permisos_chat,
+        [permiso]: checked ? 1 : 0,
+      },
+    }));
+  };
+
+  const handlePrincipal = (value) => {
+    const id = Number(value) || "";
+
+    setForm((prev) => {
+      let proyectos = [...prev.proyectos];
+
+      if (id && !proyectos.includes(id)) {
+        proyectos.push(id);
       }
+
+      return {
+        ...prev,
+        proyecto_principal_id: id,
+        proyectos,
+      };
     });
   };
 
-    const guardarUsuario = async (e) => {
-        e.preventDefault();
+  const handleCheckboxProyecto = (projectId) => {
+    const id = Number(projectId);
 
-        // Validación básica
-        if (!form.nombre || !form.apellido || !form.usuario) {
-        alert("Nombre, apellido y usuario son obligatorios");
-        return;
-        }
+    if (Number(form.proyecto_principal_id) === id) {
+      return;
+    }
 
-        const esNuevo = !editando.id; // 👈 si no hay id, estamos creando
+    setForm((prev) => {
+      const exists = prev.proyectos.includes(id);
 
-        try {
-        let url = "";
-        let method = "";
-        let payload = {};
+      return {
+        ...prev,
+        proyectos: exists
+          ? prev.proyectos.filter((item) => item !== id)
+          : [...prev.proyectos, id],
+      };
+    });
+  };
 
-        if (esNuevo) {
-            // 🚨 Tu backend en POST espera `proyecto` (uno solo), no `proyectos` (array)
-            if (!form.proyectos || form.proyectos.length === 0) {
-            alert("Debes asignar al menos un proyecto al nuevo usuario.");
-            return;
-            }
+  const toggleGestionado = (managed) => {
+    setForm((prev) => ({
+      ...prev,
+      correo_gestionado_proyecto: managed ? 1 : 0,
+    }));
+  };
 
-            url = "/api/usuarios";
-            method = "POST";
-            payload = {
-            nombre: form.nombre,
-            apellido: form.apellido,
-            usuario: form.usuario,
-            contrasena: form.contrasena,
-            rol_id: form.rol_id,
-            permisos_chat: form.permisos_chat,
-            proyecto: form.proyectos[0], // 👈 primer proyecto seleccionado
-            };
-        } else {
-            // ✏️ Actualizar usuario existente (PUT /api/usuarios/:id)
-            url = `/api/usuarios/${editando.id}`;
-            method = "PUT";
-            payload = {
-            ...form,
-            // nos aseguramos de mandar un array de números
-            proyectos: (form.proyectos || []).map(Number),
-            };
-        }
+  const guardarUsuario = async (e) => {
+    e.preventDefault();
+    setFormError("");
 
-        const res = await fetch(url, {
-            method,
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(payload),
-        });
+    if (!form.nombre.trim() || !form.apellido.trim()) {
+      setFormError("Nombre y apellido son obligatorios.");
+      return;
+    }
 
-        if (!res.ok) {
-            const data = await res.json().catch(() => ({}));
-            console.error("❌ Error guardando usuario:", data);
-            alert(data.error || "Error al guardar usuario");
-            return;
-        }
+    if (
+      form.correo_gestionado_proyecto &&
+      !form.usuario_base.trim()
+    ) {
+      setFormError(
+        "El usuario base es obligatorio para una cuenta gestionada."
+      );
+      return;
+    }
 
-        alert(esNuevo ? "Usuario creado correctamente" : "Usuario actualizado correctamente");
-        await obtenerUsuarios();
-        setEditando(null);
+    if (
+      (esNuevo || form.correo_gestionado_proyecto) &&
+      !Number(form.proyecto_principal_id)
+    ) {
+      setFormError("Debes seleccionar un proyecto principal.");
+      return;
+    }
 
-        } catch (err) {
-        console.error("❌ Error en guardarUsuario:", err);
-        alert("Error al guardar usuario");
-        }
+    if (
+      form.correo_gestionado_proyecto &&
+      !proyectoPrincipal?.dominio
+    ) {
+      setFormError(
+        "El proyecto principal no tiene dominio. Usa correo manual o selecciona otro proyecto."
+      );
+      return;
+    }
+
+    if (
+      !form.correo_gestionado_proyecto &&
+      !String(form.correo || "").trim()
+    ) {
+      setFormError("Debes indicar el correo manual.");
+      return;
+    }
+
+    if (esNuevo && !form.contrasena) {
+      setFormError(
+        "La contraseña es obligatoria para un usuario nuevo."
+      );
+      return;
+    }
+
+    const proyectos = [...new Set(
+      form.proyectos.map(Number).filter(Boolean)
+    )];
+
+    const principalId = Number(form.proyecto_principal_id) || null;
+
+    if (principalId && !proyectos.includes(principalId)) {
+      proyectos.unshift(principalId);
+    }
+
+    const payload = {
+      nombre: form.nombre.trim(),
+      apellido: form.apellido.trim(),
+      usuario_base: form.usuario_base.trim(),
+      correo: form.correo.trim(),
+      contrasena: form.contrasena,
+      rol_id: Number(form.rol_id),
+      permisos_chat: form.permisos_chat,
+      proyecto_principal_id: principalId,
+      proyectos,
+      correo_gestionado_proyecto:
+        Number(form.correo_gestionado_proyecto),
     };
 
-  // ===============================
-  //   CREAR / EDITAR PROYECTOS
-  // ===============================
-  const abrirCrearProyecto = () => {
-    setModoProyecto("crear");
-    setProyectoEditando(null);
-    setFormProyecto({
-      nombre: "",
-      descripcion: "",
-    });
-    setMostrarModalProyecto(true);
-  };
-
-  const abrirEditarProyecto = (proyecto) => {
-    setModoProyecto("editar");
-    setProyectoEditando(proyecto);
-    setFormProyecto({
-      nombre: proyecto.nombre || "",
-      descripcion: proyecto.descripcion || "",
-    });
-    setMostrarModalProyecto(true);
-  };
-
-  const handleChangeProyecto = (e) => {
-    setFormProyecto({
-      ...formProyecto,
-      [e.target.name]: e.target.value,
-    });
-  };
-
-  const guardarProyecto = async (e) => {
-    e.preventDefault();
+    setSaving(true);
 
     try {
-      let url = "/api/proyecto";
-      let method = "POST";
-
-      if (modoProyecto === "editar" && proyectoEditando) {
-        url = `/api/proyecto/${proyectoEditando.id}`;
-        method = "PUT";
-      }
+      const url = esNuevo
+        ? "/api/usuarios/admin"
+        : `/api/usuarios/admin/${editando.id}`;
 
       const res = await fetch(url, {
-        method,
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(formProyecto),
+        method: esNuevo ? "POST" : "PUT",
+        credentials: "include",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
       });
 
+      const data = await res.json().catch(() => ({}));
+
       if (!res.ok) {
-        alert("Error al guardar proyecto");
+        setFormError(
+          data.error || "No se pudo guardar el usuario."
+        );
         return;
       }
 
-      // Recargar lista de proyectos
-      await cargarProyectos();
+      alert(
+        esNuevo
+          ? "Usuario creado correctamente"
+          : "Usuario actualizado correctamente"
+      );
 
-      // Si es creación, podrías marcarlo automáticamente como asignado al usuario:
-      // if (modoProyecto === "crear") {
-      //   const nuevo = await res.json();
-      //   setForm(prev => ({
-      //     ...prev,
-      //     proyectos: [...prev.proyectos, nuevo.id]
-      //   }));
-      // }
-
-      setMostrarModalProyecto(false);
-
-    } catch (err) {
-      console.error("❌ Error guardando proyecto:", err);
-      alert("Error al guardar proyecto");
+      await obtenerUsuarios();
+      setEditando(null);
+    } catch (error) {
+      console.error("Error guardando usuario:", error);
+      setFormError("Error de comunicación al guardar el usuario.");
+    } finally {
+      setSaving(false);
     }
   };
-
-  const eliminarProyecto = async (proyectoId) => {
-    const confirmar = window.confirm(
-        "¿Seguro que deseas eliminar este proyecto? Esta acción no se puede deshacer."
-    );
-    if (!confirmar) return;
-
-    try {
-        const res = await fetch(`/api/proyecto/${proyectoId}`, {
-        method: "DELETE",
-        });
-
-        if (!res.ok) {
-        alert("Error al eliminar proyecto");
-        return;
-        }
-
-        // 1) Sacarlo de la lista de proyectos disponibles
-        setProyectosDisponibles((prev) => prev.filter((p) => p.id !== proyectoId));
-
-        // 2) Si estaba asignado al usuario, quitarlo también del form
-        setForm((prev) => ({
-        ...prev,
-        proyectos: prev.proyectos.filter((id) => id !== proyectoId),
-        }));
-
-    } catch (err) {
-        console.error("❌ Error eliminando proyecto:", err);
-        alert("Error al eliminar proyecto");
-    }
-  };
-
 
   return (
-    <>
-      <form className="grid grid-cols-2 gap-6" onSubmit={guardarUsuario}>
-
-        {/* ====================== */}
-        {/*  NOMBRE Y APELLIDO    */}
-        {/* ====================== */}
-        <div>
-          <label className="font-semibold">Nombre</label>
-          <input
-            className="form-control"
-            name="nombre"
-            value={form.nombre}
-            onChange={handleChange}
-          />
+    <form
+      className="qc-user-admin-form"
+      onSubmit={guardarUsuario}
+    >
+      <section className="qc-user-admin-section">
+        <div className="qc-user-admin-section-head">
+          <span className="qc-user-admin-section-icon">
+            <i className="bi bi-person-vcard" />
+          </span>
+          <div>
+            <h4>Identidad del usuario</h4>
+            <p>
+              Datos personales, usuario base y correo de acceso.
+            </p>
+          </div>
         </div>
 
-        <div>
-          <label className="font-semibold">Apellido</label>
-          <input
-            className="form-control"
-            name="apellido"
-            value={form.apellido}
-            onChange={handleChange}
-          />
-        </div>
-
-        {/* ====================== */}
-        {/*    USUARIO / EMAIL    */}
-        {/* ====================== */}
-        <div>
-          <label className="font-semibold">Usuario (Correo)</label>
-          <input
-            className="form-control"
-            name="usuario"
-            value={form.usuario}
-            onChange={handleChange}
-          />
-        </div>
-
-        {/* ====================== */}
-        {/*     CONTRASEÑA        */}
-        {/* ====================== */}
-        <div>
-          <label className="font-semibold">
-            Contraseña <span className="text-gray-500">(opcional)</span>
+        <div className="qc-user-admin-grid">
+          <label className="qc-user-admin-field">
+            <span>Nombre</span>
+            <input
+              name="nombre"
+              value={form.nombre}
+              onChange={handleChange}
+              placeholder="Nombre"
+            />
           </label>
-          <input
-            className="form-control"
-            type="password"
-            name="contrasena"
-            value={form.contrasena}
-            onChange={handleChange}
-          />
+
+          <label className="qc-user-admin-field">
+            <span>Apellido</span>
+            <input
+              name="apellido"
+              value={form.apellido}
+              onChange={handleChange}
+              placeholder="Apellido"
+            />
+          </label>
+
+          <label className="qc-user-admin-field">
+            <span>Usuario base</span>
+            <input
+              name="usuario_base"
+              value={form.usuario_base}
+              onChange={handleChange}
+              placeholder="ej. juangonzales"
+            />
+            <small>
+              Sin @ ni dominio. Se usa para generar el correo.
+            </small>
+          </label>
+
+          <label className="qc-user-admin-field">
+            <span>
+              Contraseña {esNuevo ? "" : "(opcional)"}
+            </span>
+            <input
+              type="password"
+              name="contrasena"
+              value={form.contrasena}
+              onChange={handleChange}
+              placeholder={
+                esNuevo
+                  ? "Contraseña inicial"
+                  : "Dejar vacío para conservarla"
+              }
+            />
+          </label>
         </div>
+      </section>
 
-        {/* ====================== */}
-        {/*         ROLES         */}
-        {/* ====================== */}
-        <div className="col-span-2">
-          <h4 className="font-semibold mb-3">Rol del usuario</h4>
-
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            {roles.map((r) => (
-              <div
-                key={r.id}
-                className={`card shadow-sm cursor-pointer border qc-edit-role-card ${form.rol_id === r.id ? "border-primary" : ""}`}
-                onClick={() => setForm({ ...form, rol_id: r.id })}
-              >
-                <div className="card-body text-center qc-edit-role-body">
-                  <div className="qc-edit-role-icon">
-                      {/* ICONOS SEGÚN ROL */}
-                      {r.id === 1 && (
-                        <svg xmlns="http://www.w3.org/2000/svg"
-                          width="20" height="20" fill="none"
-                          stroke="currentColor" strokeWidth="2"
-                          viewBox="0 0 22 22" strokeLinecap="round" strokeLinejoin="round">
-                          <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-                        </svg>
-                      )}
-                      {r.id === 2 && (
-                        <svg xmlns="http://www.w3.org/2000/svg"
-                          width="20" height="20" fill="none"
-                          stroke="currentColor" strokeWidth="2"
-                          viewBox="0 0 18 18" strokeLinecap="round" strokeLinejoin="round">
-                          <path d="M14.7 6.3a5 5 0 0 1-6.4 6.4L3 18l-2-2 5.3-5.3a5 5 0 0 1 6.4-6.4l2 2z" />
-                        </svg>
-                      )}
-                      {r.id === 3 && (
-                        <svg xmlns="http://www.w3.org/2000/svg"
-                          width="20" height="20" fill="none"
-                          stroke="currentColor" strokeWidth="2"
-                          viewBox="0 0 24 24" strokeLinecap="round" strokeLinejoin="round">
-                          <circle cx="12" cy="12" r="10" />
-                          <path d="M9.1 9a3 3 0 0 1 5.8 1c0 2-3 2-3 4" />
-                          <circle cx="12" cy="17" r="1" />
-                        </svg>
-                      )}
-                      {r.id === 4 && (
-                        <svg xmlns="http://www.w3.org/2000/svg"
-                          width="20" height="20" fill="none"
-                          stroke="currentColor" strokeWidth="2"
-                          viewBox="0 0 24 24" strokeLinecap="round" strokeLinejoin="round">
-                          <path d="M20 21v-2a4 4 0 0 0-3-3.87M7 21v-2a4 4 0 0 1 3-3.87" />
-                          <circle cx="12" cy="7" r="4" />
-                        </svg>
-                      )}
-                  </div>
-
-                  <h5 className="mb-1 text-capitalize">{r.nombre}</h5>
-                  <p className="small text-muted">{r.descripcion || "Rol del sistema"}</p>
-                </div>
-              </div>
-            ))}
+      <section className="qc-user-admin-section">
+        <div className="qc-user-admin-section-head">
+          <span className="qc-user-admin-section-icon">
+            <i className="bi bi-envelope-at" />
+          </span>
+          <div>
+            <h4>Correo y proyecto principal</h4>
+            <p>
+              El proyecto principal controla el dominio de las cuentas gestionadas.
+            </p>
           </div>
         </div>
 
-        {/* ====================== */}
-        {/*      PERMISOS CHAT     */}
-        {/* ====================== */}
-        <div className="col-span-2">
-          <h4 className="font-semibold mb-3">Permisos del Chat</h4>
+        <div className="qc-user-account-mode">
+          <button
+            type="button"
+            className={
+              form.correo_gestionado_proyecto
+                ? "is-active"
+                : ""
+            }
+            onClick={() => toggleGestionado(true)}
+          >
+            <i className="bi bi-link-45deg" />
+            <strong>Gestionado por proyecto</strong>
+            <small>
+              El backend genera usuario_base@dominio.
+            </small>
+          </button>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {PERMISOS_UI.map((p) => (
-              <div key={p.campo} className="card border-0 shadow-sm qc-edit-permission-card">
-                <div className="card-body qc-edit-permission-body">
-                  <div className="qc-edit-permission-row">
-                    <div className="qc-edit-permission-icon" aria-hidden="true">
-                      {p.icono}
-                    </div>
-
-                    <div className="qc-edit-permission-copy">
-                      <h5>{p.titulo}</h5>
-                      <p className="text-muted small">{p.descripcion}</p>
-                    </div>
-
-                    <div className="qc-edit-permission-switch">
-                      <div className="form-check form-switch">
-                        <input
-                          className="form-check-input"
-                          type="checkbox"
-                          checked={form.permisos_chat[p.campo] === 1}
-                          onChange={(e) =>
-                            handlePermiso(p.campo, e.target.checked ? 1 : 0)
-                          }
-                        />
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
+          <button
+            type="button"
+            className={
+              !form.correo_gestionado_proyecto
+                ? "is-active"
+                : ""
+            }
+            onClick={() => toggleGestionado(false)}
+          >
+            <i className="bi bi-pencil-square" />
+            <strong>Correo manual / especial</strong>
+            <small>
+              No cambia automáticamente con el proyecto.
+            </small>
+          </button>
         </div>
 
-        {/* ====================== */}
-        {/*     PROYECTOS          */}
-        {/* ====================== */}
-        <div className="col-span-2 mt-3">
-          <h4 className="font-semibold mb-3">Proyectos asignados</h4>
+        <div className="qc-user-admin-grid">
+          <label className="qc-user-admin-field">
+            <span>Proyecto principal</span>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-
-            {/* BOTÓN CREAR PROYECTO */}
-            {tienePermiso("crear_proyectos") && (
-              <div
-                className="card shadow-sm border flex flex-col justify-center items-center py-6 cursor-pointer
-                            hover:bg-gray-50 transition qc-edit-project-create"
-                onClick={abrirCrearProyecto}
-              >
-                <svg xmlns="http://www.w3.org/2000/svg"
-                  width="20" height="20" fill="none"
-                  stroke="currentColor" strokeWidth="2"
-                  viewBox="0 0 24 24"
-                  strokeLinecap="round" strokeLinejoin="round"
-                  className="text-gray-600"
-                >
-                  <line x1="12" y1="5" x2="12" y2="19" />
-                  <line x1="5" y1="12" x2="19" y2="12" />
-                </svg>
-
-                <p className="small text-muted">
-                  Crear un nuevo Proyecto
-                </p>
-              </div>
-            )}
-
-
-            {/* LISTA DE PROYECTOS */}
-            {proyectosDisponibles.map((p) => (
-            <div
-                key={p.id}
-                className="card shadow-sm border relative cursor-pointer group qc-edit-project-card"
-                onClick={() => handleCheckboxProyecto(p.id)}
+            <select
+              value={form.proyecto_principal_id}
+              onChange={(e) => handlePrincipal(e.target.value)}
             >
-                <div className="card-body qc-edit-project-body">
+              <option value="">
+                Sin proyecto principal
+              </option>
 
-                {/* IZQUIERDA: icono carpeta + textos */}
-                <div className="qc-edit-project-main">
-                    <div className="qc-edit-project-icon" aria-hidden="true">
-                    <svg xmlns="http://www.w3.org/2000/svg"
-                        width="20" height="20" fill="none"
-                        stroke="currentColor" strokeWidth="2"
-                        viewBox="0 0 24 24"
-                        strokeLinecap="round" strokeLinejoin="round"
-                    >
-                        <path d="M3 7h5l2 3h11v8a2 2 0 0 1-2 2H3z" />
-                        <path d="M3 7V5a2 2 0 0 1 2-2h4l2 2h9a2 2 0 0 1 2 2v3H3z" />
-                    </svg>
-                    </div>
-
-                    <div className="qc-edit-project-copy">
-                    <h6 className="fw-bold">{p.nombre}</h6>
-                    <p className="small text-muted">{p.descripcion}</p>
-                    </div>
-                </div>
-
-                    {/* DERECHA: checkbox*/}
-                    <div className="qc-edit-project-check">
-                        {/* checkbox asignación */}
-                        <input
-                        type="checkbox"
-                        className="form-check-input"
-                        checked={form.proyectos.includes(p.id)}
-                        onChange={() => handleCheckboxProyecto(p.id)}
-                        onClick={(e) => e.stopPropagation()}
-                        />
-
-
-                    </div>
-                </div>
-
-                {/* botón eliminar proyecto */}
-                {tienePermiso("eliminar_proyectos") && (
-                <button
-                    type="button"
-                    onClick={(e) => {
-                    e.stopPropagation();
-                    eliminarProyecto(p.id);
-                    }}
-                    className="absolute top-15 right-78
-                            text-gray-300 hover:text-red-500
-                            bg-transparent hover:bg-transparent
-                            focus:bg-transparent active:bg-transparent
-                            border-0 shadow-none p-0
-                            text-xs transition-colors"
+              {proyectosDisponibles.map((project) => (
+                <option
+                  key={project.id}
+                  value={project.id}
+                  disabled={
+                    esNuevo &&
+                    project.estado !== "activo"
+                  }
                 >
-                    <svg
-                        xmlns="http://www.w3.org/2000/svg"
-                        width="14"
-                        height="14"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        >
-                        <polyline points="3 6 5 6 21 6" />
-                        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" />
-                        <line x1="10" y1="11" x2="10" y2="17" />
-                        <line x1="14" y1="11" x2="14" y2="17" />
-                    </svg>
+                  {project.nombre}
+                  {project.estado !== "activo"
+                    ? " (Inactivo)"
+                    : ""}
+                </option>
+              ))}
+            </select>
+          </label>
 
-                </button>
-                )}
-
-                {/* botón editar arriba a la derecha (como ya lo tenías) */}
-                {tienePermiso("editar_proyectos") && (
-                <button
-                    type="button"
-                    onClick={(e) => {
-                    e.stopPropagation();
-                    abrirEditarProyecto(p);
-                    }}
-                    className="absolute top-2 right-2
-                            opacity-70 group-hover:opacity-100
-                            text-gray-300 hover:text-gray-600
-                            bg-transparent hover:bg-transparent
-                            focus:bg-transparent active:bg-transparent
-                            border-0 shadow-none p-0
-                            transition-colors"
-                >
-                    <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    width="18"
-                    height="18"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    >
-                    <path d="M12 20h9" />
-                    <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z" />
-                    </svg>
-                </button>
-                )}
+          <div className="qc-user-admin-field">
+            <span>Dominio del proyecto</span>
+            <div className="qc-user-readonly">
+              <i className="bi bi-globe2" />
+              {proyectoPrincipal?.dominio ||
+                "Sin dominio"}
             </div>
-            ))}
+          </div>
 
+          {form.correo_gestionado_proyecto ? (
+            <div className="qc-user-admin-field qc-user-admin-span-2">
+              <span>Correo resultante</span>
+              <div className="qc-user-email-preview">
+                <i className="bi bi-envelope-check" />
+                <strong>
+                  {correoResultante ||
+                    "Selecciona un proyecto con dominio"}
+                </strong>
+              </div>
+            </div>
+          ) : (
+            <label className="qc-user-admin-field qc-user-admin-span-2">
+              <span>Correo manual</span>
+              <input
+                type="email"
+                name="correo"
+                value={form.correo}
+                onChange={handleChange}
+                placeholder="usuario@dominio.com"
+              />
+              <small>
+                Esta cuenta queda excluida de cambios automáticos de dominio.
+              </small>
+            </label>
+          )}
+        </div>
+      </section>
+
+      <section className="qc-user-admin-section">
+        <div className="qc-user-admin-section-head">
+          <span className="qc-user-admin-section-icon">
+            <i className="bi bi-folder2-open" />
+          </span>
+          <div>
+            <h4>Proyectos asignados</h4>
+            <p>
+              El principal siempre está incluido. Los demás son membresías secundarias.
+            </p>
           </div>
         </div>
 
-        {/* ====================== */}
-        {/*   SEGURIDAD MFA ADMIN */}
-        {/* ====================== */}
-        {editando?.id && tienePermiso("gestionar_mfa") && (
-          <div className="col-span-2 qc-mfa-admin-card">
+        {loadingProjects ? (
+          <div className="qc-user-admin-loading">
+            Cargando proyectos...
+          </div>
+        ) : (
+          <div className="qc-user-project-grid">
+            {proyectosDisponibles.map((project) => {
+              const id = Number(project.id);
+              const isPrincipal =
+                id === Number(form.proyecto_principal_id);
+              const selected =
+                form.proyectos.includes(id);
+
+              return (
+                <button
+                  type="button"
+                  key={project.id}
+                  className={[
+                    "qc-user-project-option",
+                    selected ? "is-selected" : "",
+                    isPrincipal ? "is-principal" : "",
+                  ].join(" ")}
+                  onClick={() =>
+                    handleCheckboxProyecto(id)
+                  }
+                >
+                  <span className="qc-user-project-check">
+                    <i
+                      className={
+                        selected
+                          ? "bi bi-check-lg"
+                          : "bi bi-folder"
+                      }
+                    />
+                  </span>
+
+                  <span className="qc-user-project-copy">
+                    <strong>{project.nombre}</strong>
+                    <small>
+                      {project.dominio ||
+                        "Proyecto sin dominio"}
+                    </small>
+                  </span>
+
+                  {isPrincipal && (
+                    <span className="qc-user-principal-badge">
+                      <i className="bi bi-lock-fill" />
+                      Principal
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        )}
+
+        <div className="qc-user-project-summary">
+          <span>
+            <strong>{form.proyectos.length}</strong>
+            {" "}proyectos asignados
+          </span>
+
+          <span>
+            <strong>{proyectosSecundarios.length}</strong>
+            {" "}secundarios
+          </span>
+        </div>
+      </section>
+
+      <section className="qc-user-admin-section">
+        <div className="qc-user-admin-section-head">
+          <span className="qc-user-admin-section-icon">
+            <i className="bi bi-person-gear" />
+          </span>
+          <div>
+            <h4>Rol del usuario</h4>
+            <p>Define el nivel general de acceso.</p>
+          </div>
+        </div>
+
+        <div className="qc-user-role-grid">
+          {roles.map((role) => {
+            const selected =
+              Number(form.rol_id) === Number(role.id);
+
+            return (
+              <button
+                type="button"
+                key={role.id}
+                className={
+                  selected ? "is-selected" : ""
+                }
+                onClick={() =>
+                  setForm((prev) => ({
+                    ...prev,
+                    rol_id: Number(role.id),
+                  }))
+                }
+              >
+                <i
+                  className={
+                    Number(role.id) === 1
+                      ? "bi bi-shield-check"
+                      : Number(role.id) === 2
+                      ? "bi bi-tools"
+                      : Number(role.id) === 3
+                      ? "bi bi-question-circle"
+                      : "bi bi-person"
+                  }
+                />
+
+                <strong>{role.nombre}</strong>
+                <small>
+                  {role.descripcion ||
+                    "Rol del sistema"}
+                </small>
+              </button>
+            );
+          })}
+        </div>
+      </section>
+
+      <section className="qc-user-admin-section">
+        <div className="qc-user-admin-section-head">
+          <span className="qc-user-admin-section-icon">
+            <i className="bi bi-chat-square-text" />
+          </span>
+          <div>
+            <h4>Permisos del chat</h4>
+            <p>
+              Capacidades específicas dentro de las conversaciones.
+            </p>
+          </div>
+        </div>
+
+        <div className="qc-user-permission-grid">
+          {PERMISOS_UI.map((permission) => {
+            const enabled =
+              Number(
+                form.permisos_chat[permission.campo]
+              ) === 1;
+
+            return (
+              <label
+                className="qc-user-permission-option"
+                key={permission.campo}
+              >
+                <span className="qc-user-permission-icon">
+                  <i className={permission.icono} />
+                </span>
+
+                <span>
+                  <strong>{permission.titulo}</strong>
+                  <small>
+                    {permission.descripcion}
+                  </small>
+                </span>
+
+                <input
+                  type="checkbox"
+                  checked={enabled}
+                  onChange={(e) =>
+                    handlePermiso(
+                      permission.campo,
+                      e.target.checked
+                    )
+                  }
+                />
+              </label>
+            );
+          })}
+        </div>
+      </section>
+
+      {editando?.id &&
+        tienePermiso("gestionar_mfa") && (
+          <section className="qc-mfa-admin-card">
             <div className="qc-mfa-admin-head">
               <div className="qc-mfa-admin-icon">
-                <i className="bi bi-shield-lock" aria-hidden="true" />
+                <i className="bi bi-shield-lock" />
               </div>
+
               <div>
                 <h4>Seguridad MFA</h4>
-                <p>Estado de autenticación en dos pasos y herramientas de recuperación administrativa.</p>
+                <p>
+                  Estado de autenticación en dos pasos y herramientas de recuperación administrativa.
+                </p>
               </div>
+
               <button
                 type="button"
                 className="qc-mfa-admin-refresh"
@@ -646,202 +884,149 @@ export default function FormEditarUsuario({ editando, setEditando, obtenerUsuari
                 disabled={mfaAdminLoading}
                 title="Actualizar estado MFA"
               >
-                <i className={`bi bi-arrow-clockwise ${mfaAdminLoading ? "qc-spin" : ""}`} />
+                <i
+                  className={`bi bi-arrow-clockwise ${
+                    mfaAdminLoading
+                      ? "qc-spin"
+                      : ""
+                  }`}
+                />
               </button>
             </div>
 
-            {mfaAdminError && <div className="qc-mfa-admin-error">{mfaAdminError}</div>}
+            {mfaAdminError && (
+              <div className="qc-mfa-admin-error">
+                {mfaAdminError}
+              </div>
+            )}
 
-            {mfaAdminLoading && !mfaAdminStatus ? (
-              <div className="qc-mfa-admin-loading">Consultando seguridad...</div>
+            {mfaAdminLoading &&
+            !mfaAdminStatus ? (
+              <div className="qc-mfa-admin-loading">
+                Consultando seguridad...
+              </div>
             ) : mfaAdminStatus ? (
               <>
                 <div className="qc-mfa-admin-stats">
-                  <div><span>Authenticator</span><strong>{mfaAdminStatus.totp_enabled ? "Activo" : "No configurado"}</strong></div>
-                  <div><span>Correo MFA</span><strong>{mfaAdminStatus.email_enabled ? (mfaAdminStatus.masked_email || "Activo") : "No configurado"}</strong></div>
-                  <div><span>Dispositivos</span><strong>{mfaAdminStatus.trusted_devices || 0}</strong></div>
-                  <div><span>Códigos recuperación</span><strong>{mfaAdminStatus.recovery_codes_available || 0}</strong></div>
-                </div>
-
-                {Array.isArray(mfaAdminStatus.audit) && mfaAdminStatus.audit.length > 0 && (
-                  <div className="qc-mfa-admin-audit">
-                    <h5>Actividad de seguridad reciente</h5>
-                    <div className="qc-mfa-admin-audit-list">
-                      {mfaAdminStatus.audit.slice(0, 6).map((item) => (
-                        <div key={item.id} className="qc-mfa-admin-audit-row">
-                          <span className={`qc-mfa-audit-dot ${item.resultado === "ok" ? "ok" : "fail"}`} />
-                          <div>
-                            <strong>{item.evento}</strong>
-                            <small>{item.metodo || "sistema"} · {item.created_at ? new Date(item.created_at).toLocaleString("es-PE") : ""}</small>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
+                  <div>
+                    <span>Authenticator</span>
+                    <strong>
+                      {mfaAdminStatus.totp_enabled
+                        ? "Activo"
+                        : "No configurado"}
+                    </strong>
                   </div>
-                )}
+
+                  <div>
+                    <span>Correo MFA</span>
+                    <strong>
+                      {mfaAdminStatus.email_enabled
+                        ? mfaAdminStatus.masked_email ||
+                          "Activo"
+                        : "No configurado"}
+                    </strong>
+                  </div>
+
+                  <div>
+                    <span>Dispositivos</span>
+                    <strong>
+                      {mfaAdminStatus.trusted_devices ||
+                        0}
+                    </strong>
+                  </div>
+
+                  <div>
+                    <span>Códigos recuperación</span>
+                    <strong>
+                      {mfaAdminStatus
+                        .recovery_codes_available || 0}
+                    </strong>
+                  </div>
+                </div>
 
                 <div className="qc-mfa-admin-danger">
                   <div>
-                    <strong>Restablecer autenticación MFA</strong>
-                    <p>Revoca Authenticator, correo MFA, dispositivos y códigos de recuperación. La cuenta deberá configurar seguridad nuevamente en su próximo login.</p>
+                    <strong>
+                      Restablecer autenticación MFA
+                    </strong>
+                    <p>
+                      Revoca los métodos MFA y dispositivos confiables. No modifica contraseña ni mensajes.
+                    </p>
                   </div>
+
                   <button
                     type="button"
                     onClick={restablecerMfaAdmin}
                     disabled={mfaResetLoading}
                   >
                     <i className="bi bi-arrow-counterclockwise" />
-                    {mfaResetLoading ? "Restableciendo..." : "Restablecer MFA"}
+                    {mfaResetLoading
+                      ? "Restableciendo..."
+                      : "Restablecer MFA"}
                   </button>
                 </div>
               </>
             ) : null}
-          </div>
+          </section>
         )}
 
-        {/* BOTONES DE ACCIÓN */}
-        <div className="col-span-2 flex justify-end gap-3 mt-5">
-          <button
-            type="button"
-            onClick={() => setEditando(null)}
-            className="btn btn-secondary px-4"
-          >
-            Cancelar
-          </button>
-
-          <button
-            type="submit"
-            className="btn btn-primary px-4"
-          >
-            Guardar
-          </button>
-        </div>
-      </form>
-
-      {/* ====================== */}
-      {/*    MODAL PROYECTO      */}
-      {/* ====================== */}
-      {mostrarModalProyecto && (
-        <div className="modal d-block" tabIndex="-1" style={{ backgroundColor: "rgba(0,0,0,0.5)" }}>
-          <div className="modal-dialog">
-            <form className="modal-content" onSubmit={guardarProyecto}>
-              <div className="modal-header">
-                <h5 className="modal-title">
-                  {modoProyecto === "crear" ? "Crear Proyecto" : "Editar Proyecto"}
-                </h5>
-                <button
-                  type="button"
-                  className="btn-close"
-                  onClick={() => setMostrarModalProyecto(false)}
-                />
-              </div>
-
-              <div className="modal-body">
-                <div className="mb-3">
-                  <label className="form-label">Nombre del proyecto</label>
-                  <input
-                    type="text"
-                    name="nombre"
-                    className="form-control"
-                    value={formProyecto.nombre}
-                    onChange={handleChangeProyecto}
-                    required
-                  />
-                </div>
-
-                <div className="mb-3">
-                  <label className="form-label">Descripción</label>
-                  <textarea
-                    name="descripcion"
-                    className="form-control"
-                    rows="3"
-                    value={formProyecto.descripcion}
-                    onChange={handleChangeProyecto}
-                  />
-                </div>
-              </div>
-
-              <div className="modal-footer">
-                <button
-                  type="button"
-                  className="btn btn-secondary"
-                  onClick={() => setMostrarModalProyecto(false)}
-                >
-                  Cancelar
-                </button>
-                <button type="submit" className="btn btn-primary">
-                  {modoProyecto === "crear" ? "Crear" : "Guardar cambios"}
-                </button>
-              </div>
-            </form>
-          </div>
+      {formError && (
+        <div className="qc-user-admin-error">
+          <i className="bi bi-exclamation-triangle" />
+          {formError}
         </div>
       )}
-    </>
+
+      <div className="qc-user-admin-actions">
+        <button
+          type="button"
+          className="btn btn-secondary px-4"
+          onClick={() => setEditando(null)}
+          disabled={saving}
+        >
+          Cancelar
+        </button>
+
+        <button
+          type="submit"
+          className="btn btn-primary px-4"
+          disabled={saving}
+        >
+          <i className="bi bi-check2-circle me-2" />
+          {saving
+            ? "Guardando..."
+            : esNuevo
+            ? "Crear usuario"
+            : "Guardar cambios"}
+        </button>
+      </div>
+    </form>
   );
 }
 
-// Puedes dejar PERMISOS_UI fuera del componente si quieres.
 const PERMISOS_UI = [
   {
     campo: "crear_grupos",
     titulo: "Crear grupos",
     descripcion: "Permite crear nuevos grupos",
-    icono: (
-      <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24"
-        viewBox="0 0 24 24" fill="none" stroke="currentColor"
-        strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
-        className="feather feather-users">
-        <path d="M17 21v-2a4 4 0 0 0-3-3.87" />
-        <path d="M7 21v-2a4 4 0 0 1 3-3.87" />
-        <circle cx="12" cy="7" r="4" />
-      </svg>
-    ),
+    icono: "bi bi-people",
   },
   {
     campo: "editar_mensajes",
     titulo: "Editar mensajes",
     descripcion: "Permite editar mensajes enviados",
-    icono: (
-      <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24"
-        viewBox="0 0 24 24" fill="none" stroke="currentColor"
-        strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
-        className="feather feather-edit">
-        <path d="M11 4H4a2 2 0 0 0-2 2v14l4-4h9a2 2 0 0 0 2-2v-1" />
-        <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L14 13l-4 1 1-4 7.5-7.5z" />
-      </svg>
-    )
+    icono: "bi bi-pencil-square",
   },
   {
     campo: "enviar_audios",
     titulo: "Grabar audios",
-    descripcion: "Permite usar el micrófono del panel para grabar notas de voz",
-    icono: (
-      <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24"
-        viewBox="0 0 24 24" fill="none" stroke="currentColor"
-        strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
-        className="feather feather-mic">
-        <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
-        <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
-        <line x1="12" y1="19" x2="12" y2="23" />
-        <line x1="8" y1="23" x2="16" y2="23" />
-      </svg>
-    )
+    descripcion: "Permite grabar notas de voz",
+    icono: "bi bi-mic",
   },
   {
     campo: "eliminar_mensajes",
     titulo: "Eliminar mensajes",
     descripcion: "Permite borrar mensajes enviados",
-    icono: (
-      <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24"
-        viewBox="0 0 24 24" fill="none" stroke="currentColor"
-        strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
-        className="feather feather-trash">
-        <polyline points="3 6 5 6 21 6" />
-        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" />
-        <path d="M10 11v6" />
-        <path d="M14 11v6" />
-      </svg>
-    )
-  }
+    icono: "bi bi-trash",
+  },
 ];

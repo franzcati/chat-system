@@ -108,9 +108,27 @@ export default function TablaUsuarios({ usuarios, setEditando, eliminarUsuario }
   const [registrosPorPagina, setRegistrosPorPagina] = useState(10);
 
   useEffect(() => {
-    fetch("/api/proyecto")
-      .then((res) => res.json())
-      .then((data) => setProyectosActivos(Array.isArray(data) ? data : []))
+    fetch("/api/usuarios/admin/projects", {
+      credentials: "include",
+    })
+      .then(async (res) => {
+        const data = await res.json().catch(() => ({}));
+
+        if (!res.ok) {
+          throw new Error(
+            data.error || "No se pudieron cargar los proyectos"
+          );
+        }
+
+        return data;
+      })
+      .then((data) =>
+        setProyectosActivos(
+          Array.isArray(data?.proyectos)
+            ? data.proyectos
+            : []
+        )
+      )
       .catch((err) => {
         console.error("❌ Error cargando proyectos:", err);
         setProyectosActivos([]);
@@ -142,8 +160,11 @@ export default function TablaUsuarios({ usuarios, setEditando, eliminarUsuario }
         [
           user?.nombre,
           user?.apellido,
+          user?.usuario_base,
           user?.usuario,
           user?.correo,
+          user?.proyecto_principal_nombre,
+          user?.proyecto_principal_dominio,
           roleLabel,
           projectNames.join(" "),
         ].join(" ")
