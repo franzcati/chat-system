@@ -1546,4 +1546,619 @@ router.patch(
   }
 );
 
+
+// ============================================================
+// MIEMBROS DEL PROYECTO
+//
+// IMPORTANTE:
+// Estas rutas modifican únicamente usuario_proyecto.
+// NO cambian proyecto_principal_id.
+// NO cambian el correo del usuario.
+// ============================================================
+
+async function obtenerProyectoAdministrativo(proyectoId, instanciaId, connection = pool) {
+  const [rows] = await connection.query(
+    `SELECT id, nombre, dominio, instancia_id, estado
+     FROM proyecto
+     WHERE id = ?
+       AND instancia_id = ?
+     LIMIT 1`,
+    [proyectoId, instanciaId]
+  );
+
+  return rows[0] || null;
+}
+
+
+// ------------------------------------------------------------
+// LISTAR MIEMBROS ACTUALES
+// GET /api/proyecto/admin/:id/members
+// ------------------------------------------------------------
+router.get(
+  "/:id/members",
+  requireAnyPermission([
+    "crear_proyectos",
+    "editar_proyectos",
+    "eliminar_proyectos",
+  ]),
+  async (req, res) => {
+    try {
+      const proyectoId = Number.parseInt(req.params.id, 10);
+
+      if (!Number.isInteger(proyectoId) || proyectoId <= 0) {
+        return res.status(400).json({
+          code: "INVALID_PROJECT_ID",
+          error: "El identificador del proyecto no es válido",
+        });
+      }
+
+      const instanciaId = Number(req.instanciaActual.id);
+
+      const proyecto = await obtenerProyectoAdministrativo(
+        proyectoId,
+        instanciaId
+      );
+
+      if (!proyecto) {
+        return res.status(404).json({
+          code: "PROJECT_NOT_FOUND",
+          error: "Proyecto no encontrado en esta instancia",
+        });
+      }
+
+      const search = String(req.query?.search || "").trim();
+      const requestedPage = Math.max(
+        1,
+        Number.parseInt(req.query?.page, 10) || 1
+      );
+      const limit = Math.min(
+        100,
+        Math.max(1, Number.parseInt(req.query?.limit, 10) || 20)
+      );
+
+      const where = [
+        "up.proyecto_id = ?",
+        "u.instancia_id = ?",
+        "u.estado = 'aprobado'",
+      ];
+
+      const params = [proyectoId, instanciaId];
+
+      if (search) {
+        const like = `%${search}%`;
+
+        where.push(
+          `(u.nombre LIKE ?
+            OR u.apellido LIKE ?
+            OR u.correo LIKE ?)`
+        );
+
+        params.push(like, like, like);
+      }
+
+      const whereSql = where.join(" AND ");
+
+      const [countRows] = await pool.query(
+        `SELECT COUNT(*) AS total
+         FROM usuario_proyecto up
+         INNER JOIN usuario u
+           ON u.id = up.usuario_id
+         WHERE ${whereSql}`,
+        params
+      );
+
+      const total = Number(countRows[0]?.total || 0);
+      const totalPages = Math.max(1, Math.ceil(total / limit));
+      const page = Math.min(requestedPage, totalPages);
+      const offset = (page - 1) * limit;
+
+      const [rows] = await pool.query(
+        `SELECT
+           u.id,
+           u.nombre,
+           u.apellido,
+           u.correo,
+           u.estado,
+           u.rol_id,
+           u.url_imagen,
+           u.background,
+           u.proyecto_principal_id,
+           u.correo_gestionado_proyecto,
+           CASE
+             WHEN u.proyecto_principal_id = ? THEN 1
+             ELSE 0
+           END AS es_proyecto_principal
+         FROM usuario_proyecto up
+         INNER JOIN usuario u
+           ON u.id = up.usuario_id
+         WHERE ${whereSql}
+         ORDER BY u.nombre ASC, u.apellido ASC, u.id ASC
+         LIMIT ${limit}
+         OFFSET ${offset}`,
+        [proyectoId, ...params]
+      );
+
+      return res.json({
+        proyecto: {
+          id: Number(proyecto.id),
+          nombre: proyecto.nombre,
+        },
+        miembros: rows.map((row) => ({
+          ...row,
+          id: Number(row.id),
+          rol_id:
+            row.rol_id === null
+              ? null
+              : Number(row.rol_id),
+          proyecto_principal_id:
+            row.proyecto_principal_id === null
+              ? null
+              : Number(row.proyecto_principal_id),
+          correo_gestionado_proyecto:
+            Number(row.correo_gestionado_proyecto || 0),
+          es_proyecto_principal:
+            Number(row.es_proyecto_principal || 0) === 1,
+        })),
+        pagination: {
+          page,
+          limit,
+          total,
+          total_pages: totalPages,
+          from: total === 0 ? 0 : offset + 1,
+          to: Math.min(offset + rows.length, total),
+        },
+      });
+    } catch (error) {
+      console.error("Error cargando miembros del proyecto:", error);
+
+      return res.status(500).json({
+        code: "PROJECT_MEMBERS_LIST_ERROR",
+        error: "No se pudieron cargar los miembros del proyecto",
+      });
+    }
+  }
+);
+
+
+// ------------------------------------------------------------
+// USUARIOS DISPONIBLES PARA AGREGAR
+// GET /api/proyecto/admin/:id/member-candidates
+// ------------------------------------------------------------
+router.get(
+  "/:id/member-candidates",
+  requireAnyPermission([
+    "crear_proyectos",
+    "editar_proyectos",
+  ]),
+  async (req, res) => {
+    try {
+      const proyectoId = Number.parseInt(req.params.id, 10);
+
+      if (!Number.isInteger(proyectoId) || proyectoId <= 0) {
+        return res.status(400).json({
+          code: "INVALID_PROJECT_ID",
+          error: "El identificador del proyecto no es válido",
+        });
+      }
+
+      const instanciaId = Number(req.instanciaActual.id);
+
+      const proyecto = await obtenerProyectoAdministrativo(
+        proyectoId,
+        instanciaId
+      );
+
+      if (!proyecto) {
+        return res.status(404).json({
+          code: "PROJECT_NOT_FOUND",
+          error: "Proyecto no encontrado en esta instancia",
+        });
+      }
+
+      const search = String(req.query?.search || "").trim();
+      const requestedPage = Math.max(
+        1,
+        Number.parseInt(req.query?.page, 10) || 1
+      );
+      const limit = Math.min(
+        100,
+        Math.max(1, Number.parseInt(req.query?.limit, 10) || 20)
+      );
+
+      const where = [
+        "u.instancia_id = ?",
+        "u.estado = 'aprobado'",
+        `NOT EXISTS (
+           SELECT 1
+           FROM usuario_proyecto up
+           WHERE up.usuario_id = u.id
+             AND up.proyecto_id = ?
+         )`,
+      ];
+
+      const params = [instanciaId, proyectoId];
+
+      if (search) {
+        const like = `%${search}%`;
+
+        where.push(
+          `(u.nombre LIKE ?
+            OR u.apellido LIKE ?
+            OR u.correo LIKE ?)`
+        );
+
+        params.push(like, like, like);
+      }
+
+      const whereSql = where.join(" AND ");
+
+      const [countRows] = await pool.query(
+        `SELECT COUNT(*) AS total
+         FROM usuario u
+         WHERE ${whereSql}`,
+        params
+      );
+
+      const total = Number(countRows[0]?.total || 0);
+      const totalPages = Math.max(1, Math.ceil(total / limit));
+      const page = Math.min(requestedPage, totalPages);
+      const offset = (page - 1) * limit;
+
+      const [rows] = await pool.query(
+        `SELECT
+           u.id,
+           u.nombre,
+           u.apellido,
+           u.correo,
+           u.estado,
+           u.rol_id,
+           u.url_imagen,
+           u.background,
+           u.proyecto_principal_id,
+           u.correo_gestionado_proyecto
+         FROM usuario u
+         WHERE ${whereSql}
+         ORDER BY u.nombre ASC, u.apellido ASC, u.id ASC
+         LIMIT ${limit}
+         OFFSET ${offset}`,
+        params
+      );
+
+      return res.json({
+        proyecto: {
+          id: Number(proyecto.id),
+          nombre: proyecto.nombre,
+        },
+        usuarios: rows.map((row) => ({
+          ...row,
+          id: Number(row.id),
+          rol_id:
+            row.rol_id === null
+              ? null
+              : Number(row.rol_id),
+          proyecto_principal_id:
+            row.proyecto_principal_id === null
+              ? null
+              : Number(row.proyecto_principal_id),
+          correo_gestionado_proyecto:
+            Number(row.correo_gestionado_proyecto || 0),
+        })),
+        pagination: {
+          page,
+          limit,
+          total,
+          total_pages: totalPages,
+          from: total === 0 ? 0 : offset + 1,
+          to: Math.min(offset + rows.length, total),
+        },
+      });
+    } catch (error) {
+      console.error("Error cargando candidatos de proyecto:", error);
+
+      return res.status(500).json({
+        code: "PROJECT_MEMBER_CANDIDATES_ERROR",
+        error: "No se pudieron cargar los usuarios disponibles",
+      });
+    }
+  }
+);
+
+
+// ------------------------------------------------------------
+// AGREGAR UNO O VARIOS MIEMBROS
+// POST /api/proyecto/admin/:id/members
+//
+// Body:
+// {
+//   "usuario_ids": [25, 31]
+// }
+// ------------------------------------------------------------
+router.post(
+  "/:id/members",
+  requirePermission("editar_proyectos"),
+  async (req, res) => {
+    const proyectoId = Number.parseInt(req.params.id, 10);
+
+    if (!Number.isInteger(proyectoId) || proyectoId <= 0) {
+      return res.status(400).json({
+        code: "INVALID_PROJECT_ID",
+        error: "El identificador del proyecto no es válido",
+      });
+    }
+
+    const rawIds = Array.isArray(req.body?.usuario_ids)
+      ? req.body.usuario_ids
+      : [];
+
+    const usuarioIds = [
+      ...new Set(
+        rawIds
+          .map((id) => Number.parseInt(id, 10))
+          .filter((id) => Number.isInteger(id) && id > 0)
+      ),
+    ];
+
+    if (usuarioIds.length === 0) {
+      return res.status(400).json({
+        code: "PROJECT_MEMBER_IDS_REQUIRED",
+        error: "Debes indicar al menos un usuario válido",
+      });
+    }
+
+    if (usuarioIds.length > 200) {
+      return res.status(400).json({
+        code: "PROJECT_MEMBER_LIMIT_EXCEEDED",
+        error: "No puedes agregar más de 200 usuarios por operación",
+      });
+    }
+
+    const instanciaId = Number(req.instanciaActual.id);
+    const connection = await pool.getConnection();
+
+    try {
+      await connection.beginTransaction();
+
+      const proyecto = await obtenerProyectoAdministrativo(
+        proyectoId,
+        instanciaId,
+        connection
+      );
+
+      if (!proyecto) {
+        await connection.rollback();
+
+        return res.status(404).json({
+          code: "PROJECT_NOT_FOUND",
+          error: "Proyecto no encontrado en esta instancia",
+        });
+      }
+
+      const placeholders = usuarioIds.map(() => "?").join(",");
+
+      const [userRows] = await connection.query(
+        `SELECT
+           id,
+           nombre,
+           apellido,
+           correo,
+           instancia_id,
+           estado
+         FROM usuario
+         WHERE id IN (${placeholders})
+           AND instancia_id = ?
+           AND estado = 'aprobado'
+         FOR UPDATE`,
+        [...usuarioIds, instanciaId]
+      );
+
+      const validIds = userRows.map((row) => Number(row.id));
+      const invalidIds = usuarioIds.filter(
+        (id) => !validIds.includes(id)
+      );
+
+      if (invalidIds.length > 0) {
+        await connection.rollback();
+
+        return res.status(400).json({
+          code: "PROJECT_MEMBER_INVALID_USERS",
+          error:
+            "Uno o más usuarios no existen, no están aprobados o pertenecen a otra instancia",
+          usuario_ids_invalidos: invalidIds,
+        });
+      }
+
+      let agregados = 0;
+      let existentes = 0;
+
+      for (const usuarioId of validIds) {
+        const [existingRows] = await connection.query(
+          `SELECT 1
+           FROM usuario_proyecto
+           WHERE usuario_id = ?
+             AND proyecto_id = ?
+           LIMIT 1`,
+          [usuarioId, proyectoId]
+        );
+
+        if (existingRows.length) {
+          existentes += 1;
+          continue;
+        }
+
+        await connection.query(
+          `INSERT INTO usuario_proyecto (
+             usuario_id,
+             proyecto_id
+           )
+           VALUES (?, ?)`,
+          [usuarioId, proyectoId]
+        );
+
+        agregados += 1;
+      }
+
+      await connection.commit();
+
+      return res.status(201).json({
+        mensaje: "Miembros procesados correctamente",
+        proyecto_id: proyectoId,
+        agregados,
+        ya_existentes: existentes,
+        total_solicitados: usuarioIds.length,
+      });
+    } catch (error) {
+      try {
+        await connection.rollback();
+      } catch (_) {}
+
+      console.error("Error agregando miembros al proyecto:", error);
+
+      return res.status(500).json({
+        code: "PROJECT_MEMBERS_ADD_ERROR",
+        error: "No se pudieron agregar los miembros al proyecto",
+      });
+    } finally {
+      connection.release();
+    }
+  }
+);
+
+
+// ------------------------------------------------------------
+// QUITAR UN MIEMBRO SECUNDARIO
+// DELETE /api/proyecto/admin/:id/members/:usuarioId
+//
+// Si este proyecto es su proyecto principal, NO se permite quitar.
+// ------------------------------------------------------------
+router.delete(
+  "/:id/members/:usuarioId",
+  requirePermission("editar_proyectos"),
+  async (req, res) => {
+    const proyectoId = Number.parseInt(req.params.id, 10);
+    const usuarioId = Number.parseInt(req.params.usuarioId, 10);
+
+    if (
+      !Number.isInteger(proyectoId) ||
+      proyectoId <= 0 ||
+      !Number.isInteger(usuarioId) ||
+      usuarioId <= 0
+    ) {
+      return res.status(400).json({
+        code: "INVALID_PROJECT_MEMBER_ID",
+        error: "El proyecto o el usuario indicado no es válido",
+      });
+    }
+
+    const instanciaId = Number(req.instanciaActual.id);
+    const connection = await pool.getConnection();
+
+    try {
+      await connection.beginTransaction();
+
+      const proyecto = await obtenerProyectoAdministrativo(
+        proyectoId,
+        instanciaId,
+        connection
+      );
+
+      if (!proyecto) {
+        await connection.rollback();
+
+        return res.status(404).json({
+          code: "PROJECT_NOT_FOUND",
+          error: "Proyecto no encontrado en esta instancia",
+        });
+      }
+
+      const [userRows] = await connection.query(
+        `SELECT
+           id,
+           nombre,
+           apellido,
+           correo,
+           instancia_id,
+           estado,
+           proyecto_principal_id
+         FROM usuario
+         WHERE id = ?
+           AND instancia_id = ?
+         LIMIT 1
+         FOR UPDATE`,
+        [usuarioId, instanciaId]
+      );
+
+      if (!userRows.length) {
+        await connection.rollback();
+
+        return res.status(404).json({
+          code: "PROJECT_MEMBER_USER_NOT_FOUND",
+          error: "Usuario no encontrado en esta instancia",
+        });
+      }
+
+      const usuario = userRows[0];
+
+      if (
+        usuario.proyecto_principal_id !== null &&
+        Number(usuario.proyecto_principal_id) === proyectoId
+      ) {
+        await connection.rollback();
+
+        return res.status(409).json({
+          code: "PRIMARY_PROJECT_MEMBER_CANNOT_REMOVE",
+          error:
+            "No se puede quitar al usuario porque este proyecto es su proyecto principal. Cambia primero su proyecto principal desde Gestión de Usuarios.",
+        });
+      }
+
+      const [relationRows] = await connection.query(
+        `SELECT 1
+         FROM usuario_proyecto
+         WHERE usuario_id = ?
+           AND proyecto_id = ?
+         LIMIT 1`,
+        [usuarioId, proyectoId]
+      );
+
+      if (!relationRows.length) {
+        await connection.rollback();
+
+        return res.status(404).json({
+          code: "PROJECT_MEMBER_NOT_FOUND",
+          error: "El usuario no pertenece a este proyecto",
+        });
+      }
+
+      await connection.query(
+        `DELETE FROM usuario_proyecto
+         WHERE usuario_id = ?
+           AND proyecto_id = ?`,
+        [usuarioId, proyectoId]
+      );
+
+      await connection.commit();
+
+      return res.json({
+        mensaje: "Miembro quitado correctamente",
+        proyecto_id: proyectoId,
+        usuario_id: usuarioId,
+      });
+    } catch (error) {
+      try {
+        await connection.rollback();
+      } catch (_) {}
+
+      console.error("Error quitando miembro del proyecto:", error);
+
+      return res.status(500).json({
+        code: "PROJECT_MEMBER_REMOVE_ERROR",
+        error: "No se pudo quitar el miembro del proyecto",
+      });
+    } finally {
+      connection.release();
+    }
+  }
+);
+
+
 module.exports = router;
