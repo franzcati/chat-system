@@ -371,6 +371,147 @@ router.get("/", async (req, res) => {
 });
 
 // ============================================================
+// CANDIDATOS PARA MIEMBROS INICIALES
+// GET /api/proyecto/admin/member-candidates
+//
+// Se usa al crear un proyecto, cuando todavía no existe ID.
+// Solo devuelve usuarios aprobados de la instancia actual.
+// ============================================================
+router.get(
+  "/member-candidates",
+  requirePermission("crear_proyectos"),
+  async (req, res) => {
+    try {
+      const instanciaId = Number(req.instanciaActual.id);
+
+      const search = String(req.query?.search || "").trim();
+
+      const requestedPage = Math.max(
+        1,
+        Number.parseInt(req.query?.page, 10) || 1
+      );
+
+      const limit = Math.min(
+        200,
+        Math.max(
+          1,
+          Number.parseInt(req.query?.limit, 10) || 50
+        )
+      );
+
+      const where = [
+        "u.instancia_id = ?",
+        "u.estado = 'aprobado'",
+      ];
+
+      const params = [instanciaId];
+
+      if (search) {
+        const like = `%${search}%`;
+
+        where.push(
+          `(u.nombre LIKE ?
+            OR u.apellido LIKE ?
+            OR u.correo LIKE ?)`
+        );
+
+        params.push(like, like, like);
+      }
+
+      const whereSql = where.join(" AND ");
+
+      const [countRows] = await pool.query(
+        `SELECT COUNT(*) AS total
+         FROM usuario u
+         WHERE ${whereSql}`,
+        params
+      );
+
+      const total = Number(countRows[0]?.total || 0);
+      const totalPages = Math.max(
+        1,
+        Math.ceil(total / limit)
+      );
+
+      const page = Math.min(
+        requestedPage,
+        totalPages
+      );
+
+      const offset = (page - 1) * limit;
+
+      const [rows] = await pool.query(
+        `SELECT
+           u.id,
+           u.nombre,
+           u.apellido,
+           u.correo,
+           u.rol_id,
+           u.url_imagen,
+           u.background,
+           u.proyecto_principal_id,
+           u.correo_gestionado_proyecto
+         FROM usuario u
+         WHERE ${whereSql}
+         ORDER BY
+           u.nombre ASC,
+           u.apellido ASC,
+           u.id ASC
+         LIMIT ${limit}
+         OFFSET ${offset}`,
+        params
+      );
+
+      return res.json({
+        usuarios: rows.map((row) => ({
+          ...row,
+          id: Number(row.id),
+          rol_id:
+            row.rol_id === null
+              ? null
+              : Number(row.rol_id),
+          proyecto_principal_id:
+            row.proyecto_principal_id === null
+              ? null
+              : Number(row.proyecto_principal_id),
+          correo_gestionado_proyecto:
+            Number(
+              row.correo_gestionado_proyecto || 0
+            ),
+        })),
+        pagination: {
+          page,
+          limit,
+          total,
+          total_pages: totalPages,
+          from:
+            total === 0
+              ? 0
+              : offset + 1,
+          to: Math.min(
+            offset + rows.length,
+            total
+          ),
+        },
+      });
+    } catch (error) {
+      console.error(
+        "Error cargando candidatos iniciales:",
+        error
+      );
+
+      return res.status(500).json({
+        code:
+          "PROJECT_INITIAL_MEMBER_CANDIDATES_ERROR",
+        error:
+          "No se pudieron cargar los usuarios disponibles",
+      });
+    }
+  }
+);
+
+
+// ============================================================
 // DETALLE DE UN PROYECTO
 // GET /api/proyecto/admin/:id
 // ============================================================
