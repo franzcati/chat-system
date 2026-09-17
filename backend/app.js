@@ -69,6 +69,12 @@ app.use("/api/proyecto", require("./routes/proyecto"));
 //AGREGAR USUARIOS NUEVOS
 app.use("/api/addusers", require("./routes/addusers"));
 
+// ADMINISTRACION SEGURA DE USUARIOS
+app.use(
+  "/api/usuarios/admin",
+  require("./routes/usuariosAdmin")
+);
+
 //FUNCION PARA USUARIOS
 app.use("/api/usuarios", require("./routes/usuarios"));
 
