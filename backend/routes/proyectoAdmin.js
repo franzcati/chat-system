@@ -1127,80 +1127,168 @@ router.post(
 // ============================================================
 // CREAR PROYECTO
 // POST /api/proyecto/admin
+//
+// Puede recibir opcionalmente:
+// {
+//   ...
+//   "usuario_ids": [25, 31]
+// }
+//
+// Los miembros iniciales solo crean relaciones usuario_proyecto.
+// NO cambian proyecto_principal_id.
+// NO cambian el correo.
 // ============================================================
 router.post("/", requirePermission("crear_proyectos"), async (req, res) => {
-  try {
-    const instanciaId = Number(req.instanciaActual.id);
+  const instanciaId = Number(req.instanciaActual.id);
 
-    const nombre = normalizarNombreProyecto(req.body?.nombre);
-    const descripcion = String(req.body?.descripcion || "").trim() || null;
-    const tipo = String(req.body?.tipo || "operativo").trim().toLowerCase();
-    const estado = String(req.body?.estado || "activo").trim().toLowerCase();
-    const color = normalizarColorProyecto(req.body?.color);
-    const icono = normalizarIconoProyecto(req.body?.icono);
+  const nombre = normalizarNombreProyecto(req.body?.nombre);
+  const descripcion =
+    String(req.body?.descripcion || "").trim() || null;
+  const tipo =
+    String(req.body?.tipo || "operativo").trim().toLowerCase();
+  const estado =
+    String(req.body?.estado || "activo").trim().toLowerCase();
+  const color = normalizarColorProyecto(req.body?.color);
+  const icono = normalizarIconoProyecto(req.body?.icono);
 
-    if (!nombre || nombre.length > 100) {
-      return res.status(400).json({
-        code: "INVALID_PROJECT_NAME",
-        error: "El nombre del proyecto es obligatorio y debe tener máximo 100 caracteres",
-      });
-    }
+  const rawUsuarioIds = Array.isArray(req.body?.usuario_ids)
+    ? req.body.usuario_ids
+    : [];
 
-    if (!TIPOS_VALIDOS.has(tipo)) {
-      return res.status(400).json({
-        code: "INVALID_PROJECT_TYPE",
-        error: "El tipo de proyecto indicado no es válido",
-      });
-    }
+  const usuarioIds = [
+    ...new Set(
+      rawUsuarioIds
+        .map((id) => Number.parseInt(id, 10))
+        .filter((id) => Number.isInteger(id) && id > 0)
+    ),
+  ];
 
-    if (!["activo", "inactivo"].includes(estado)) {
-      return res.status(400).json({
-        code: "INVALID_PROJECT_STATUS",
-        error: "El estado indicado no es válido",
-      });
-    }
+  if (!nombre || nombre.length > 100) {
+    return res.status(400).json({
+      code: "INVALID_PROJECT_NAME",
+      error:
+        "El nombre del proyecto es obligatorio y debe tener máximo 100 caracteres",
+    });
+  }
 
-    if (!color) {
-      return res.status(400).json({
-        code: "INVALID_PROJECT_COLOR",
-        error: "El color debe tener formato hexadecimal, por ejemplo #168cff",
-      });
-    }
+  if (!TIPOS_VALIDOS.has(tipo)) {
+    return res.status(400).json({
+      code: "INVALID_PROJECT_TYPE",
+      error: "El tipo de proyecto indicado no es válido",
+    });
+  }
 
-    if (!icono) {
-      return res.status(400).json({
-        code: "INVALID_PROJECT_ICON",
-        error: "El icono indicado no es válido",
-      });
-    }
+  if (!["activo", "inactivo"].includes(estado)) {
+    return res.status(400).json({
+      code: "INVALID_PROJECT_STATUS",
+      error: "El estado indicado no es válido",
+    });
+  }
 
-    const dominioResult = normalizarDominioProyecto(req.body?.dominio);
+  if (!color) {
+    return res.status(400).json({
+      code: "INVALID_PROJECT_COLOR",
+      error:
+        "El color debe tener formato hexadecimal, por ejemplo #168cff",
+    });
+  }
 
-    if (!dominioResult.ok) {
-      return res.status(400).json({
-        code: "INVALID_PROJECT_DOMAIN",
-        error: dominioResult.error,
-      });
-    }
+  if (!icono) {
+    return res.status(400).json({
+      code: "INVALID_PROJECT_ICON",
+      error: "El icono indicado no es válido",
+    });
+  }
 
-    const dominio = dominioResult.value;
+  if (usuarioIds.length > 200) {
+    return res.status(400).json({
+      code: "PROJECT_MEMBER_LIMIT_EXCEEDED",
+      error:
+        "No puedes agregar más de 200 usuarios iniciales por operación",
+    });
+  }
 
-    // Permitimos compartir dominio entre proyectos de la MISMA instancia,
-    // porque existen escenarios SALE / RETEN que pueden usar el mismo dominio.
-    // No permitimos reutilizarlo accidentalmente entre portales distintos.
-    const conflictoOtraInstancia = await buscarDominioEnOtraInstancia(
+  const dominioResult =
+    normalizarDominioProyecto(req.body?.dominio);
+
+  if (!dominioResult.ok) {
+    return res.status(400).json({
+      code: "INVALID_PROJECT_DOMAIN",
+      error: dominioResult.error,
+    });
+  }
+
+  const dominio = dominioResult.value;
+
+  // Un dominio puede compartirse entre proyectos de la misma
+  // instancia, pero no entre portales diferentes.
+  const conflictoOtraInstancia =
+    await buscarDominioEnOtraInstancia(
       dominio,
       instanciaId
     );
 
-    if (conflictoOtraInstancia) {
-      return res.status(409).json({
-        code: "PROJECT_DOMAIN_OTHER_INSTANCE",
-        error: "Ese dominio ya está siendo utilizado por un proyecto de otra instancia",
-      });
+  if (conflictoOtraInstancia) {
+    return res.status(409).json({
+      code: "PROJECT_DOMAIN_OTHER_INSTANCE",
+      error:
+        "Ese dominio ya está siendo utilizado por un proyecto de otra instancia",
+    });
+  }
+
+  const connection = await pool.getConnection();
+  let transactionStarted = false;
+
+  try {
+    await connection.beginTransaction();
+    transactionStarted = true;
+
+    // --------------------------------------------------------
+    // Validar miembros iniciales ANTES de crear el proyecto.
+    // Solo usuarios aprobados de la misma instancia.
+    // --------------------------------------------------------
+    if (usuarioIds.length > 0) {
+      const placeholders =
+        usuarioIds.map(() => "?").join(",");
+
+      const [userRows] = await connection.query(
+        `SELECT
+           id,
+           instancia_id,
+           estado
+         FROM usuario
+         WHERE id IN (${placeholders})
+           AND instancia_id = ?
+           AND estado = 'aprobado'
+         FOR UPDATE`,
+        [...usuarioIds, instanciaId]
+      );
+
+      const validIds =
+        userRows.map((row) => Number(row.id));
+
+      const invalidIds =
+        usuarioIds.filter(
+          (id) => !validIds.includes(id)
+        );
+
+      if (invalidIds.length > 0) {
+        await connection.rollback();
+        transactionStarted = false;
+
+        return res.status(400).json({
+          code: "PROJECT_MEMBER_INVALID_USERS",
+          error:
+            "Uno o más miembros iniciales no existen, no están aprobados o pertenecen a otra instancia",
+          usuario_ids_invalidos: invalidIds,
+        });
+      }
     }
 
-    const [result] = await pool.query(
+    // --------------------------------------------------------
+    // Crear proyecto.
+    // --------------------------------------------------------
+    const [result] = await connection.query(
       `INSERT INTO proyecto (
          nombre,
          dominio,
@@ -1224,32 +1312,79 @@ router.post("/", requirePermission("crear_proyectos"), async (req, res) => {
       ]
     );
 
+    const proyectoId = Number(result.insertId);
+
+    // --------------------------------------------------------
+    // Crear relaciones de miembros iniciales.
+    // No se toca proyecto_principal_id ni correo.
+    // --------------------------------------------------------
+    if (usuarioIds.length > 0) {
+      const valuesSql =
+        usuarioIds.map(() => "(?, ?)").join(", ");
+
+      const values = [];
+
+      for (const usuarioId of usuarioIds) {
+        values.push(usuarioId, proyectoId);
+      }
+
+      await connection.query(
+        `INSERT INTO usuario_proyecto (
+           usuario_id,
+           proyecto_id
+         )
+         VALUES ${valuesSql}`,
+        values
+      );
+    }
+
+    await connection.commit();
+    transactionStarted = false;
+
     return res.status(201).json({
       mensaje: "Proyecto creado correctamente",
       proyecto: {
-        id: Number(result.insertId),
+        id: proyectoId,
         nombre,
         dominio,
         instancia_id: instanciaId,
-        instancia_codigo: req.instanciaActual.codigo,
-        instancia_nombre: req.instanciaActual.nombre,
+        instancia_codigo:
+          req.instanciaActual.codigo,
+        instancia_nombre:
+          req.instanciaActual.nombre,
         descripcion,
         tipo,
         color,
         icono,
         estado,
-        usuarios: 0,
+        usuarios: usuarioIds.length,
+      },
+      miembros_iniciales: {
+        total: usuarioIds.length,
+        usuario_ids: usuarioIds,
       },
     });
   } catch (error) {
-    console.error("Error creando proyecto:", error);
+    if (transactionStarted) {
+      try {
+        await connection.rollback();
+      } catch (_) {}
+    }
+
+    console.error(
+      "Error creando proyecto:",
+      error
+    );
 
     return res.status(500).json({
       code: "PROJECT_CREATE_ERROR",
       error: "No se pudo crear el proyecto",
     });
+  } finally {
+    connection.release();
   }
 });
+
 
 // ============================================================
 // EDITAR PROYECTO
