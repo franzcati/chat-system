@@ -412,10 +412,26 @@ router.get(
         where.push(
           `(u.nombre LIKE ?
             OR u.apellido LIKE ?
-            OR u.correo LIKE ?)`
+            OR u.correo LIKE ?
+            OR CONCAT_WS(
+                 ' ',
+                 TRIM(u.nombre),
+                 TRIM(u.apellido)
+               ) LIKE ?
+            OR CONCAT_WS(
+                 ' ',
+                 TRIM(u.apellido),
+                 TRIM(u.nombre)
+               ) LIKE ?)`
         );
 
-        params.push(like, like, like);
+        params.push(
+          like,
+          like,
+          like,
+          like,
+          like
+        );
       }
 
       const whereSql = where.join(" AND ");
@@ -1906,10 +1922,26 @@ router.get(
         where.push(
           `(u.nombre LIKE ?
             OR u.apellido LIKE ?
-            OR u.correo LIKE ?)`
+            OR u.correo LIKE ?
+            OR CONCAT_WS(
+                 ' ',
+                 TRIM(u.nombre),
+                 TRIM(u.apellido)
+               ) LIKE ?
+            OR CONCAT_WS(
+                 ' ',
+                 TRIM(u.apellido),
+                 TRIM(u.nombre)
+               ) LIKE ?)`
         );
 
-        params.push(like, like, like);
+        params.push(
+          like,
+          like,
+          like,
+          like,
+          like
+        );
       }
 
       const whereSql = where.join(" AND ");
@@ -2060,10 +2092,26 @@ router.get(
         where.push(
           `(u.nombre LIKE ?
             OR u.apellido LIKE ?
-            OR u.correo LIKE ?)`
+            OR u.correo LIKE ?
+            OR CONCAT_WS(
+                 ' ',
+                 TRIM(u.nombre),
+                 TRIM(u.apellido)
+               ) LIKE ?
+            OR CONCAT_WS(
+                 ' ',
+                 TRIM(u.apellido),
+                 TRIM(u.nombre)
+               ) LIKE ?)`
         );
 
-        params.push(like, like, like);
+        params.push(
+          like,
+          like,
+          like,
+          like,
+          like
+        );
       }
 
       const whereSql = where.join(" AND ");

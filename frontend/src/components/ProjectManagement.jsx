@@ -18,6 +18,7 @@ import {
   X,
 } from "feather-icons-react";
 import "../css/ProjectManagement.css";
+import ProjectMembersManager from "./ProjectMembersManager";
 
 const EMPTY_FORM = {
   nombre: "",
@@ -88,6 +89,7 @@ const ProjectManagement = () => {
   const [creating, setCreating] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
   const [formError, setFormError] = useState("");
+  const [createMemberIds, setCreateMemberIds] = useState([]);
 
   const [selectedProject, setSelectedProject] = useState(null);
   const [detailLoading, setDetailLoading] = useState(false);
@@ -211,6 +213,7 @@ const ProjectManagement = () => {
   const openCreate = () => {
     setForm(EMPTY_FORM);
     setFormError("");
+    setCreateMemberIds([]);
     setShowCreate(true);
   };
 
@@ -250,11 +253,13 @@ const ProjectManagement = () => {
           color: form.color,
           icono: form.icono,
           estado: form.estado,
+          usuario_ids: createMemberIds,
         }),
       });
 
       setShowCreate(false);
       setForm(EMPTY_FORM);
+      setCreateMemberIds([]);
       setPage(1);
       refreshAll();
     } catch (err) {
@@ -959,6 +964,12 @@ const ProjectManagement = () => {
                     </select>
                   </label>
 
+                  <ProjectMembersManager
+                    mode="create"
+                    selectedIds={createMemberIds}
+                    onSelectedIdsChange={setCreateMemberIds}
+                  />
+
                   {formError && (
                     <div className="pm2-form-error">{formError}</div>
                   )}
@@ -1383,6 +1394,21 @@ const ProjectManagement = () => {
                           })}
                         </div>
                       </div>
+
+                      <ProjectMembersManager
+                        mode="edit"
+                        projectId={editingProject?.id}
+                        onCountChange={(count) => {
+                          setEditingProject((prev) =>
+                            prev
+                              ? {
+                                  ...prev,
+                                  usuarios: count,
+                                }
+                              : prev
+                          );
+                        }}
+                      />
 
                       {editError && (
                         <div className="pm2-form-error">
