@@ -10,6 +10,7 @@ import socket, { conectarUsuarioSocket, emitirActividadUsuario } from "../socket
 
 const ChatBox = lazy(() => import('./ChatBox'));
 const CreateChat = lazy(() => import('../components/CreateChat'));
+const ProjectManagement = lazy(() => import('../components/ProjectManagement'));
 const AddUsers = lazy(() => import("../components/AddUsers"));
 const EditUsers = lazy(() => import("../components/EditUsers"));
 
@@ -472,6 +473,14 @@ const Messenger = () => {
           estadosUsuarios={estadosUsuarios}
         />
       )}
+      {activeTab === "projects" && (
+        <div className="flex-1 wa-admin-stage">
+          <Suspense fallback={<LazyPanelFallback />}>
+            <ProjectManagement />
+          </Suspense>
+        </div>
+      )}
+
       {activeTab === "edit" && (
         <Suspense fallback={<LazyPanelFallback />}>
           <CreateChat proyectoId={usuario?.proyectoId} usuarioId={usuario?.id} />

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { UserPlus, Edit3, Users, MessageSquare, Sun, Moon, Settings } from "feather-icons-react";
+import { UserPlus, Edit3, Users, MessageSquare, Sun, Moon, Settings, Folder } from "feather-icons-react";
 import { logDev } from "../utils/logger";
 import SidebarProfilePanel from "../components/SidebarProfilePanel";
 import { getAvatarUrl } from "../utils/url";
@@ -114,15 +114,18 @@ const Sidebar = ({ usuario, active, setActive, onUsuarioUpdate, unreadTotal = 0,
   const canCrearUsuarios = usuario?.rol_permisos?.includes("crear_usuarios");
   const canEditarUsuarios = usuario?.rol_permisos?.includes("editar_usuarios");
   const canCrearProyectos = usuario?.rol_permisos?.includes("crear_proyectos");
+  const canGestionarProyectos = ["crear_proyectos", "editar_proyectos", "eliminar_proyectos"]
+    .some((permiso) => usuario?.rol_permisos?.includes(permiso));
 
   const unreadBadge = Number(unreadTotal) > 999 ? "999+" : Number(unreadTotal) || null;
 
   const icons = [
     { id: "chat", label: "Mensajes", icon: <MessageSquare />, badge: unreadBadge },
-    ...(canEditarUsuarios ? [{ id: "edit-user", label: "Usuarios", icon: <Users /> }] : []),
-    ...(canCrearUsuarios ? [{ id: "add-user", label: "Nuevo usuario", icon: <UserPlus /> }] : []),
-    ...(canCrearGrupo ? [{ id: "edit", label: "Proyectos", icon: <Edit3 /> }] : []),
-    { id: "theme", label: isDark ? "Modo claro" : "Modo oscuro", icon: isDark ? <Sun /> : <Moon /> },
+    ...(canEditarUsuarios ? [{ id: "edit-user", label: "Gestión de Usuarios", icon: <Users /> }] : []),
+    ...(canCrearUsuarios ? [{ id: "add-user", label: "Nuevo Usuario", icon: <UserPlus /> }] : []),
+    ...(canGestionarProyectos ? [{ id: "projects", label: "Proyectos", icon: <Folder /> }] : []),
+    ...(canCrearGrupo ? [{ id: "edit", label: "Crear Chat Grupal", icon: <Edit3 /> }] : []),
+    { id: "theme", label: isDark ? "Modo Claro" : "Modo Oscuro", icon: isDark ? <Sun /> : <Moon /> },
     { id: "settings", label: "Configuración", icon: <Settings /> },
   ];
 
