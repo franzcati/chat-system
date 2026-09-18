@@ -2,107 +2,110 @@ const express = require("express");
 const router = express.Router();
 const pool = require("../db");
 
-// Obtener todos los proyectos activos
+const {
+  requireAuth,
+} = require("../middleware/requireAuth");
+
+const {
+  resolveInstance,
+} = require("../middleware/resolveInstance");
+
+
+// ============================================================
+// RUTA LEGACY DE PROYECTOS
+//
+// Se conserva únicamente GET /api/proyecto porque Messenger
+// todavía lo utiliza para cargar proyectos.
+//
+// TODAS las operaciones administrativas deben usar:
+//
+// /api/proyecto/admin
+// ============================================================
+
+router.use(
+  requireAuth,
+  resolveInstance
+);
+
+
+// ============================================================
+// LISTAR PROYECTOS ACTIVOS DE LA INSTANCIA ACTUAL
+// GET /api/proyecto
+//
+// Mantiene el formato antiguo: devuelve directamente un array.
+// ============================================================
 router.get("/", async (req, res) => {
   try {
+    const instanciaId =
+      Number(req.instanciaActual.id);
+
     const [rows] = await pool.query(
-      "SELECT id, nombre, descripcion FROM proyecto WHERE estado = 'activo'"
-    );
-    res.json(rows);
-  } catch (err) {
-    console.error("Error cargando proyectos:", err);
-    res.status(500).json({ error: "Error interno del servidor" });
-  }
-});
-
-// Obtener proyectos asignados a un usuario
-router.get("/:usuarioId", async (req, res) => {
-  const usuarioId = req.params.usuarioId;
-
-  try {
-    const [rows] = await pool.query(
-      `SELECT p.id, p.nombre 
-       FROM proyecto p
-       INNER JOIN usuario_proyecto up ON up.proyecto_id = p.id
-       WHERE up.usuario_id = ?`,
-      [usuarioId]
+      `SELECT
+         id,
+         nombre,
+         descripcion
+       FROM proyecto
+       WHERE estado = 'activo'
+         AND instancia_id = ?
+       ORDER BY nombre ASC, id ASC`,
+      [instanciaId]
     );
 
-    res.json(rows);
-  } catch (err) {
-    console.error("Error obteniendo proyectos del usuario:", err);
-    res.status(500).json({ error: "Error interno del servidor" });
-  }
-});
-
-// CREAR PROYECTO
-router.post("/", async (req, res) => {
-  const { nombre, descripcion } = req.body;
-
-  if (!nombre) {
-    return res.status(400).json({ error: "El nombre es obligatorio" });
-  }
-
-  try {
-    const [result] = await pool.query(
-      `INSERT INTO proyecto (nombre, descripcion)
-       VALUES (?, ?)`,
-      [nombre, descripcion || null]
+    return res.json(rows);
+  } catch (error) {
+    console.error(
+      "Error cargando proyectos legacy:",
+      error
     );
 
-    res.json({
-      id: result.insertId,
-      nombre,
-      descripcion: descripcion || null,
+    return res.status(500).json({
+      code: "LEGACY_PROJECT_LIST_ERROR",
+      error:
+        "No se pudieron cargar los proyectos",
     });
-
-  } catch (err) {
-    console.error("❌ Error creando proyecto:", err);
-    res.status(500).json({ error: "Error interno del servidor" });
   }
 });
 
-// ACTUALIZAR PROYECTO
-router.put("/:id", async (req, res) => {
-  const { id } = req.params;
-  const { nombre, descripcion } = req.body;
 
-  if (!nombre) {
-    return res.status(400).json({ error: "El nombre es obligatorio" });
-  }
-
-  try {
-    await pool.query(
-      `UPDATE proyecto
-       SET nombre = ?, descripcion = ?
-       WHERE id = ?`,
-      [nombre, descripcion || null, id]
-    );
-
-    res.json({ mensaje: "Proyecto actualizado correctamente" });
-
-  } catch (err) {
-    console.error("❌ Error actualizando proyecto:", err);
-    res.status(500).json({ error: "Error interno del servidor" });
-  }
+// ============================================================
+// ENDPOINT ANTIGUO DE PROYECTOS POR USUARIO
+//
+// Ya no se utiliza desde frontend.
+// Se bloquea para evitar consultas no aisladas.
+// ============================================================
+router.get("/:usuarioId", (req, res) => {
+  return res.status(410).json({
+    code: "LEGACY_PROJECT_USER_ENDPOINT_DISABLED",
+    error:
+      "Este endpoint fue retirado. Utiliza las rutas administrativas actuales.",
+  });
 });
 
-// ELIMINAR / DESACTIVAR PROYECTO
-router.delete("/:id", async (req, res) => {
-  const { id } = req.params;
 
-  try {
+// ============================================================
+// ESCRITURAS LEGACY DESHABILITADAS
+//
+// No deben poder saltarse:
+// - instancia
+// - validación de dominio
+// - miembros
+// - auditoría
+// - permisos
+// - cambio seguro de correos
+// ============================================================
 
-    // Si quisieras borrar del todo:
-    await pool.query(`DELETE FROM proyecto WHERE id = ?`, [id]);
+const legacyWriteDisabled = (req, res) => {
+  return res.status(410).json({
+    code: "LEGACY_PROJECT_WRITE_DISABLED",
+    error:
+      "La administración antigua de proyectos está deshabilitada. Utiliza /api/proyecto/admin.",
+  });
+};
 
-    res.json({ mensaje: "Proyecto eliminado correctamente" });
-
-  } catch (err) {
-    console.error("❌ Error eliminando proyecto:", err);
-    res.status(500).json({ error: "Error interno del servidor" });
-  }
-});
+router.post("/", legacyWriteDisabled);
+router.put("/:id", legacyWriteDisabled);
+router.patch("/:id", legacyWriteDisabled);
+router.delete("/:id", legacyWriteDisabled);
 
 
 module.exports = router;
