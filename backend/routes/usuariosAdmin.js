@@ -1901,4 +1901,528 @@ router.delete(
 );
 
 
+
+// ============================================================
+// CREACION MASIVA SEGURA DE USUARIOS
+// POST /api/usuarios/admin/batch
+//
+// Todos los usuarios del lote comparten:
+// - proyecto principal
+// - proyectos secundarios
+// - rol
+// - permisos
+//
+// Cada correo se deriva en backend:
+// usuario_base@dominio_proyecto_principal
+//
+// Si uno falla, se revierte TODO el lote.
+// ============================================================
+router.post(
+  "/batch",
+  requirePermission("crear_usuarios"),
+  async (req, res) => {
+    const instanciaId =
+      Number(req.instanciaActual.id);
+
+    const usuarios =
+      Array.isArray(req.body?.usuarios)
+        ? req.body.usuarios
+        : [];
+
+    if (!usuarios.length) {
+      return res.status(400).json({
+        code: "BATCH_USERS_REQUIRED",
+        error:
+          "Debes agregar al menos un usuario",
+      });
+    }
+
+    if (usuarios.length > 100) {
+      return res.status(400).json({
+        code: "BATCH_USER_LIMIT_EXCEEDED",
+        error:
+          "Puedes crear como máximo 100 usuarios por lote",
+      });
+    }
+
+    const proyectoPrincipalId =
+      parsePositiveInt(
+        req.body?.proyecto_principal_id
+      );
+
+    if (!proyectoPrincipalId) {
+      return res.status(400).json({
+        code: "PRIMARY_PROJECT_REQUIRED",
+        error:
+          "Debes seleccionar un proyecto principal",
+      });
+    }
+
+    const rolId =
+      parsePositiveInt(req.body?.rol_id) || 4;
+
+    let projectIds =
+      normalizarProjectIds(
+        req.body?.proyectos
+      );
+
+    if (
+      !projectIds.includes(
+        proyectoPrincipalId
+      )
+    ) {
+      projectIds.unshift(
+        proyectoPrincipalId
+      );
+    }
+
+    if (projectIds.length > 200) {
+      return res.status(400).json({
+        code: "USER_PROJECT_LIMIT_EXCEEDED",
+        error:
+          "No puedes asignar más de 200 proyectos",
+      });
+    }
+
+    const normalizedUsers = [];
+
+    for (let index = 0; index < usuarios.length; index++) {
+      const raw = usuarios[index] || {};
+
+      const nombre =
+        String(raw.nombre || "").trim();
+
+      const apellido =
+        String(raw.apellido || "").trim();
+
+      const contrasena =
+        String(
+          raw.contrasena ??
+          raw.password ??
+          ""
+        );
+
+      const baseResult =
+        normalizarUsuarioBase(
+          raw.usuario_base ??
+          raw.usuario
+        );
+
+      if (!nombre || nombre.length > 100) {
+        return res.status(400).json({
+          code: "INVALID_BATCH_USER_NAME",
+          error:
+            `Fila ${index + 1}: el nombre es obligatorio`,
+          fila: index + 1,
+        });
+      }
+
+      if (!apellido || apellido.length > 100) {
+        return res.status(400).json({
+          code: "INVALID_BATCH_USER_LASTNAME",
+          error:
+            `Fila ${index + 1}: el apellido es obligatorio`,
+          fila: index + 1,
+        });
+      }
+
+      if (!baseResult.ok) {
+        return res.status(400).json({
+          code: "INVALID_BATCH_USER_BASE",
+          error:
+            `Fila ${index + 1}: ${baseResult.error}`,
+          fila: index + 1,
+        });
+      }
+
+      if (!contrasena) {
+        return res.status(400).json({
+          code: "BATCH_USER_PASSWORD_REQUIRED",
+          error:
+            `Fila ${index + 1}: la contraseña es obligatoria`,
+          fila: index + 1,
+        });
+      }
+
+      normalizedUsers.push({
+        nombre,
+        apellido,
+        usuario_base:
+          baseResult.value,
+        contrasena,
+      });
+    }
+
+    const duplicateBases = [];
+
+    const seenBases = new Set();
+
+    for (const user of normalizedUsers) {
+      if (
+        seenBases.has(user.usuario_base)
+      ) {
+        duplicateBases.push(
+          user.usuario_base
+        );
+      }
+
+      seenBases.add(
+        user.usuario_base
+      );
+    }
+
+    if (duplicateBases.length) {
+      return res.status(409).json({
+        code:
+          "BATCH_DUPLICATE_USER_BASE",
+        error:
+          `El lote contiene usuarios base duplicados: ${[
+            ...new Set(duplicateBases)
+          ].join(", ")}`,
+      });
+    }
+
+    const permisosChat =
+      normalizarPermisosChatAdmin(
+        req.body?.permisos_chat
+      );
+
+    const connection =
+      await pool.getConnection();
+
+    let transactionStarted = false;
+
+    try {
+      await connection.beginTransaction();
+      transactionStarted = true;
+
+      // ------------------------------------------
+      // Validar rol
+      // ------------------------------------------
+      const [roleRows] =
+        await connection.query(
+          `SELECT id
+           FROM roles
+           WHERE id = ?
+           LIMIT 1`,
+          [rolId]
+        );
+
+      if (!roleRows.length) {
+        await connection.rollback();
+        transactionStarted = false;
+
+        return res.status(400).json({
+          code: "INVALID_USER_ROLE",
+          error:
+            "El rol indicado no existe",
+        });
+      }
+
+      // ------------------------------------------
+      // Validar proyectos e instancia
+      // ------------------------------------------
+      const placeholders =
+        projectIds.map(() => "?").join(",");
+
+      const [projectRows] =
+        await connection.query(
+          `SELECT
+             id,
+             nombre,
+             dominio,
+             estado,
+             instancia_id
+           FROM proyecto
+           WHERE id IN (${placeholders})
+             AND instancia_id = ?
+           FOR UPDATE`,
+          [
+            ...projectIds,
+            instanciaId,
+          ]
+        );
+
+      const validProjectIds =
+        projectRows.map(
+          (project) =>
+            Number(project.id)
+        );
+
+      const invalidProjectIds =
+        projectIds.filter(
+          (id) =>
+            !validProjectIds.includes(id)
+        );
+
+      if (invalidProjectIds.length) {
+        await connection.rollback();
+        transactionStarted = false;
+
+        return res.status(400).json({
+          code:
+            "USER_PROJECTS_INVALID_INSTANCE",
+          error:
+            "Uno o más proyectos no pertenecen a esta instancia",
+          proyecto_ids_invalidos:
+            invalidProjectIds,
+        });
+      }
+
+      const proyectoPrincipal =
+        projectRows.find(
+          (project) =>
+            Number(project.id) ===
+            proyectoPrincipalId
+        );
+
+      if (!proyectoPrincipal) {
+        await connection.rollback();
+        transactionStarted = false;
+
+        return res.status(400).json({
+          code:
+            "PRIMARY_PROJECT_INVALID",
+          error:
+            "El proyecto principal no es válido",
+        });
+      }
+
+      const dominio =
+        normalizarDominioCorreo(
+          proyectoPrincipal.dominio
+        );
+
+      if (!dominio) {
+        await connection.rollback();
+        transactionStarted = false;
+
+        return res.status(400).json({
+          code:
+            "PRIMARY_PROJECT_DOMAIN_REQUIRED",
+          error:
+            "El proyecto principal no tiene dominio y no puede utilizarse para creación masiva gestionada",
+        });
+      }
+
+      // ------------------------------------------
+      // Correos finales del lote
+      // ------------------------------------------
+      const usersWithEmail =
+        normalizedUsers.map(
+          (user) => ({
+            ...user,
+            correo:
+              `${user.usuario_base}@${dominio}`,
+          })
+        );
+
+      const emails =
+        usersWithEmail.map(
+          (user) => user.correo
+        );
+
+      if (
+        new Set(emails).size !==
+        emails.length
+      ) {
+        await connection.rollback();
+        transactionStarted = false;
+
+        return res.status(409).json({
+          code:
+            "BATCH_DUPLICATE_EMAIL",
+          error:
+            "El lote genera correos duplicados",
+        });
+      }
+
+      // ------------------------------------------
+      // Conflictos con usuarios existentes
+      // ------------------------------------------
+      const emailPlaceholders =
+        emails.map(() => "?").join(",");
+
+      const [existingRows] =
+        await connection.query(
+          `SELECT
+             id,
+             correo
+           FROM usuario
+           WHERE correo IN (
+             ${emailPlaceholders}
+           )
+           FOR UPDATE`,
+          emails
+        );
+
+      if (existingRows.length) {
+        await connection.rollback();
+        transactionStarted = false;
+
+        return res.status(409).json({
+          code:
+            "BATCH_EMAIL_ALREADY_EXISTS",
+          error:
+            `El correo ${existingRows[0].correo} ya está registrado`,
+          conflictos:
+            existingRows.map(
+              (row) => ({
+                usuario_id:
+                  Number(row.id),
+                correo:
+                  row.correo,
+              })
+            ),
+        });
+      }
+
+      const createdUsers = [];
+
+      // ------------------------------------------
+      // Crear todos dentro de la misma transacción
+      // ------------------------------------------
+      for (const user of usersWithEmail) {
+        const randomColor =
+          USER_COLORS[
+            Math.floor(
+              Math.random() *
+                USER_COLORS.length
+            )
+          ];
+
+        const [insertResult] =
+          await connection.query(
+            `INSERT INTO usuario (
+               nombre,
+               apellido,
+               correo,
+               contrasena,
+               rol_id,
+               permisos_chat,
+               background,
+               estado,
+               usuario_base,
+               proyecto_principal_id,
+               instancia_id,
+               correo_gestionado_proyecto
+             )
+             VALUES (
+               ?, ?, ?, ?, ?, ?, ?, ?,
+               ?, ?, ?, ?
+             )`,
+            [
+              user.nombre,
+              user.apellido,
+              user.correo,
+              user.contrasena,
+              rolId,
+              JSON.stringify(
+                permisosChat
+              ),
+              randomColor,
+              "aprobado",
+              user.usuario_base,
+              proyectoPrincipalId,
+              instanciaId,
+              1,
+            ]
+          );
+
+        const usuarioId =
+          Number(
+            insertResult.insertId
+          );
+
+        for (
+          const proyectoId
+          of projectIds
+        ) {
+          await connection.query(
+            `INSERT INTO usuario_proyecto (
+               usuario_id,
+               proyecto_id
+             )
+             VALUES (?, ?)`,
+            [
+              usuarioId,
+              proyectoId,
+            ]
+          );
+        }
+
+        createdUsers.push({
+          id: usuarioId,
+          nombre: user.nombre,
+          apellido: user.apellido,
+          usuario_base:
+            user.usuario_base,
+          correo: user.correo,
+        });
+      }
+
+      await connection.commit();
+      transactionStarted = false;
+
+      return res.status(201).json({
+        code:
+          "USER_ADMIN_BATCH_CREATED",
+
+        mensaje:
+          `${createdUsers.length} usuarios creados correctamente`,
+
+        total:
+          createdUsers.length,
+
+        proyecto_principal: {
+          id:
+            proyectoPrincipalId,
+          nombre:
+            proyectoPrincipal.nombre,
+          dominio:
+            proyectoPrincipal.dominio,
+        },
+
+        proyectos:
+          projectIds,
+
+        usuarios:
+          createdUsers,
+      });
+    } catch (error) {
+      if (transactionStarted) {
+        try {
+          await connection.rollback();
+        } catch (_) {}
+      }
+
+      if (
+        error?.code === "ER_DUP_ENTRY"
+      ) {
+        return res.status(409).json({
+          code:
+            "BATCH_EMAIL_ALREADY_EXISTS",
+          error:
+            "Uno de los correos del lote ya está registrado",
+        });
+      }
+
+      console.error(
+        "Error creando lote administrativo:",
+        error
+      );
+
+      return res.status(500).json({
+        code:
+          "USER_ADMIN_BATCH_CREATE_ERROR",
+        error:
+          "No se pudo crear el lote de usuarios",
+      });
+    } finally {
+      connection.release();
+    }
+  }
+);
+
+
 module.exports = router;

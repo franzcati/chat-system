@@ -2972,3 +2972,273 @@
   border: 1px solid rgba(90, 125, 172, 0.34) !important;
   color: #f1f6ff !important;
 }
+
+/* ==========================================================
+   NUEVO USUARIO / CREACION MASIVA
+   ========================================================== */
+
+.qc-batch-page {
+  position: relative;
+  min-height: 100%;
+  width: 100%;
+  padding: 32px 40px 60px;
+  overflow: auto;
+  color: #17233c;
+}
+
+.qc-batch-header {
+  position: relative;
+  z-index: 1;
+  max-width: 1480px;
+  margin: 0 auto 22px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+.qc-batch-kicker {
+  display: inline-block;
+  margin-bottom: 4px;
+  color: #168cff;
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: .12em;
+}
+
+.qc-batch-header h1 {
+  margin: 0;
+  font-size: clamp(30px, 3vw, 48px);
+  font-weight: 900;
+  letter-spacing: -.04em;
+}
+
+.qc-batch-header p {
+  max-width: 710px;
+  margin: 7px 0 0;
+  color: #71809c;
+  font-size: 14px;
+}
+
+.qc-batch-back {
+  min-height: 45px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 18px;
+  border: 1px solid #d5dfed;
+  border-radius: 13px;
+  color: #344159;
+  background: #f4f7fb;
+  font-weight: 800;
+}
+
+.qc-batch-panel {
+  position: relative;
+  z-index: 1;
+  max-width: 1480px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.qc-batch-subtitle {
+  margin: 18px 0 10px;
+  color: #26344e;
+  font-size: 11px;
+  font-weight: 850;
+}
+
+.qc-batch-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.qc-batch-toolbar span {
+  color: #8190a9;
+  font-size: 10px;
+}
+
+.qc-batch-toolbar strong {
+  color: #168cff;
+}
+
+.qc-batch-toolbar button {
+  min-height: 38px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0 13px;
+  border: 1px solid rgba(22, 140, 255, .25);
+  border-radius: 10px;
+  color: #087ee8;
+  background: rgba(22, 140, 255, .07);
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.qc-batch-table-wrap {
+  overflow-x: auto;
+  border: 1px solid #dce5f1;
+  border-radius: 13px;
+}
+
+.qc-batch-table {
+  width: 100%;
+  min-width: 1100px;
+  border-collapse: collapse;
+}
+
+.qc-batch-table th {
+  padding: 11px 9px;
+  color: #72819c;
+  background: #f4f7fc;
+  border-bottom: 1px solid #dce5f1;
+  font-size: 9px;
+  font-weight: 850;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.qc-batch-table td {
+  padding: 7px;
+  border-bottom: 1px solid #edf1f7;
+}
+
+.qc-batch-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.qc-batch-table input {
+  width: 100%;
+  min-height: 39px;
+  padding: 0 10px;
+  border: 1px solid #d6e0ee;
+  border-radius: 8px;
+  outline: none;
+  color: #26344d;
+  background: #fbfcff;
+  font-size: 10px;
+}
+
+.qc-batch-table input:focus {
+  border-color: #168cff;
+  box-shadow:
+    0 0 0 3px rgba(22, 140, 255, .07);
+}
+
+.qc-batch-index {
+  width: 42px;
+  color: #73819a;
+  text-align: center;
+  font-weight: 800;
+}
+
+.qc-batch-email {
+  min-width: 260px;
+  min-height: 39px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0 10px;
+  border: 1px solid rgba(22, 140, 255, .18);
+  border-radius: 8px;
+  color: #087fe8;
+  background: rgba(22, 140, 255, .055);
+  font-size: 9px;
+}
+
+.qc-batch-email span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.qc-batch-remove {
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(236, 61, 91, .25);
+  border-radius: 9px;
+  color: #e63856;
+  background: rgba(236, 61, 91, .05);
+}
+
+.qc-batch-remove:disabled {
+  opacity: .25;
+  cursor: not-allowed;
+}
+
+:root[data-theme="dark"] .qc-batch-page {
+  color: #eef5ff;
+}
+
+:root[data-theme="dark"] .qc-batch-header p {
+  color: #93a6c5;
+}
+
+:root[data-theme="dark"] .qc-batch-back {
+  color: #dbe8fa;
+  background: #102746;
+  border-color: #28496e;
+}
+
+:root[data-theme="dark"] .qc-batch-back:hover {
+  color: #fff;
+  background: #173257;
+}
+
+:root[data-theme="dark"] .qc-batch-subtitle {
+  color: #dce8fa;
+}
+
+:root[data-theme="dark"] .qc-batch-table-wrap {
+  border-color: #24466f;
+}
+
+:root[data-theme="dark"] .qc-batch-table th {
+  color: #9cafcd;
+  background: #091c39;
+  border-color: #24466f;
+}
+
+:root[data-theme="dark"] .qc-batch-table td {
+  border-color: rgba(47, 82, 124, .35);
+}
+
+:root[data-theme="dark"] .qc-batch-table input {
+  color: #ecf4ff;
+  background: #0d2446;
+  border-color: #294b73;
+}
+
+:root[data-theme="dark"] .qc-batch-table input::placeholder {
+  color: #748bad;
+}
+
+:root[data-theme="dark"] .qc-batch-email {
+  color: #61b6ff;
+  background: rgba(21, 107, 201, .14);
+  border-color: rgba(73, 151, 231, .28);
+}
+
+:root[data-theme="dark"] .qc-batch-toolbar button {
+  color: #69b8ff;
+  background: rgba(22, 122, 226, .13);
+  border-color: rgba(75, 153, 237, .28);
+}
+
+@media (max-width: 800px) {
+  .qc-batch-page {
+    padding: 24px 18px 45px;
+  }
+
+  .qc-batch-header {
+    flex-direction: column;
+  }
+}

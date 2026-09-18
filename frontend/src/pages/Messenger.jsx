@@ -491,7 +491,7 @@ const Messenger = () => {
           <Suspense fallback={<LazyPanelFallback />}>
             <AddUsers
               proyectos={proyectos}        // 👈 AHORA SÍ SE PASAN LOS PROYECTOS
-              onCancel={() => setActive("chat")}
+              onCancel={() => setActiveTab("chat")}
             />
           </Suspense>
         </div>
@@ -502,7 +502,7 @@ const Messenger = () => {
             <EditUsers
               proyectos={proyectos}
               usuarioLogueado={usuario}  // 👈 AQUI LO MANDAS
-              onCancel={() => setActive("chat")}
+              onCancel={() => setActiveTab("chat")}
             />
           </Suspense>
         </div>
