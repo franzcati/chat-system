@@ -1,6 +1,20 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../db');
+const {
+  chatAuthMiddleware,
+  enforceAuthenticatedActor,
+  requireSelfParam,
+} = require("../middleware/chatRouteSecurity");
+
+router.use(
+  ...chatAuthMiddleware,
+  enforceAuthenticatedActor
+);
+
+router.param("userId", requireSelfParam);
+router.param("usuarioId", requireSelfParam);
+router.param("miUsuarioId", requireSelfParam);
 
 
 let chatEstadosSchemaPromise = null;
