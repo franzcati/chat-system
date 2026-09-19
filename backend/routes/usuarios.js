@@ -2,6 +2,14 @@ const express = require("express");
 const router = express.Router();
 const pool = require("../db");
 
+const {
+  requireAuth,
+} = require("../middleware/requireAuth");
+
+const {
+  resolveInstance,
+} = require("../middleware/resolveInstance");
+
 const multer = require("multer");
 const path = require("path");
 const fs = require("fs");
@@ -215,8 +223,9 @@ function normalizarPerfilUsuario(row) {
   };
 }
 
-async function obtenerPerfilUsuario(id) {
+async function obtenerPerfilUsuario(id, instanciaId) {
   await asegurarColumnasPerfil();
+
   const [rows] = await pool.query(
     `SELECT id, nombre, apellido, correo, url_imagen, background,
             perfil_cartel, perfil_avatar_transform, perfil_cartel_transform,
@@ -224,31 +233,127 @@ async function obtenerPerfilUsuario(id) {
             perfil_tema_principal, perfil_tema_secundario, perfil_avatares_recientes
        FROM usuario
       WHERE id = ?
+        AND instancia_id = ?
+        AND estado = 'aprobado'
       LIMIT 1`,
-    [id]
+    [
+      id,
+      Number(instanciaId),
+    ]
   );
+
   return normalizarPerfilUsuario(rows[0]);
 }
 
+
+// ===============================================================
+// SEGURIDAD MULTIPORTAL PARA /api/usuarios
+// ===============================================================
+
+router.use(
+  requireAuth,
+  resolveInstance,
+  (req, res, next) => {
+    const instanciaSesion =
+      Number(req.auth?.usuario?.instancia_id);
+
+    const instanciaPortal =
+      Number(req.instanciaActual?.id);
+
+    if (
+      !Number.isInteger(instanciaSesion) ||
+      !Number.isInteger(instanciaPortal) ||
+      instanciaSesion !== instanciaPortal
+    ) {
+      return res.status(403).json({
+        code: "INSTANCE_ACCESS_DENIED",
+        error:
+          "La sesión no corresponde a este portal",
+      });
+    }
+
+    next();
+  }
+);
+
+function requireSelf(req, res, next) {
+  const targetId = Number(req.params.id);
+  const authId = Number(req.auth?.userId);
+
+  if (
+    !Number.isInteger(targetId) ||
+    targetId <= 0
+  ) {
+    return res.status(400).json({
+      code: "INVALID_USER_ID",
+      error: "Usuario inválido",
+    });
+  }
+
+  if (targetId !== authId) {
+    return res.status(403).json({
+      code: "PROFILE_SELF_ONLY",
+      error:
+        "Solo puedes modificar tu propio perfil",
+    });
+  }
+
+  next();
+}
 
 // ===============================================================
 // 📌 ESTADOS DE PRESENCIA DEL CHAT
 // ===============================================================
 router.get("/estados/presencia", async (req, res) => {
   try {
-    const socketUtils = req.app.get("socketUtils");
-    const estados = socketUtils?.getUsuariosConectados
-      ? socketUtils.getUsuariosConectados()
-      : req.usuariosConectados || {};
+    const socketUtils =
+      req.app.get("socketUtils");
 
-    res.json(estados || {});
+    const estadosGlobales =
+      socketUtils?.getUsuariosConectados
+        ? socketUtils.getUsuariosConectados()
+        : req.usuariosConectados || {};
+
+    const [usuariosInstancia] =
+      await pool.query(
+        `SELECT id
+           FROM usuario
+          WHERE instancia_id = ?
+            AND estado = 'aprobado'`,
+        [Number(req.instanciaActual.id)]
+      );
+
+    const permitidos = new Set(
+      usuariosInstancia.map(
+        (row) => String(row.id)
+      )
+    );
+
+    const estados = {};
+
+    for (
+      const [usuarioId, estado]
+      of Object.entries(estadosGlobales || {})
+    ) {
+      if (permitidos.has(String(usuarioId))) {
+        estados[usuarioId] = estado;
+      }
+    }
+
+    return res.json(estados);
   } catch (error) {
-    console.error("❌ Error obteniendo estados de presencia:", error);
-    res.status(500).json({ error: "Error interno del servidor" });
+    console.error(
+      "Error obteniendo estados de presencia:",
+      error
+    );
+
+    return res.status(500).json({
+      error: "Error interno del servidor",
+    });
   }
 });
 
-router.put("/:id/estado-presencia", async (req, res) => {
+router.put("/:id/estado-presencia", requireSelf, async (req, res) => {
   const { id } = req.params;
   const { estado } = req.body || {};
 
@@ -272,7 +377,7 @@ router.put("/:id/estado-presencia", async (req, res) => {
 // ===============================================================
 router.get("/:id/perfil", async (req, res) => {
   try {
-    const perfil = await obtenerPerfilUsuario(req.params.id);
+    const perfil = await obtenerPerfilUsuario(req.params.id, req.instanciaActual.id);
     if (!perfil) return res.status(404).json({ error: "Usuario no encontrado" });
     res.json(perfil);
   } catch (error) {
@@ -281,7 +386,7 @@ router.get("/:id/perfil", async (req, res) => {
   }
 });
 
-router.put("/:id/perfil", async (req, res) => {
+router.put("/:id/perfil", requireSelf, async (req, res) => {
   const {
     perfil_biografia,
     perfil_estado_mensaje,
@@ -310,7 +415,7 @@ router.put("/:id/perfil", async (req, res) => {
       ]
     );
 
-    const perfil = await obtenerPerfilUsuario(req.params.id);
+    const perfil = await obtenerPerfilUsuario(req.params.id, req.instanciaActual.id);
     res.json({ mensaje: "Perfil actualizado", usuario: perfil });
   } catch (error) {
     console.error("❌ Error actualizando perfil:", error);
@@ -318,7 +423,7 @@ router.put("/:id/perfil", async (req, res) => {
   }
 });
 
-router.post("/:id/perfil/avatar", uploadPerfil.single("imagen"), async (req, res) => {
+router.post("/:id/perfil/avatar", requireSelf, uploadPerfil.single("imagen"), async (req, res) => {
   try {
     await asegurarColumnasPerfil();
     if (!req.file) return res.status(400).json({ error: "Imagen requerida" });
@@ -326,7 +431,7 @@ router.post("/:id/perfil/avatar", uploadPerfil.single("imagen"), async (req, res
     const transform = limpiarTransformImagen(req.body?.transform);
     await pool.query("UPDATE usuario SET url_imagen = ?, perfil_avatar_transform = ? WHERE id = ?", [url, transform, req.params.id]);
     await guardarAvatarReciente(req.params.id, url);
-    const perfil = await obtenerPerfilUsuario(req.params.id);
+    const perfil = await obtenerPerfilUsuario(req.params.id, req.instanciaActual.id);
     res.json({ mensaje: "Foto de perfil actualizada", url_imagen: url, usuario: perfil });
   } catch (error) {
     console.error("❌ Error actualizando avatar:", error);
@@ -334,7 +439,7 @@ router.post("/:id/perfil/avatar", uploadPerfil.single("imagen"), async (req, res
   }
 });
 
-router.put("/:id/perfil/avatar-url", async (req, res) => {
+router.put("/:id/perfil/avatar-url", requireSelf, async (req, res) => {
   const { url_imagen } = req.body || {};
 
   try {
@@ -347,7 +452,7 @@ router.put("/:id/perfil/avatar-url", async (req, res) => {
     const transform = limpiarTransformImagen(req.body?.transform);
     await pool.query("UPDATE usuario SET url_imagen = ?, perfil_avatar_transform = ? WHERE id = ?", [url, transform, req.params.id]);
     await guardarAvatarReciente(req.params.id, url);
-    const perfil = await obtenerPerfilUsuario(req.params.id);
+    const perfil = await obtenerPerfilUsuario(req.params.id, req.instanciaActual.id);
     res.json({ mensaje: "Foto de perfil actualizada", url_imagen: url, usuario: perfil });
   } catch (error) {
     console.error("❌ Error seleccionando avatar reciente:", error);
@@ -355,14 +460,14 @@ router.put("/:id/perfil/avatar-url", async (req, res) => {
   }
 });
 
-router.post("/:id/perfil/cartel", uploadPerfil.single("imagen"), async (req, res) => {
+router.post("/:id/perfil/cartel", requireSelf, uploadPerfil.single("imagen"), async (req, res) => {
   try {
     await asegurarColumnasPerfil();
     if (!req.file) return res.status(400).json({ error: "Imagen requerida" });
     const url = `/uploads/perfiles/${req.file.filename}`;
     const transform = limpiarTransformImagen(req.body?.transform);
     await pool.query("UPDATE usuario SET perfil_cartel = ?, perfil_cartel_transform = ? WHERE id = ?", [url, transform, req.params.id]);
-    const perfil = await obtenerPerfilUsuario(req.params.id);
+    const perfil = await obtenerPerfilUsuario(req.params.id, req.instanciaActual.id);
     res.json({ mensaje: "Cartel actualizado", perfil_cartel: url, usuario: perfil });
   } catch (error) {
     console.error("❌ Error actualizando cartel:", error);
@@ -370,11 +475,11 @@ router.post("/:id/perfil/cartel", uploadPerfil.single("imagen"), async (req, res
   }
 });
 
-router.delete("/:id/perfil/cartel", async (req, res) => {
+router.delete("/:id/perfil/cartel", requireSelf, async (req, res) => {
   try {
     await asegurarColumnasPerfil();
     await pool.query("UPDATE usuario SET perfil_cartel = NULL, perfil_cartel_transform = NULL WHERE id = ?", [req.params.id]);
-    const perfil = await obtenerPerfilUsuario(req.params.id);
+    const perfil = await obtenerPerfilUsuario(req.params.id, req.instanciaActual.id);
     res.json({ mensaje: "Cartel eliminado", usuario: perfil });
   } catch (error) {
     console.error("❌ Error eliminando cartel:", error);
@@ -422,11 +527,19 @@ router.get("/", async (req, res) => {
           FROM usuario_proyecto up
           JOIN proyecto p ON p.id = up.proyecto_id
           WHERE up.usuario_id = u.id
+            AND p.instancia_id = ?
         ) AS proyectos_detallados
 
       FROM usuario u
-      WHERE u.estado = 'aprobado';   -- 🔹 AQUÍ ESTÁ LA CLAVE
-    `);
+      WHERE u.estado = 'aprobado'
+        AND u.instancia_id = ?
+      ORDER BY u.nombre ASC, u.apellido ASC, u.id ASC
+    `,
+      [
+        Number(req.instanciaActual.id),
+        Number(req.instanciaActual.id),
+      ]
+    );
 
     const data = rows.map((u) => {
       // Defensa en profundidad: aunque una consulta futura vuelva a incluirla,
@@ -457,6 +570,28 @@ router.get("/", async (req, res) => {
     res.status(500).json({ error: "Error interno del servidor" });
   }
 });
+
+// ===============================================================
+// ESCRITURAS ADMINISTRATIVAS LEGACY DESHABILITADAS
+//
+// Utilizar:
+// POST   /api/usuarios/admin
+// PUT    /api/usuarios/admin/:id
+// DELETE /api/usuarios/admin/:id
+// ===============================================================
+
+const legacyUserWriteDisabled = (req, res) => {
+  return res.status(410).json({
+    code: "LEGACY_USER_WRITE_DISABLED",
+    error:
+      "La administración antigua de usuarios está deshabilitada. Utiliza /api/usuarios/admin.",
+  });
+};
+
+router.post("/", legacyUserWriteDisabled);
+router.put("/:id", legacyUserWriteDisabled);
+router.delete("/:id", legacyUserWriteDisabled);
+
 
 // ===============================================================
 // 📌 2. CREAR USUARIO
