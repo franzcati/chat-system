@@ -302,6 +302,119 @@ function requireSelf(req, res, next) {
 }
 
 // ===============================================================
+// EXPORTAR USUARIOS DE LA INSTANCIA ACTUAL A CSV
+// GET /api/usuarios/exportar
+// ===============================================================
+
+function csvEscape(value) {
+  const text = String(value ?? "");
+  return `"${text.replace(/"/g, '""')}"`;
+}
+
+router.get("/exportar", async (req, res) => {
+  try {
+    const instanciaId = Number(req.instanciaActual.id);
+
+    const [rows] = await pool.query(
+      `SELECT
+          u.id,
+          u.nombre,
+          u.apellido,
+          u.correo,
+          u.rol_id,
+          u.estado,
+          GROUP_CONCAT(
+            DISTINCT p.nombre
+            ORDER BY p.nombre
+            SEPARATOR ' | '
+          ) AS proyectos
+       FROM usuario u
+       LEFT JOIN usuario_proyecto up
+         ON up.usuario_id = u.id
+       LEFT JOIN proyecto p
+         ON p.id = up.proyecto_id
+        AND p.instancia_id = ?
+       WHERE u.instancia_id = ?
+         AND u.estado = 'aprobado'
+       GROUP BY
+          u.id,
+          u.nombre,
+          u.apellido,
+          u.correo,
+          u.rol_id,
+          u.estado
+       ORDER BY
+          u.nombre ASC,
+          u.apellido ASC,
+          u.id ASC`,
+      [
+        instanciaId,
+        instanciaId,
+      ]
+    );
+
+    const encabezados = [
+      "ID",
+      "Nombre",
+      "Apellido",
+      "Usuario",
+      "Rol ID",
+      "Estado",
+      "Proyectos",
+    ];
+
+    const lineas = [
+      encabezados.map(csvEscape).join(";"),
+      ...rows.map((row) =>
+        [
+          row.id,
+          row.nombre,
+          row.apellido,
+          row.correo,
+          row.rol_id,
+          row.estado,
+          row.proyectos || "",
+        ]
+          .map(csvEscape)
+          .join(";")
+      ),
+    ];
+
+    const csv =
+      "\uFEFF" + lineas.join("\r\n");
+
+    const codigoInstancia = String(
+      req.instanciaActual.codigo || "usuarios"
+    )
+      .toLowerCase()
+      .replace(/[^a-z0-9_-]/g, "");
+
+    res.setHeader(
+      "Content-Type",
+      "text/csv; charset=utf-8"
+    );
+
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="usuarios_${codigoInstancia}.csv"`
+    );
+
+    return res.send(csv);
+  } catch (error) {
+    console.error(
+      "Error exportando usuarios:",
+      error
+    );
+
+    return res.status(500).json({
+      error:
+        "No se pudo generar la exportación de usuarios",
+    });
+  }
+});
+
+
+// ===============================================================
 // 📌 ESTADOS DE PRESENCIA DEL CHAT
 // ===============================================================
 router.get("/estados/presencia", async (req, res) => {
