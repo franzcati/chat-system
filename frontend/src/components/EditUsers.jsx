@@ -77,22 +77,52 @@ const EditUsers = ({ usuarioLogueado, proyectos = [] }) => {
 
   const obtenerUsuarios = async () => {
     try {
-      const res = await fetch("/api/usuarios/admin?limit=100", {
-        credentials: "include",
-      });
+      const pageSize = 100;
+      const usuariosAcumulados = [];
+      let page = 1;
+      let totalPages = 1;
 
-      const data = await res.json().catch(() => ({}));
+      do {
+        const res = await fetch(
+          `/api/usuarios/admin?limit=${pageSize}&page=${page}`,
+          {
+            credentials: "include",
+          }
+        );
 
-      if (!res.ok) {
-        throw new Error(data.error || "No se pudieron cargar los usuarios");
-      }
+        const data = await res.json().catch(() => ({}));
 
-      const usuariosSeguro = Array.isArray(data?.usuarios)
-        ? data.usuarios
-        : [];
+        if (!res.ok) {
+          throw new Error(
+            data.error || "No se pudieron cargar los usuarios"
+          );
+        }
 
-      setUsuarios(usuariosSeguro);
-      setUsuariosOriginal(usuariosSeguro);
+        const usuariosPagina = Array.isArray(data?.usuarios)
+          ? data.usuarios
+          : [];
+
+        usuariosAcumulados.push(...usuariosPagina);
+
+        totalPages = Math.max(
+          1,
+          Number(data?.pagination?.total_pages || 1)
+        );
+
+        page += 1;
+      } while (page <= totalPages);
+
+      const usuariosUnicos = Array.from(
+        new Map(
+          usuariosAcumulados.map((usuario) => [
+            Number(usuario.id),
+            usuario,
+          ])
+        ).values()
+      );
+
+      setUsuarios(usuariosUnicos);
+      setUsuariosOriginal(usuariosUnicos);
     } catch (err) {
       console.error("❌ Error cargando usuarios:", err);
       setUsuarios([]);
