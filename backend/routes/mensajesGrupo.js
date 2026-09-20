@@ -7,6 +7,24 @@ const fs = require("fs");
 const { logDev } = require("../utils/logger");
 const { queryWithRetry } = require("../utils/dbRetry");
 const { optimizeUploadedAudio } = require("../utils/audioOptimizer");
+const {
+  chatAuthMiddleware,
+  enforceAuthenticatedActor,
+} = require("../middleware/chatRouteSecurity");
+const {
+  requireGroupMembershipParam,
+  requireGroupMembershipBody,
+  requireGroupUploadAccess,
+  requireGroupMessageParam,
+  requireGroupMessageBody,
+  validateGroupReply,
+  validatePinnedGroupMessage,
+} = require("../middleware/groupMessageSecurity");
+
+router.use(
+  ...chatAuthMiddleware,
+  enforceAuthenticatedActor
+);
 
 
 // =======================
@@ -341,7 +359,14 @@ async function usuarioPuedeEliminarMensajes(usuarioId) {
 // =======================
 // Obtener contexto alrededor de un mensaje de grupo
 // =======================
-router.get("/:grupoId/contexto/:mensajeId", async (req, res) => {
+router.get(
+  "/:grupoId/contexto/:mensajeId",
+  requireGroupMembershipParam("grupoId"),
+  requireGroupMessageParam(
+    "mensajeId",
+    "grupoId"
+  ),
+  async (req, res) => {
   await ensureReplyColumn();
   const { grupoId, mensajeId } = req.params;
   const parsedLimit = Number.parseInt(req.query.limit, 10);
@@ -547,7 +572,10 @@ router.get("/:grupoId/contexto/:mensajeId", async (req, res) => {
 // =======================
 // Buscar mensajes dentro de un grupo
 // =======================
-router.get("/:grupoId/buscar", async (req, res) => {
+router.get(
+  "/:grupoId/buscar",
+  requireGroupMembershipParam("grupoId"),
+  async (req, res) => {
   const { grupoId } = req.params;
   const query = String(req.query.q || "").trim();
   const parsedLimit = Number.parseInt(req.query.limit, 10);
@@ -600,7 +628,10 @@ router.get("/:grupoId/buscar", async (req, res) => {
   }
 });
 
-router.get("/:grupoId", async (req, res) => {
+router.get(
+  "/:grupoId",
+  requireGroupMembershipParam("grupoId"),
+  async (req, res) => {
   await ensureReplyColumn();
   const { grupoId } = req.params;
   const { paginated, limit, beforeId } = getPaginationOptions(req.query);
@@ -812,8 +843,20 @@ router.get("/:grupoId", async (req, res) => {
 // =======================
 // Enviar mensaje a un grupo
 // =======================
-router.post("/", async (req, res) => {
-  const { grupoId, usuarioId, mensaje, loteId, replyToId } = req.body;
+router.post(
+  "/",
+  requireGroupMembershipBody("grupoId"),
+  validateGroupReply,
+  async (req, res) => {
+  const {
+    grupoId,
+    mensaje,
+    loteId,
+    replyToId,
+  } = req.body;
+  const usuarioId = Number(
+    req.auth.userId
+  );
   const replyToIdNum = Number(replyToId) || null;
 
   if (!grupoId || !usuarioId || !mensaje) {
@@ -878,8 +921,14 @@ router.post("/", async (req, res) => {
 // =======================
 // Marcar mensajes de grupo como vistos
 // =======================
-router.put("/marcar-vistos-grupo", async (req, res) => {
-  const { userId, grupoId } = req.body;
+router.put(
+  "/marcar-vistos-grupo",
+  requireGroupMembershipBody("grupoId"),
+  async (req, res) => {
+  const { grupoId } = req.body;
+  const userId = Number(
+    req.auth.userId
+  );
 
   if (!userId || !grupoId) {
     return res.status(400).json({ error: "Faltan parámetros userId y grupoId" });
@@ -953,9 +1002,23 @@ router.put("/marcar-vistos-grupo", async (req, res) => {
 // =======================
 // Añadir / quitar reacción (CHAT GRUPAL)
 // =======================
-router.post("/reaccion", async (req, res) => {
-  logDev("➡️ [BACK] Reacción de grupo recibida:", req.body);
-  const { mensajeGrupoId, usuarioId, emoji } = req.body;
+router.post(
+  "/reaccion",
+  requireGroupMessageBody(
+    "mensajeGrupoId"
+  ),
+  async (req, res) => {
+  logDev(
+    "➡️ [BACK] Reacción de grupo recibida:",
+    req.body
+  );
+  const {
+    mensajeGrupoId,
+    emoji,
+  } = req.body;
+  const usuarioId = Number(
+    req.auth.userId
+  );
 
   if (!mensajeGrupoId || !usuarioId || !emoji) {
     return res.status(400).json({ error: "Faltan parámetros" });
@@ -1028,9 +1091,14 @@ router.post("/reaccion", async (req, res) => {
 // =======================
 // Eliminar (lógico)
 // =======================
-router.put("/:id/eliminar", async (req, res) => {
+router.put(
+  "/:id/eliminar",
+  requireGroupMessageParam("id"),
+  async (req, res) => {
   const { id } = req.params;
-  const { usuarioId } = req.body;
+  const usuarioId = Number(
+    req.auth.userId
+  );
 
   const io = req.app.get("io");
 
@@ -1065,9 +1133,14 @@ router.put("/:id/eliminar", async (req, res) => {
 // =======================
 // Deshacer eliminación
 // =======================
-router.put("/:id/deshacer", async (req, res) => {
+router.put(
+  "/:id/deshacer",
+  requireGroupMessageParam("id"),
+  async (req, res) => {
   const { id } = req.params;
-  const { usuarioId } = req.body;
+  const usuarioId = Number(
+    req.auth.userId
+  );
 
   const io = req.app.get("io");
 
@@ -1105,9 +1178,15 @@ router.put("/:id/deshacer", async (req, res) => {
 // =======================
 // Editar mensaje en grupo
 // =======================
-router.put("/:id/editar", async (req, res) => {
+router.put(
+  "/:id/editar",
+  requireGroupMessageParam("id"),
+  async (req, res) => {
   const { id } = req.params;
-  const { usuarioId, nuevoTexto } = req.body;
+  const { nuevoTexto } = req.body;
+  const usuarioId = Number(
+    req.auth.userId
+  );
 
   if (!nuevoTexto) return res.status(400).json({ error: "Falta el nuevo texto" });
 
@@ -1173,7 +1252,10 @@ router.put("/:id/editar", async (req, res) => {
 // =======================
 // Historial de ediciones
 // =======================
-router.get("/:id/historial", async (req, res) => {
+router.get(
+  "/:id/historial",
+  requireGroupMessageParam("id"),
+  async (req, res) => {
   const { id } = req.params;
 
   try {
@@ -1243,8 +1325,19 @@ router.get("/:id/historial", async (req, res) => {
 // =======================
 // 📌 Fijar o Desfijar mensaje en Grupo
 // =======================
-router.post("/fijar", async (req, res) => {
-  const { grupo_id, mensaje_id, usuario_id, duracion = "24h" } = req.body;
+router.post(
+  "/fijar",
+  validatePinnedGroupMessage,
+  async (req, res) => {
+  const {
+    grupo_id,
+    mensaje_id,
+    duracion = "24h",
+  } = req.body;
+
+  const usuario_id = Number(
+    req.auth.userId
+  );
 
   logDev("📩 Datos recibidos para fijar:", req.body);
 
@@ -1352,7 +1445,10 @@ router.post("/fijar", async (req, res) => {
 // =======================
 // 📋 Obtener mensajes fijados de un grupo
 // =======================
-router.get("/fijados/:grupoId", async (req, res) => {
+router.get(
+  "/fijados/:grupoId",
+  requireGroupMembershipParam("grupoId"),
+  async (req, res) => {
   const { grupoId } = req.params;
 
   try {
@@ -1415,10 +1511,19 @@ router.get("/fijados/:grupoId", async (req, res) => {
 // =======================
 // 📤 Subir archivo a un grupo (con subcarpetas dinámicas)
 // =======================
-router.post("/archivo", uploadArchivoConMiniatura, async (req, res) => {
+router.post(
+  "/archivo",
+  requireGroupUploadAccess,
+  uploadArchivoConMiniatura,
+  validateGroupReply,
+  async (req, res) => {
   try {
-    const grupo_id = Number(req.body.grupo_id || req.query.grupo_id);
-    const usuario_id = Number(req.body.usuario_id || req.query.usuario_id);
+    const grupo_id = Number(
+      req.query.grupo_id
+    );
+    const usuario_id = Number(
+      req.auth.userId
+    );
     const loteId =
       req.body.loteId ||
       req.body.lote_id ||
