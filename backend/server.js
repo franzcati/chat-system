@@ -5,7 +5,14 @@ const { logDev } = require('./utils/logger');
 const app = require('./app');
 const sequelize = require('./config/database');
 const http = require('http');
-const { initSocket, enviarEventoAlUsuario, getUsuariosConectados, setEstadoManualUsuario } = require("./utils/socketUtils");
+const {
+  initSocket,
+  enviarEventoAlUsuario,
+  getUsuariosConectados,
+  setEstadoManualUsuario,
+  unirUsuarioAGrupo,
+  sacarUsuarioDeGrupo,
+} = require("./utils/socketUtils");
 
 
 // Rutas
@@ -21,7 +28,14 @@ const server = http.createServer(app);
 // 🔹 Inicializar Socket y capturar io y usuariosConectados
 const { io, usuariosConectados } = initSocket(server);
 app.set("io", io);
-app.set("socketUtils", { usuariosConectados, enviarEventoAlUsuario, getUsuariosConectados, setEstadoManualUsuario });
+app.set("socketUtils", {
+  usuariosConectados,
+  enviarEventoAlUsuario,
+  getUsuariosConectados,
+  setEstadoManualUsuario,
+  unirUsuarioAGrupo,
+  sacarUsuarioDeGrupo,
+});
 
 app.use((req, res, next) => {
   req.io = io;

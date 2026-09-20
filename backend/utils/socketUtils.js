@@ -1,10 +1,15 @@
 const db = require("../db");
 const { logDev } = require("./logger");
+const {
+  authenticateSocket,
+} = require("./socketAuth");
+
 let usuariosConectados = {};
 let ioGlobal = null;
 const socketsPorUsuario = new Map();
 const detallesSocketsPorUsuario = new Map();
 const estadoManualPorUsuario = new Map();
+const instanciaPorUsuario = new Map();
 const INACTIVITY_LIMIT_MS = 5 * 60 * 1000;
 const PRESENCE_BROADCAST_INTERVAL_MS = Number(process.env.PRESENCE_BROADCAST_INTERVAL_MS || 5000);
 const TYPING_KEEPALIVE_INTERVAL_MS = Number(process.env.TYPING_KEEPALIVE_INTERVAL_MS || 900);
@@ -94,8 +99,47 @@ function recalcularEstadoUsuario(userId) {
 }
 
 function publicarEstadoUsuarios(io) {
-  Object.keys(usuariosConectados).forEach((userId) => recalcularEstadoUsuario(userId));
-  io.emit("actualizarUsuarios", usuariosConectados);
+  Object.keys(usuariosConectados).forEach(
+    (userId) =>
+      recalcularEstadoUsuario(userId)
+  );
+
+  const instanceIds = new Set(
+    Array.from(
+      instanciaPorUsuario.values()
+    )
+      .map(Number)
+      .filter(
+        (id) =>
+          Number.isInteger(id) &&
+          id > 0
+      )
+  );
+
+  instanceIds.forEach((instanceId) => {
+    const payload = {};
+
+    Object.entries(
+      usuariosConectados
+    ).forEach(([userId, state]) => {
+      if (
+        Number(
+          instanciaPorUsuario.get(
+            String(userId)
+          )
+        ) === instanceId
+      ) {
+        payload[userId] = state;
+      }
+    });
+
+    io.to(
+      `instancia_${instanceId}`
+    ).emit(
+      "actualizarUsuarios",
+      payload
+    );
+  });
 }
 
 function programarPublicarEstadoUsuarios(io, options = {}) {
@@ -163,7 +207,9 @@ function validarSocketOrigin(origin, callback) {
 }
 
 function normalizarTypingPayload(payload = {}, socket) {
-  const senderId = normalizarId(payload.senderId || socket.userId);
+  const senderId = normalizarId(
+    socket.userId
+  );
   if (!senderId) return null;
 
   const tipo = payload.tipo === "grupo" ? "grupo" : "privado";
@@ -173,6 +219,33 @@ function normalizarTypingPayload(payload = {}, socket) {
   if (tipo === "grupo" && !grupoId) return null;
   if (tipo === "privado" && !receiverId) return null;
   if (tipo === "privado" && receiverId === senderId) return null;
+
+  if (
+    tipo === "grupo" &&
+    !socket.rooms.has(
+      `grupo_${grupoId}`
+    )
+  ) {
+    return null;
+  }
+
+  if (tipo === "privado") {
+    const receiverInstance =
+      Number(
+        instanciaPorUsuario.get(
+          String(receiverId)
+        )
+      );
+
+    if (
+      receiverInstance &&
+      socket.instanceId &&
+      receiverInstance !==
+        Number(socket.instanceId)
+    ) {
+      return null;
+    }
+  }
 
   return {
     tipo,
@@ -254,27 +327,66 @@ function detenerTypingDeSocket(io, socket) {
   });
 }
 
-async function unirUsuarioASusSalas(socket, userId) {
-  socket.join(`usuario_${userId}`);
+async function unirUsuarioASusSalas(
+  socket,
+  userId,
+  instanceId
+) {
+  socket.join(
+    `usuario_${userId}`
+  );
+
+  socket.join(
+    `instancia_${instanceId}`
+  );
 
   try {
     const [grupos] = await db.query(
-      "SELECT grupo_id FROM usuario_grupo WHERE usuario_id = ?",
-      [userId]
+      `SELECT ug.grupo_id
+       FROM usuario_grupo ug
+       JOIN usuario u
+         ON u.id = ug.usuario_id
+       WHERE ug.usuario_id = ?
+         AND u.instancia_id = ?`,
+      [
+        userId,
+        instanceId,
+      ]
     );
 
     grupos.forEach((g) => {
-      socket.join(`grupo_${g.grupo_id}`);
-      logDev(`✅ Usuario ${userId} unido a sala grupo_${g.grupo_id}`);
+      socket.join(
+        `grupo_${g.grupo_id}`
+      );
+
+      logDev(
+        `✅ Usuario ${userId} unido a sala grupo_${g.grupo_id}`
+      );
     });
   } catch (err) {
-    console.error("❌ Error obteniendo grupos del usuario:", err);
+    console.error(
+      "❌ Error obteniendo grupos del usuario:",
+      err
+    );
   }
 }
 
 function agregarSocketAUsuario(userId, socketId, meta = {}) {
   const id = normalizarId(userId);
   if (!id) return;
+
+  const instanceId =
+    Number(meta.instanceId);
+
+  if (
+    Number.isInteger(instanceId) &&
+    instanceId > 0
+  ) {
+    instanciaPorUsuario.set(
+      id,
+      instanceId
+    );
+  }
 
   if (!socketsPorUsuario.has(id)) {
     socketsPorUsuario.set(id, new Set());
@@ -288,6 +400,8 @@ function agregarSocketAUsuario(userId, socketId, meta = {}) {
   detallesSocketsPorUsuario.get(id).set(socketId, {
     deviceType: normalizarDispositivo(meta.deviceType),
     userAgent: meta.userAgent || "",
+    instanceId:
+      Number(meta.instanceId) || null,
     connectedAt: Date.now(),
     lastActivity: Date.now(),
   });
@@ -398,13 +512,78 @@ function initSocket(server) {
 
   ioGlobal = io;
 
+  io.use(async (socket, next) => {
+    try {
+      const auth =
+        await authenticateSocket(
+          socket
+        );
+
+      socket.data.auth = auth;
+      socket.userId = normalizarId(
+        auth.userId
+      );
+      socket.instanceId =
+        Number(auth.instanceId);
+      socket.portalCode =
+        auth.portalCode;
+
+      next();
+    } catch (error) {
+      console.warn(
+        "⚠️ Socket rechazado:",
+        error?.code ||
+          error?.message
+      );
+
+      const socketError =
+        new Error(
+          "SOCKET_AUTH_REQUIRED"
+        );
+
+      socketError.data = {
+        code:
+          error?.code ||
+          "SOCKET_AUTH_REQUIRED",
+        message:
+          "Debes iniciar sesion nuevamente",
+      };
+
+      next(socketError);
+    }
+  });
+
   io.on("connection", (socket) => {
     logDev("🔌 Usuario conectado:", socket.id);
 
     const registrarUsuario = async (payload) => {
-      const { userId: rawUserId, deviceType, userAgent } = obtenerPayloadRegistro(payload);
-      const userId = normalizarId(rawUserId);
-      if (!userId) return;
+      const {
+        deviceType,
+        userAgent,
+      } = obtenerPayloadRegistro(
+        payload
+      );
+
+      const userId = normalizarId(
+        socket.data?.auth?.userId ||
+          socket.userId
+      );
+
+      const instanceId = Number(
+        socket.data?.auth
+          ?.instanceId ||
+          socket.instanceId
+      );
+
+      if (
+        !userId ||
+        !Number.isInteger(
+          instanceId
+        ) ||
+        instanceId <= 0
+      ) {
+        return;
+      }
 
       // El frontend puede disparar el registro desde el handshake y desde el evento
       // connect casi simultáneamente. Unificamos esas llamadas para no consultar grupos
@@ -432,11 +611,23 @@ function initSocket(server) {
         );
         socket.userAgent = userAgent || socket.handshake.headers?.["user-agent"] || "";
 
-        await unirUsuarioASusSalas(socket, userId);
-        agregarSocketAUsuario(userId, socket.id, {
-          deviceType: socket.deviceType,
-          userAgent: socket.userAgent,
-        });
+        await unirUsuarioASusSalas(
+          socket,
+          userId,
+          instanceId
+        );
+
+        agregarSocketAUsuario(
+          userId,
+          socket.id,
+          {
+            deviceType:
+              socket.deviceType,
+            userAgent:
+              socket.userAgent,
+            instanceId,
+          }
+        );
         socket.data.registeredUserId = userId;
         programarPublicarEstadoUsuarios(io, { immediate: true });
       })();
@@ -477,14 +668,67 @@ function initSocket(server) {
       setEstadoManualUsuario(targetUserId, payload.estado);
     });
 
-    socket.on("joinGrupo", (grupoId) => {
-      const id = normalizarId(grupoId);
-      if (!id) return;
-      const room = `grupo_${id}`;
-      if (socket.rooms.has(room)) return;
-      socket.join(room);
-      logDev(`✅ Socket ${socket.id} unido manualmente a ${room}`);
-    });
+    socket.on(
+      "joinGrupo",
+      async (grupoId) => {
+        const id =
+          normalizarId(grupoId);
+
+        if (
+          !id ||
+          !socket.userId ||
+          !socket.instanceId
+        ) {
+          return;
+        }
+
+        const room =
+          `grupo_${id}`;
+
+        if (
+          socket.rooms.has(room)
+        ) {
+          return;
+        }
+
+        try {
+          const [rows] =
+            await db.query(
+              `SELECT 1
+               FROM usuario_grupo ug
+               JOIN usuario u
+                 ON u.id = ug.usuario_id
+               WHERE ug.grupo_id = ?
+                 AND ug.usuario_id = ?
+                 AND u.instancia_id = ?
+               LIMIT 1`,
+              [
+                id,
+                socket.userId,
+                socket.instanceId,
+              ]
+            );
+
+          if (!rows.length) {
+            console.warn(
+              `⚠️ Join de grupo rechazado: usuario ${socket.userId}, grupo ${id}`
+            );
+            return;
+          }
+
+          socket.join(room);
+
+          logDev(
+            `✅ Socket ${socket.id} unido manualmente a ${room}`
+          );
+        } catch (error) {
+          console.error(
+            "❌ Error validando joinGrupo:",
+            error
+          );
+        }
+      }
+    );
 
     // Los sockets se unen a todos sus grupos al registrarse. Cambiar de conversación
     // no debe sacarlos de la sala, porque dejarían de recibir nuevos mensajes y sus
@@ -508,16 +752,23 @@ function initSocket(server) {
       }
     });
 
-    const userIdHandshake = socket.handshake.auth?.userId || socket.handshake.query?.userId;
-    if (userIdHandshake) {
-      registrarUsuario({
-        userId: userIdHandshake,
-        deviceType: socket.handshake.auth?.deviceType || socket.handshake.query?.deviceType,
-        userAgent: socket.handshake.headers?.["user-agent"],
-      }).catch((err) => {
-        console.error("❌ Error registrando usuario desde handshake:", err);
-      });
-    }
+    registrarUsuario({
+      deviceType:
+        socket.handshake.auth
+          ?.deviceType ||
+        socket.handshake.query
+          ?.deviceType,
+      userAgent:
+        socket.handshake.headers
+          ?.["user-agent"],
+    }).catch((err) => {
+      console.error(
+        "❌ Error registrando usuario desde sesion:",
+        err
+      );
+
+      socket.disconnect(true);
+    });
   });
 
   const presenceInterval = setInterval(() => publicarEstadoUsuarios(io), 30000);
@@ -552,10 +803,82 @@ function enviarEventoASala(sala, evento, payload) {
   return true;
 }
 
+async function unirUsuarioAGrupo(
+  userId,
+  grupoId
+) {
+  if (!ioGlobal) return false;
+
+  const uid = normalizarId(userId);
+  const gid = normalizarId(grupoId);
+
+  if (!uid || !gid) return false;
+
+  const socketIds = Array.from(
+    socketsPorUsuario.get(uid) || []
+  );
+
+  let unidos = 0;
+
+  for (const socketId of socketIds) {
+    const socket =
+      ioGlobal.sockets.sockets.get(
+        socketId
+      );
+
+    if (!socket) continue;
+
+    await socket.join(
+      `grupo_${gid}`
+    );
+
+    unidos += 1;
+  }
+
+  return unidos > 0;
+}
+
+async function sacarUsuarioDeGrupo(
+  userId,
+  grupoId
+) {
+  if (!ioGlobal) return false;
+
+  const uid = normalizarId(userId);
+  const gid = normalizarId(grupoId);
+
+  if (!uid || !gid) return false;
+
+  const socketIds = Array.from(
+    socketsPorUsuario.get(uid) || []
+  );
+
+  let removidos = 0;
+
+  for (const socketId of socketIds) {
+    const socket =
+      ioGlobal.sockets.sockets.get(
+        socketId
+      );
+
+    if (!socket) continue;
+
+    await socket.leave(
+      `grupo_${gid}`
+    );
+
+    removidos += 1;
+  }
+
+  return removidos > 0;
+}
+
 module.exports = {
   initSocket,
   enviarEventoAlUsuario,
   enviarEventoASala,
   getUsuariosConectados,
   setEstadoManualUsuario,
+  unirUsuarioAGrupo,
+  sacarUsuarioDeGrupo,
 };

@@ -1385,7 +1385,22 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat, addToLi
         setSelectedChat(null);
       }
 
-      toast.error("🚫 Grupo eliminado o ya no perteneces a él");
+      const actorId = Number(
+        data?.actorId || 0
+      );
+
+      const debeNotificar =
+        data?.notificar !== false &&
+        (
+          !actorId ||
+          actorId !== Number(userId)
+        );
+
+      if (debeNotificar) {
+        toast.error(
+          "🚫 Grupo eliminado o ya no perteneces a él"
+        );
+      }
     };
 
     socket.on("nuevoMensaje", handleNuevoMensaje);

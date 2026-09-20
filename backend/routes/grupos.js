@@ -4,8 +4,26 @@ const { logDev } = require('../utils/logger');
 const path = require("path");
 const db = require("../db");
 const { toAbsoluteUploadUrl } = require("../utils/urlUtils");
+const {
+  chatAuthMiddleware,
+  enforceAuthenticatedActor,
+} = require("../middleware/chatRouteSecurity");
+const {
+  requireCanCreateGroup,
+  requireSelfParam,
+  requireProjectAccess,
+  requireGroupRoleParam,
+  validateCreateGroupMembers,
+  validateExistingGroupMembers,
+  requireTargetSameInstance,
+} = require("../middleware/groupAdminSecurity");
 
 const router = express.Router();
+
+router.use(
+  ...chatAuthMiddleware,
+  enforceAuthenticatedActor
+);
 
 const DEFAULT_CHAT_PERMISSIONS = {
   crear_grupos: 0,
@@ -98,7 +116,10 @@ const emitirMiembrosActualizados = async (req, grupoId) => {
 // =======================
 // Obtener usuarios por proyecto
 // =======================
-router.get("/:proyectoId", async (req, res) => {
+router.get(
+  "/:proyectoId",
+  requireProjectAccess("proyectoId"),
+  async (req, res) => {
   const { proyectoId } = req.params;
 
   if (!proyectoId) {
@@ -132,11 +153,23 @@ router.get("/:proyectoId", async (req, res) => {
 // =======================
 // GET /api/usuario/:id/proyecto
 // =======================
-router.get("/:id/proyecto", async (req, res) => {
-  const { id } = req.params;
+router.get(
+  "/:id/proyecto",
+  requireSelfParam("id"),
+  async (req, res) => {
+  const id = Number(req.auth.userId);
   const [rows] = await db.query(
-    "SELECT proyecto_id FROM usuario_proyecto WHERE usuario_id = ? LIMIT 1",
-    [id]
+    `SELECT up.proyecto_id
+     FROM usuario_proyecto up
+     JOIN proyecto p
+       ON p.id = up.proyecto_id
+     WHERE up.usuario_id = ?
+       AND p.instancia_id = ?
+     LIMIT 1`,
+    [
+      id,
+      req.instanciaActual.id,
+    ]
   );
   if (rows.length > 0) {
     res.json({ proyectoId: rows[0].proyecto_id });
@@ -148,8 +181,11 @@ router.get("/:id/proyecto", async (req, res) => {
 // =======================
 // Obtener TODOS los usuarios de TODOS los proyectos donde participa un usuario
 // =======================
-router.get("/:id/todos-usuarios", async (req, res) => {
-  const { id } = req.params;
+router.get(
+  "/:id/todos-usuarios",
+  requireSelfParam("id"),
+  async (req, res) => {
+  const id = Number(req.auth.userId);
 
   const sql = `
     SELECT DISTINCT
@@ -165,11 +201,20 @@ router.get("/:id/todos-usuarios", async (req, res) => {
     WHERE up.proyecto_id IN (
       SELECT proyecto_id FROM usuario_proyecto WHERE usuario_id = ?
     )
-    AND u.id != ?; -- excluye al mismo usuario si quieres
+    AND u.id != ?
+    AND u.instancia_id = ?
+    AND u.estado = 'aprobado';
   `;
 
   try {
-    const [usuarios] = await db.query(sql, [id, id]);
+    const [usuarios] = await db.query(
+      sql,
+      [
+        id,
+        id,
+        req.instanciaActual.id,
+      ]
+    );
     res.json(usuarios);
   } catch (err) {
     console.error("❌ Error al obtener usuarios relacionados:", err);
@@ -180,21 +225,23 @@ router.get("/:id/todos-usuarios", async (req, res) => {
 // =======================
 // Crear grupo nuevo (con imagen opcional) — con fecha UTC + info completa de miembros
 // =======================
-router.post("/", upload.single("imagen"), async (req, res) => {
-  const { nombre, descripcion, propietarioId, miembros } = req.body;
-  const file = req.file;
+router.post(
+  "/",
+  requireCanCreateGroup,
+  upload.single("imagen"),
+  validateCreateGroupMembers,
+  async (req, res) => {
+  const {
+    nombre,
+    descripcion,
+    miembros,
+  } = req.body;
 
-  try {
-    const autorizado = await usuarioPuedeCrearGrupos(Number(propietarioId));
-    if (!autorizado) {
-      if (file?.path) fs.unlink(file.path, () => {});
-      return res.status(403).json({ error: "No tienes permiso para crear grupos" });
-    }
-  } catch (permissionError) {
-    console.error("❌ Error verificando permiso crear_grupos:", permissionError);
-    if (file?.path) fs.unlink(file.path, () => {});
-    return res.status(500).json({ error: "No se pudo verificar el permiso para crear grupos" });
-  }
+  const propietarioId = Number(
+    req.auth.userId
+  );
+
+  const file = req.file;
 
   // 🔹 Aseguramos que 'miembros' sea un array de IDs válidos
   let miembrosArray;
@@ -312,11 +359,30 @@ router.post("/", upload.single("imagen"), async (req, res) => {
     };
 
     // 7️⃣ Emitir evento al propietario y a todos los miembros
-    const io = req.app.get("io");
-    const todosMiembros = Array.from(new Set([propietarioId, ...miembrosArray]));
-    // ✅ Nueva versión — compatible con socketUtils.js
+    const socketUtils =
+      req.app.get("socketUtils");
+
+    const todosMiembros =
+      Array.from(
+        new Set([
+          propietarioId,
+          ...miembrosArray,
+        ])
+      );
+
     for (const uid of todosMiembros) {
-      io.to(`usuario_${uid}`).emit("grupoCreado", grupoCompleto);
+      await socketUtils
+        ?.unirUsuarioAGrupo?.(
+          uid,
+          grupoId
+        );
+
+      socketUtils
+        ?.enviarEventoAlUsuario?.(
+          uid,
+          "grupoCreado",
+          grupoCompleto
+        );
     }
 
     // ✅ Enviar respuesta final
@@ -343,7 +409,10 @@ router.post("/", upload.single("imagen"), async (req, res) => {
 // No incluye el historial completo de archivos ni mensajes fijados de cada grupo.
 // Esos datos se consultan únicamente cuando el usuario abre el grupo.
 // =======================
-router.get("/usuario-resumen/:userId", async (req, res) => {
+router.get(
+  "/usuario-resumen/:userId",
+  requireSelfParam("userId"),
+  async (req, res) => {
   const userId = Number(req.params.userId);
 
   if (!Number.isInteger(userId) || userId <= 0) {
@@ -494,7 +563,10 @@ router.get("/usuario-resumen/:userId", async (req, res) => {
 });
 
 // =======================
-router.get("/usuario/:userId", async (req, res) => {
+router.get(
+  "/usuario/:userId",
+  requireSelfParam("userId"),
+  async (req, res) => {
   const { userId } = req.params;
 
   try {
@@ -751,8 +823,18 @@ router.get("/usuario/:userId", async (req, res) => {
 // Obtener TODOS los usuarios con proyectos en común
 // + marcar si ya están en un grupo
 // =======================
-router.get("/:grupoId/usuarios-comunes/:usuarioId", async (req, res) => {
-  const { grupoId, usuarioId } = req.params;
+router.get(
+  "/:grupoId/usuarios-comunes/:usuarioId",
+  requireSelfParam("usuarioId"),
+  requireGroupRoleParam(
+    "grupoId",
+    []
+  ),
+  async (req, res) => {
+  const { grupoId } = req.params;
+  const usuarioId = Number(
+    req.auth.userId
+  );
 
   // 🔹 Traemos usuarios con proyectos en común + su rol en el grupo (si lo tienen)
   const sqlUsuarios = `
@@ -778,7 +860,11 @@ router.get("/:grupoId/usuarios-comunes/:usuarioId", async (req, res) => {
         )
         OR ug.id IS NOT NULL -- 👈 incluye también a los que ya están en el grupo aunque no tengan proyecto en común
       )
-      AND u.id != ?;
+      AND u.id != ?
+      AND (
+        u.instancia_id = ?
+        OR ug.id IS NOT NULL
+      );
   `;
 
   // 🔹 Info del grupo + el rol del usuario actual
@@ -792,7 +878,15 @@ router.get("/:grupoId/usuarios-comunes/:usuarioId", async (req, res) => {
 
   try {
     // Consulta usuarios candidatos
-    const [usuarios] = await db.query(sqlUsuarios, [grupoId, usuarioId, usuarioId]);
+    const [usuarios] = await db.query(
+      sqlUsuarios,
+      [
+        grupoId,
+        usuarioId,
+        usuarioId,
+        req.instanciaActual.id,
+      ]
+    );
 
     // Consulta rol del usuario que está usando la app
     const [grupoInfoRows] = await db.query(sqlGrupoInfo, [usuarioId, grupoId]);
@@ -808,9 +902,19 @@ router.get("/:grupoId/usuarios-comunes/:usuarioId", async (req, res) => {
   }
 });
 
-router.post("/:id/actualizar-miembros", async (req, res) => {
+router.post(
+  "/:id/actualizar-miembros",
+  requireGroupRoleParam(
+    "id",
+    ["propietario", "admin"]
+  ),
+  validateExistingGroupMembers,
+  async (req, res) => {
   const { id } = req.params;
-  const { miembros, usuarioId } = req.body;
+  const { miembros } = req.body;
+  const usuarioId = Number(
+    req.auth.userId
+  );
 
   try {
     // 1️⃣ Obtener los roles actuales del grupo
@@ -900,27 +1004,74 @@ router.post("/:id/actualizar-miembros", async (req, res) => {
       })),
     };
 
-    // 9️⃣ Emitir eventos a cada tipo de usuario
+    // 9️⃣ Sincronizar salas y emitir eventos
     const io = req.app.get("io");
+    const socketUtils =
+      req.app.get("socketUtils");
 
-    const eliminados = miembrosAnteriores.filter(idAnt => !miembrosFinales.includes(idAnt));
-    const agregados = miembrosFinales.filter(idNuevo => !miembrosAnteriores.includes(idNuevo));
+    const eliminados =
+      miembrosAnteriores.filter(
+        idAnt =>
+          !miembrosFinales.includes(
+            idAnt
+          )
+      );
 
-    // 🔸 A los que permanecen → actualización normal
-    io.to(`grupo_${id}`).emit("miembrosActualizados", {
-      id: Number(id),
-      miembros: miembrosDetalles,
-    });
+    const agregados =
+      miembrosFinales.filter(
+        idNuevo =>
+          !miembrosAnteriores.includes(
+            idNuevo
+          )
+      );
 
-    // 🔹 A los eliminados → sacar grupo del ChatList
-    eliminados.forEach(uid => {
-      io.to(`usuario_${uid}`).emit("grupoEliminado", { id: Number(id) });
-    });
+    for (const uid of eliminados) {
+      await socketUtils
+        ?.sacarUsuarioDeGrupo?.(
+          uid,
+          id
+        );
+    }
 
-    // 🔹 A los nuevos → enviar grupo completo (igual que "grupoCreado")
-    agregados.forEach(uid => {
-      io.to(`usuario_${uid}`).emit("grupoCreado", grupoCompleto);
-    });
+    for (const uid of agregados) {
+      await socketUtils
+        ?.unirUsuarioAGrupo?.(
+          uid,
+          id
+        );
+    }
+
+    io.to(
+      `grupo_${id}`
+    ).emit(
+      "miembrosActualizados",
+      {
+        id: Number(id),
+        miembros: miembrosDetalles,
+      }
+    );
+
+    for (const uid of eliminados) {
+      socketUtils
+        ?.enviarEventoAlUsuario?.(
+          uid,
+          "grupoEliminado",
+          {
+            id: Number(id),
+            actorId: usuarioId,
+            motivo: "removido",
+          }
+        );
+    }
+
+    for (const uid of agregados) {
+      socketUtils
+        ?.enviarEventoAlUsuario?.(
+          uid,
+          "grupoCreado",
+          grupoCompleto
+        );
+    }
 
     res.json({
       success: true,
@@ -934,9 +1085,18 @@ router.post("/:id/actualizar-miembros", async (req, res) => {
 
 
 // 🖼️ Cambiar imagen del grupo (propietario o admin)
-router.put("/:id/imagen", upload.single("imagen"), async (req, res) => {
+router.put(
+  "/:id/imagen",
+  requireGroupRoleParam(
+    "id",
+    ["propietario", "admin"]
+  ),
+  upload.single("imagen"),
+  async (req, res) => {
   const { id } = req.params;
-  const { usuarioId } = req.body;
+  const usuarioId = Number(
+    req.auth.userId
+  );
   const file = req.file;
 
   if (!usuarioId) {
@@ -971,9 +1131,17 @@ router.put("/:id/imagen", upload.single("imagen"), async (req, res) => {
 });
 
 // 🗑️ Quitar imagen del grupo (propietario o admin)
-router.delete("/:id/imagen", async (req, res) => {
+router.delete(
+  "/:id/imagen",
+  requireGroupRoleParam(
+    "id",
+    ["propietario", "admin"]
+  ),
+  async (req, res) => {
   const { id } = req.params;
-  const { usuarioId } = req.body;
+  const usuarioId = Number(
+    req.auth.userId
+  );
 
   if (!usuarioId) {
     return res.status(400).json({ error: "Falta usuarioId" });
@@ -1012,9 +1180,18 @@ router.delete("/:id/imagen", async (req, res) => {
 });
 
 // 👑 Designar rol de miembro (propietario o admin)
-router.put("/:id/miembros/:miembroId/rol", async (req, res) => {
+router.put(
+  "/:id/miembros/:miembroId/rol",
+  requireGroupRoleParam(
+    "id",
+    ["propietario", "admin"]
+  ),
+  async (req, res) => {
   const { id, miembroId } = req.params;
-  const { usuarioId, rol } = req.body;
+  const { rol } = req.body;
+  const usuarioId = Number(
+    req.auth.userId
+  );
 
   if (!usuarioId || !rol) {
     return res.status(400).json({ error: "Faltan datos" });
@@ -1061,9 +1238,19 @@ router.put("/:id/miembros/:miembroId/rol", async (req, res) => {
 });
 
 // 👑 Ceder propiedad del grupo (solo propietario)
-router.put("/:id/propietario", async (req, res) => {
+router.put(
+  "/:id/propietario",
+  requireGroupRoleParam(
+    "id",
+    ["propietario"]
+  ),
+  requireTargetSameInstance,
+  async (req, res) => {
   const { id } = req.params;
-  const { usuarioId, nuevoPropietarioId } = req.body;
+  const { nuevoPropietarioId } = req.body;
+  const usuarioId = Number(
+    req.auth.userId
+  );
 
   if (!usuarioId || !nuevoPropietarioId) {
     return res.status(400).json({ error: "Faltan datos" });
@@ -1120,9 +1307,17 @@ router.put("/:id/propietario", async (req, res) => {
 });
 
 // 🚪 Quitar miembro del grupo (propietario o admin)
-router.post("/:id/miembros/:miembroId/quitar", async (req, res) => {
+router.post(
+  "/:id/miembros/:miembroId/quitar",
+  requireGroupRoleParam(
+    "id",
+    ["propietario", "admin"]
+  ),
+  async (req, res) => {
   const { id, miembroId } = req.params;
-  const { usuarioId } = req.body;
+  const usuarioId = Number(
+    req.auth.userId
+  );
 
   if (!usuarioId) {
     return res.status(400).json({ error: "Falta usuarioId" });
@@ -1153,10 +1348,31 @@ router.post("/:id/miembros/:miembroId/quitar", async (req, res) => {
 
     await db.query("DELETE FROM usuario_grupo WHERE grupo_id = ? AND usuario_id = ?", [id, miembroId]);
 
-    const io = req.app.get("io");
-    io.to(`usuario_${miembroId}`).emit("grupoEliminado", { id: Number(id) });
+    const socketUtils =
+      req.app.get("socketUtils");
 
-    const miembros = await emitirMiembrosActualizados(req, id);
+    await socketUtils
+      ?.sacarUsuarioDeGrupo?.(
+        miembroId,
+        id
+      );
+
+    socketUtils
+      ?.enviarEventoAlUsuario?.(
+        miembroId,
+        "grupoEliminado",
+        {
+          id: Number(id),
+          actorId: usuarioId,
+          motivo: "removido",
+        }
+      );
+
+    const miembros =
+      await emitirMiembrosActualizados(
+        req,
+        id
+      );
     res.json({ success: true, miembros });
   } catch (err) {
     console.error("❌ Error al quitar miembro del grupo:", err);
@@ -1165,9 +1381,17 @@ router.post("/:id/miembros/:miembroId/quitar", async (req, res) => {
 });
 
 // 🧩 Salir de grupo (miembro o admin)
-router.post("/:id/salir", async (req, res) => {
+router.post(
+  "/:id/salir",
+  requireGroupRoleParam(
+    "id",
+    []
+  ),
+  async (req, res) => {
   const { id } = req.params;
-  const { usuarioId } = req.body;
+  const usuarioId = Number(
+    req.auth.userId
+  );
 
   try {
     const [rows] = await db.query(
@@ -1190,9 +1414,27 @@ router.post("/:id/salir", async (req, res) => {
     await db.query("DELETE FROM usuario_grupo WHERE grupo_id = ? AND usuario_id = ?", [id, usuarioId]);
   
 
-    // Emitir evento a ese usuario para eliminar el grupo localmente
+    // Emitir evento al usuario que salió
     const io = req.app.get("io");
-    io.to(`usuario_${usuarioId}`).emit("grupoEliminado", { id: Number(id) });
+    const socketUtils =
+      req.app.get("socketUtils");
+
+    await socketUtils
+      ?.sacarUsuarioDeGrupo?.(
+        usuarioId,
+        id
+      );
+
+    socketUtils
+      ?.enviarEventoAlUsuario?.(
+        usuarioId,
+        "grupoEliminado",
+        {
+          id: Number(id),
+          actorId: usuarioId,
+          motivo: "salio",
+        }
+      );
 
     // 4️⃣ Obtiene los miembros restantes
     const [miembrosDetalles] = await db.query(`
@@ -1217,9 +1459,17 @@ router.post("/:id/salir", async (req, res) => {
 
 
 // 🧩 Eliminar grupo (solo propietario)
-router.delete("/:id/eliminar", async (req, res) => {
+router.delete(
+  "/:id/eliminar",
+  requireGroupRoleParam(
+    "id",
+    ["propietario"]
+  ),
+  async (req, res) => {
   const { id } = req.params;
-  const { usuarioId } = req.body;
+  const usuarioId = Number(
+    req.auth.userId
+  );
 
   try {
     const [rows] = await db.query(
@@ -1231,16 +1481,54 @@ router.delete("/:id/eliminar", async (req, res) => {
       return res.status(403).json({ error: "Solo el propietario puede eliminar el grupo" });
     }
 
-    await db.query("DELETE FROM usuario_grupo WHERE grupo_id = ?", [id]);
-    await db.query("DELETE FROM grupos WHERE id = ?", [id]);
+    const [miembrosAntesEliminar] =
+      await db.query(
+        `SELECT usuario_id
+         FROM usuario_grupo
+         WHERE grupo_id = ?`,
+        [id]
+      );
 
-    const io = req.app.get("io");
+    await db.query(
+      "DELETE FROM usuario_grupo WHERE grupo_id = ?",
+      [id]
+    );
 
-    // 🔹 Emitir a todos los miembros conectados
-    io.to(`grupo_${id}`).emit("grupoEliminado", { id: Number(id) });
+    await db.query(
+      "DELETE FROM grupos WHERE id = ?",
+      [id]
+    );
 
-    // 🔹 Emitir directamente al propietario también
-    io.emit("grupoEliminado", { id: Number(id) });
+    const socketUtils =
+      req.app.get("socketUtils");
+
+    for (
+      const miembro
+      of miembrosAntesEliminar
+    ) {
+      const uid =
+        Number(miembro.usuario_id);
+
+      await socketUtils
+        ?.sacarUsuarioDeGrupo?.(
+          uid,
+          id
+        );
+
+      socketUtils
+        ?.enviarEventoAlUsuario?.(
+          uid,
+          "grupoEliminado",
+          {
+            id: Number(id),
+            actorId: usuarioId,
+            motivo: "eliminado",
+            notificar:
+              Number(uid) !==
+              Number(usuarioId),
+          }
+        );
+    }
 
     res.json({ success: true });
   } catch (err) {
@@ -1252,9 +1540,21 @@ router.delete("/:id/eliminar", async (req, res) => {
 // =======================
 // Actualizar nombre o descripción del grupo
 // =======================
-router.put("/:id/editar-info", async (req, res) => {
+router.put(
+  "/:id/editar-info",
+  requireGroupRoleParam(
+    "id",
+    ["propietario", "admin"]
+  ),
+  async (req, res) => {
   const { id } = req.params;
-  const { usuarioId, nombre, descripcion } = req.body;
+  const {
+    nombre,
+    descripcion,
+  } = req.body;
+  const usuarioId = Number(
+    req.auth.userId
+  );
 
   if (!usuarioId) {
     return res.status(400).json({ error: "Falta usuarioId" });
@@ -1294,9 +1594,18 @@ router.put("/:id/editar-info", async (req, res) => {
 // =======================
 // Cambiar privacidad (solo propietario)
 // =======================
-router.put("/:id/privacidad", async (req, res) => {
+router.put(
+  "/:id/privacidad",
+  requireGroupRoleParam(
+    "id",
+    ["propietario"]
+  ),
+  async (req, res) => {
   const { id } = req.params;
-  const { usuarioId, privacidad } = req.body;
+  const { privacidad } = req.body;
+  const usuarioId = Number(
+    req.auth.userId
+  );
 
   if (!usuarioId || !privacidad) {
     return res.status(400).json({ error: "Faltan datos" });
