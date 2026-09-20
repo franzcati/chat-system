@@ -2211,7 +2211,11 @@ const ChatBox = ({ chat, user, setChat, onCloseChat, onVerPerfil, onAddToList, e
           replyToType,
           replyToGrupoId,
         }, { signal: controller.signal });
-        nuevo = res.data?.mensaje || res.data;
+        nuevo =
+          res.data?.mensaje &&
+          typeof res.data.mensaje === "object"
+            ? res.data.mensaje
+            : res.data;
       } else {
         const res = await axios.post("/api/mensajes", {
           senderId: user.id,
@@ -2221,7 +2225,11 @@ const ChatBox = ({ chat, user, setChat, onCloseChat, onVerPerfil, onAddToList, e
           replyToType,
           replyToGrupoId,
         }, { signal: controller.signal });
-        nuevo = res.data?.mensaje || res.data;
+        nuevo =
+          res.data?.mensaje &&
+          typeof res.data.mensaje === "object"
+            ? res.data.mensaje
+            : res.data;
       }
 
       if (replyPayload && nuevo && !nuevo.reply_to) {
@@ -2646,7 +2654,11 @@ const ChatBox = ({ chat, user, setChat, onCloseChat, onVerPerfil, onAddToList, e
               replyToType,
               replyToGrupoId,
             });
-            nuevo = res.data?.mensaje || res.data;
+            nuevo =
+          res.data?.mensaje &&
+          typeof res.data.mensaje === "object"
+            ? res.data.mensaje
+            : res.data;
             logDev("✅ Respuesta POST /api/mensajes:", nuevo);
           } else {
             const res = await axios.post("/api/mensajes", {
@@ -2658,7 +2670,11 @@ const ChatBox = ({ chat, user, setChat, onCloseChat, onVerPerfil, onAddToList, e
               replyToType,
               replyToGrupoId,
             });
-            nuevo = res.data?.mensaje || res.data;
+            nuevo =
+          res.data?.mensaje &&
+          typeof res.data.mensaje === "object"
+            ? res.data.mensaje
+            : res.data;
           }
 
           if (replyPayload && nuevo && !nuevo.reply_to) {
@@ -3227,7 +3243,11 @@ const ChatBox = ({ chat, user, setChat, onCloseChat, onVerPerfil, onAddToList, e
           replyToType,
           replyToGrupoId,
         });
-        nuevo = res.data?.mensaje || res.data;
+        nuevo =
+          res.data?.mensaje &&
+          typeof res.data.mensaje === "object"
+            ? res.data.mensaje
+            : res.data;
       } else {
         const res = await axios.post("/api/mensajes", {
           senderId: user.id,
@@ -3237,7 +3257,11 @@ const ChatBox = ({ chat, user, setChat, onCloseChat, onVerPerfil, onAddToList, e
           replyToType,
           replyToGrupoId,
         });
-        nuevo = res.data?.mensaje || res.data;
+        nuevo =
+          res.data?.mensaje &&
+          typeof res.data.mensaje === "object"
+            ? res.data.mensaje
+            : res.data;
       }
 
       if (replyPayload && nuevo && !nuevo.reply_to) {
