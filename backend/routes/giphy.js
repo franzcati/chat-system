@@ -3,8 +3,15 @@ const crypto = require("crypto");
 const path = require("path");
 const fs = require("fs");
 const fsp = require("fs/promises");
+const {
+  chatAuthMiddleware,
+} = require("../middleware/chatRouteSecurity");
 
 const router = express.Router();
+
+router.use(
+  ...chatAuthMiddleware
+);
 
 const GIPHY_API_BASE = "https://api.giphy.com/v1/gifs";
 const GIF_DIR = path.join(__dirname, "..", "uploads", "gifs");

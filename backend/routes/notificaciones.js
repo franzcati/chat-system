@@ -2,6 +2,15 @@ const express = require("express");
 const router = express.Router();
 const db = require("../db");
 const { queryWithRetry } = require("../utils/dbRetry");
+const {
+  chatAuthMiddleware,
+  enforceAuthenticatedActor,
+} = require("../middleware/chatRouteSecurity");
+
+router.use(
+  ...chatAuthMiddleware,
+  enforceAuthenticatedActor
+);
 
 let silenciosSchemaPromise = null;
 
@@ -58,7 +67,9 @@ router.get("/silenciados/:usuarioId", async (req, res) => {
   try {
     await ensureSilenciosSchema();
 
-    const { usuarioId } = req.params;
+    const usuarioId = Number(
+      req.auth.userId
+    );
 
     // Esta ruta es de lectura. No actualizamos silencios vencidos aquí porque
     // varios clientes pueden consultar al mismo tiempo y competir por el mismo row lock.
@@ -86,7 +97,16 @@ router.post("/silenciar", async (req, res) => {
   try {
     await ensureSilenciosSchema();
 
-    const { usuarioId, tipo, chatId, silenciado, duracion } = req.body;
+    const {
+      tipo,
+      chatId,
+      silenciado,
+      duracion,
+    } = req.body;
+
+    const usuarioId = Number(
+      req.auth.userId
+    );
 
     if (!usuarioId || !tipo || !chatId || typeof silenciado === "undefined") {
       return res.status(400).json({ error: "Faltan parámetros" });

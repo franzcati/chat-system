@@ -3,6 +3,9 @@ const router = express.Router();
 const pool = require('../db');
 const { setAuthSession, clearAuthSession } = require("../utils/sessionAuth");
 const { requireAuth } = require("../middleware/requireAuth");
+const {
+  resolveInstance,
+} = require("../middleware/resolveInstance");
 const { createMfaChallenge } = require('../utils/mfaService');
 const { findTrustedDevice } = require('../utils/trustedDeviceService');
 const { auditMfa } = require('../utils/mfaAuditService');
@@ -84,8 +87,38 @@ async function prepararUsuarioRespuesta(usuarioDb) {
 }
 
 
+function requireSessionPortalMatch(req, res, next) {
+  const sessionInstanceId = Number(
+    req.auth?.usuario?.instancia_id
+  );
+
+  const portalInstanceId = Number(
+    req.instanciaActual?.id
+  );
+
+  if (
+    !Number.isInteger(sessionInstanceId) ||
+    !Number.isInteger(portalInstanceId) ||
+    sessionInstanceId !== portalInstanceId
+  ) {
+    return res.status(403).json({
+      code: "INSTANCE_ACCESS_DENIED",
+      error:
+        "La sesión no corresponde a este portal",
+    });
+  }
+
+  next();
+}
+
+
 // SESIÓN ACTUAL
-router.get('/session', requireAuth, async (req, res) => {
+router.get(
+  '/session',
+  requireAuth,
+  resolveInstance,
+  requireSessionPortalMatch,
+  async (req, res) => {
   return res.json({
     authenticated: true,
     usuario: {
@@ -110,7 +143,10 @@ router.post('/logout', async (req, res) => {
   });
 });
 
-router.post('/login', async (req, res) => {
+router.post(
+  '/login',
+  resolveInstance,
+  async (req, res) => {
   const correoNormalizado = normalizarCorreo(req.body?.correo);
   const contrasena = req.body?.contrasena;
 
@@ -133,11 +169,15 @@ router.post('/login', async (req, res) => {
            CHAR(13), ''),
          CHAR(160), '')
        ) = ?
+         AND instancia_id = ?
        ORDER BY
          CASE WHEN LOWER(TRIM(estado)) = 'aprobado' THEN 0 ELSE 1 END,
          id DESC
        LIMIT 10`,
-      [correoNormalizado]
+      [
+        correoNormalizado,
+        req.instanciaActual.id,
+      ]
     );
 
     if (rows.length === 0) {

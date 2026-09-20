@@ -7,11 +7,22 @@ const multer = require("multer");
 const path = require("path");
 const fs = require("fs");
 const { logDev } = require("../utils/logger");
+const {
+  chatAuthMiddleware,
+  enforceAuthenticatedActor,
+} = require("../middleware/chatRouteSecurity");
+
+router.use(
+  ...chatAuthMiddleware,
+  enforceAuthenticatedActor
+);
 
 // backend/routes/stickers.js
 const storageSticker = multer.diskStorage({
   destination: (req, file, cb) => {
-    const usuarioId = req.body.usuarioId || req.query.usuarioId;
+    const usuarioId = Number(
+      req.auth?.userId
+    );
     if (!usuarioId) {
       return cb(new Error("usuarioId es requerido"), null);
     }
@@ -44,7 +55,9 @@ const uploadSticker = multer({ storage: storageSticker });
  */
 router.post("/", uploadSticker.single("archivo"), async (req, res) => {
   try {
-    const usuarioId = Number(req.body.usuarioId || req.query.usuarioId);
+    const usuarioId = Number(
+      req.auth.userId
+    );
     const file = req.file;
 
     if (!usuarioId || !file) {
@@ -91,7 +104,9 @@ router.post("/", uploadSticker.single("archivo"), async (req, res) => {
 // GET /api/stickers?usuarioId=XX
 // Devuelve stickers FAVORITOS del usuario
 router.get("/", async (req, res) => {
-  const usuarioId = Number(req.query.usuarioId);
+  const usuarioId = Number(
+    req.auth.userId
+  );
 
   if (!usuarioId) {
     return res
@@ -136,7 +151,9 @@ router.get("/", async (req, res) => {
  */
 router.get("/todos", async (req, res) => {
   try {
-    const usuarioId = Number(req.query.usuarioId);
+    const usuarioId = Number(
+    req.auth.userId
+  );
 
     if (!usuarioId) {
       const [rows] = await db.query(
@@ -274,7 +291,11 @@ router.get("/todos", async (req, res) => {
 // Marca como favorito un sticker ya existente en el catálogo (por URL)
 router.post("/favorito", async (req, res) => {
   try {
-    let { usuarioId, url } = req.body;
+    let { url } = req.body;
+
+    const usuarioId = Number(
+      req.auth.userId
+    );
 
     logDev("👉 /api/stickers/favorito body:", req.body);
 
@@ -297,8 +318,12 @@ router.post("/favorito", async (req, res) => {
               u.apellido AS creador_apellido
        FROM stickers s
        LEFT JOIN usuario u ON u.id = s.usuario_id
-       WHERE s.url = ?`,
-      [url]
+       WHERE s.url = ?
+         AND u.instancia_id = ?`,
+      [
+        url,
+        req.instanciaActual.id,
+      ]
     );
 
     if (rows.length === 0) {
@@ -328,7 +353,11 @@ router.post("/favorito", async (req, res) => {
 
 // DELETE /api/stickers/favorito
 router.delete("/favorito", async (req, res) => {
-  const { usuarioId, url } = req.body;
+  const { url } = req.body;
+
+  const usuarioId = Number(
+    req.auth.userId
+  );
 
   if (!usuarioId || !url) {
     return res.status(400).json({ success: false, error: "Faltan datos" });
@@ -339,8 +368,16 @@ router.delete("/favorito", async (req, res) => {
 
     // 1️⃣ Obtener el id del sticker por URL
     const [rows] = await db.query(
-      "SELECT id FROM stickers WHERE url = ?",
-      [urlBuscar]
+      `SELECT s.id
+       FROM stickers s
+       JOIN usuario u
+         ON u.id = s.usuario_id
+       WHERE s.url = ?
+         AND u.instancia_id = ?`,
+      [
+        urlBuscar,
+        req.instanciaActual.id,
+      ]
     );
 
     if (rows.length === 0) {

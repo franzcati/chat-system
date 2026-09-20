@@ -1,23 +1,16 @@
-// routes/messages.js
-const express = require('express');
+const express = require("express");
+
 const router = express.Router();
 
-let messages = [
-  { id: 1, content: 'Hola mundo' },
-  { id: 2, content: 'Mensaje de prueba' }
-];
+function legacyMessagesDisabled(_req, res) {
+  return res.status(410).json({
+    code: "LEGACY_MESSAGES_DISABLED",
+    error:
+      "Esta ruta de prueba fue deshabilitada.",
+  });
+}
 
-// GET /api/messages
-router.get('/', (req, res) => {
-  res.json(messages);
-});
-
-// POST /api/messages
-router.post('/', (req, res) => {
-  const { content } = req.body;
-  const newMessage = { id: Date.now(), content };
-  messages.push(newMessage);
-  res.status(201).json(newMessage);
-});
+router.get("/", legacyMessagesDisabled);
+router.post("/", legacyMessagesDisabled);
 
 module.exports = router;

@@ -40,8 +40,17 @@ const {
 } = require("../utils/mfaRecoveryService");
 const { auditMfa } = require("../utils/mfaAuditService");
 const { setAuthSession } = require("../utils/sessionAuth");
+const {
+  requireAuth,
+} = require("../middleware/requireAuth");
+const {
+  resolveInstance,
+} = require("../middleware/resolveInstance");
 
 const router = express.Router();
+
+router.use(resolveInstance);
+
 const SETUP_MAX_AGE_MINUTES = 15;
 
 const DEFAULT_CHAT_PERMISSIONS = {
@@ -159,10 +168,91 @@ function responderChallengeInvalido(res, error) {
   return null;
 }
 
+function requireSessionPortalMatch(req, res, next) {
+  const sessionInstanceId = Number(
+    req.auth?.usuario?.instancia_id
+  );
+
+  const portalInstanceId = Number(
+    req.instanciaActual?.id
+  );
+
+  if (
+    !Number.isInteger(sessionInstanceId) ||
+    !Number.isInteger(portalInstanceId) ||
+    sessionInstanceId !== portalInstanceId
+  ) {
+    return res.status(403).json({
+      code: "INSTANCE_ACCESS_DENIED",
+      error:
+        "La sesión no corresponde a este portal",
+    });
+  }
+
+  next();
+}
+
+
+const protectedMfa = [
+  requireAuth,
+  requireSessionPortalMatch,
+];
+
+
+async function verifyPortalMfaChallenge(
+  req,
+  expectedPurpose
+) {
+  const challenge = verifyMfaChallenge(
+    req.body?.challenge,
+    expectedPurpose
+  );
+
+  const userId = Number(
+    challenge?.userId
+  );
+
+  const instanceId = Number(
+    req.instanciaActual?.id
+  );
+
+  const [rows] = await pool.query(
+    `SELECT id
+       FROM usuario
+      WHERE id = ?
+        AND instancia_id = ?
+        AND LOWER(TRIM(estado)) = 'aprobado'
+      LIMIT 1`,
+    [
+      userId,
+      instanceId,
+    ]
+  );
+
+  if (!rows.length) {
+    const error = new Error(
+      "El desafío MFA no corresponde a este portal"
+    );
+
+    error.code =
+      "MFA_CHALLENGE_INVALID";
+
+    throw error;
+  }
+
+  return challenge;
+}
+
+
 function readRequestedUserId(req) {
-  const raw = req.headers?.["x-qc-user-id"] || req.query?.usuario_id;
-  const value = Number(raw);
-  return Number.isInteger(value) && value > 0 ? value : null;
+  const value = Number(
+    req.auth?.userId
+  );
+
+  return Number.isInteger(value) &&
+    value > 0
+    ? value
+    : null;
 }
 
 async function requireCurrentTrustedDevice(req, res) {
@@ -226,8 +316,12 @@ async function requireMfaAdmin(req, res) {
         ) AS can_manage_mfa
      FROM usuario u
      WHERE u.id = ?
+       AND u.instancia_id = ?
      LIMIT 1`,
-    [actorUserId]
+    [
+      actorUserId,
+      req.instanciaActual.id,
+    ]
   );
 
   const actor = rows[0];
@@ -397,8 +491,8 @@ async function validarPendingTotp(userId, inputCode) {
 
 router.post("/setup/start", async (req, res) => {
   try {
-    const { userId } = verifyMfaChallenge(
-      req.body?.challenge,
+    const { userId } = await verifyPortalMfaChallenge(
+      req,
       "setup"
     );
 
@@ -438,8 +532,8 @@ router.post("/setup/start", async (req, res) => {
 
 router.post("/setup/verify", async (req, res) => {
   try {
-    const { userId } = verifyMfaChallenge(
-      req.body?.challenge,
+    const { userId } = await verifyPortalMfaChallenge(
+      req,
       "setup"
     );
 
@@ -513,8 +607,8 @@ router.post("/setup/verify", async (req, res) => {
 
 router.post("/verify-login", async (req, res) => {
   try {
-    const { userId } = verifyMfaChallenge(
-      req.body?.challenge,
+    const { userId } = await verifyPortalMfaChallenge(
+      req,
       "verify"
     );
 
@@ -1049,8 +1143,8 @@ function respondEmailError(res, error) {
 
 router.post("/email/enroll/request", async (req, res) => {
   try {
-    const { userId } = verifyMfaChallenge(
-      req.body?.challenge,
+    const { userId } = await verifyPortalMfaChallenge(
+      req,
       "setup"
     );
 
@@ -1109,8 +1203,8 @@ router.post("/email/enroll/request", async (req, res) => {
 
 router.post("/email/enroll/verify", async (req, res) => {
   try {
-    const { userId } = verifyMfaChallenge(
-      req.body?.challenge,
+    const { userId } = await verifyPortalMfaChallenge(
+      req,
       "setup"
     );
 
@@ -1203,8 +1297,8 @@ router.post("/email/enroll/verify", async (req, res) => {
 
 router.post("/email/login/status", async (req, res) => {
   try {
-    const { userId } = verifyMfaChallenge(
-      req.body?.challenge,
+    const { userId } = await verifyPortalMfaChallenge(
+      req,
       "verify"
     );
 
@@ -1237,8 +1331,8 @@ router.post("/email/login/status", async (req, res) => {
 
 router.post("/email/login/request", async (req, res) => {
   try {
-    const { userId } = verifyMfaChallenge(
-      req.body?.challenge,
+    const { userId } = await verifyPortalMfaChallenge(
+      req,
       "verify"
     );
 
@@ -1281,8 +1375,8 @@ router.post("/email/login/request", async (req, res) => {
 
 router.post("/email/login/verify", async (req, res) => {
   try {
-    const { userId } = verifyMfaChallenge(
-      req.body?.challenge,
+    const { userId } = await verifyPortalMfaChallenge(
+      req,
       "verify"
     );
 
@@ -1368,7 +1462,7 @@ router.post("/email/login/verify", async (req, res) => {
    SEGURIDAD DESDE DISPOSITIVO CONFIABLE
    ============================================================ */
 
-router.get("/methods", async (req, res) => {
+router.get("/methods", ...protectedMfa, async (req, res) => {
   try {
     const auth = await requireCurrentTrustedDevice(
       req,
@@ -1400,7 +1494,7 @@ router.get("/methods", async (req, res) => {
   }
 });
 
-router.post("/totp/setup/start", async (req, res) => {
+router.post("/totp/setup/start", ...protectedMfa, async (req, res) => {
   try {
     const auth = await requireCurrentTrustedDevice(
       req,
@@ -1436,7 +1530,7 @@ router.post("/totp/setup/start", async (req, res) => {
   }
 });
 
-router.post("/totp/setup/verify", async (req, res) => {
+router.post("/totp/setup/verify", ...protectedMfa, async (req, res) => {
   try {
     const auth = await requireCurrentTrustedDevice(
       req,
@@ -1491,7 +1585,7 @@ router.post("/totp/setup/verify", async (req, res) => {
   }
 });
 
-router.get("/email", async (req, res) => {
+router.get("/email", ...protectedMfa, async (req, res) => {
   try {
     const auth = await requireCurrentTrustedDevice(
       req,
@@ -1526,7 +1620,7 @@ router.get("/email", async (req, res) => {
   }
 });
 
-router.post("/email/setup/request", async (req, res) => {
+router.post("/email/setup/request", ...protectedMfa, async (req, res) => {
   try {
     const auth = await requireCurrentTrustedDevice(
       req,
@@ -1566,7 +1660,7 @@ router.post("/email/setup/request", async (req, res) => {
   }
 });
 
-router.post("/email/setup/verify", async (req, res) => {
+router.post("/email/setup/verify", ...protectedMfa, async (req, res) => {
   try {
     const auth = await requireCurrentTrustedDevice(
       req,
@@ -1624,7 +1718,7 @@ router.post("/email/setup/verify", async (req, res) => {
   }
 });
 
-router.delete("/email", async (req, res) => {
+router.delete("/email", ...protectedMfa, async (req, res) => {
   try {
     const auth = await requireCurrentTrustedDevice(
       req,
@@ -1688,7 +1782,7 @@ router.delete("/email", async (req, res) => {
    FASE 4 - CÓDIGOS DE RECUPERACIÓN
    ============================================================ */
 
-router.get("/recovery/status", async (req, res) => {
+router.get("/recovery/status", ...protectedMfa, async (req, res) => {
   try {
     const auth = await requireCurrentTrustedDevice(req, res);
     if (!auth) return;
@@ -1715,7 +1809,7 @@ router.get("/recovery/status", async (req, res) => {
   }
 });
 
-router.post("/recovery/generate", async (req, res) => {
+router.post("/recovery/generate", ...protectedMfa, async (req, res) => {
   try {
     const auth = await requireCurrentTrustedDevice(req, res);
     if (!auth) return;
@@ -1783,7 +1877,10 @@ router.post("/recovery/generate", async (req, res) => {
 
 router.post("/recovery/verify-login", async (req, res) => {
   try {
-    const { userId } = verifyMfaChallenge(req.body?.challenge, "verify");
+    const { userId } = await verifyPortalMfaChallenge(
+      req,
+      "verify"
+    );
     const normalized = normalizeRecoveryCode(req.body?.code);
 
     if (!normalized) {
@@ -1882,7 +1979,7 @@ router.post("/recovery/verify-login", async (req, res) => {
    Sólo usuario confiable + permiso gestionar_mfa.
    ============================================================ */
 
-router.get("/admin/users/:userId/status", async (req, res) => {
+router.get("/admin/users/:userId/status", ...protectedMfa, async (req, res) => {
   try {
     const admin = await requireMfaAdmin(req, res);
     if (!admin) return;
@@ -1896,8 +1993,12 @@ router.get("/admin/users/:userId/status", async (req, res) => {
       `SELECT id, nombre, apellido, correo, correo AS usuario, estado, rol_id
          FROM usuario
         WHERE id = ?
+          AND instancia_id = ?
         LIMIT 1`,
-      [targetUserId]
+      [
+        targetUserId,
+        req.instanciaActual.id,
+      ]
     );
 
     if (!users.length) {
@@ -1958,7 +2059,7 @@ router.get("/admin/users/:userId/status", async (req, res) => {
   }
 });
 
-router.post("/admin/users/:userId/reset", async (req, res) => {
+router.post("/admin/users/:userId/reset", ...protectedMfa, async (req, res) => {
   try {
     const admin = await requireMfaAdmin(req, res);
     if (!admin) return;
@@ -1979,8 +2080,12 @@ router.post("/admin/users/:userId/reset", async (req, res) => {
       `SELECT id, correo, correo AS usuario
          FROM usuario
         WHERE id = ?
+          AND instancia_id = ?
         LIMIT 1`,
-      [targetUserId]
+      [
+        targetUserId,
+        req.instanciaActual.id,
+      ]
     );
 
     if (!users.length) {
@@ -2069,7 +2174,7 @@ router.post("/admin/users/:userId/reset", async (req, res) => {
    DISPOSITIVOS
    ============================================================ */
 
-router.get("/devices", async (req, res) => {
+router.get("/devices", ...protectedMfa, async (req, res) => {
   try {
     const auth = await requireCurrentTrustedDevice(
       req,
@@ -2120,7 +2225,7 @@ router.get("/devices", async (req, res) => {
   }
 });
 
-router.delete("/devices/:deviceId", async (req, res) => {
+router.delete("/devices/:deviceId", ...protectedMfa, async (req, res) => {
   try {
     const auth = await requireCurrentTrustedDevice(
       req,
