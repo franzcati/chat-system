@@ -4,6 +4,23 @@ const db = require("../db");
 const { logDev } = require("../utils/logger");
 const { queryWithRetry } = require("../utils/dbRetry");
 const { optimizeUploadedAudio } = require("../utils/audioOptimizer");
+const {
+  chatAuthMiddleware,
+  enforceAuthenticatedActor,
+} = require("../middleware/chatRouteSecurity");
+const {
+  requirePrivatePairQuery,
+  requirePrivateMessageParam,
+  requirePrivateMessageBody,
+  requireSameInstanceUserField,
+  validateForwardDestinations,
+  validateReplyAccess,
+} = require("../middleware/privateMessageSecurity");
+
+router.use(
+  ...chatAuthMiddleware,
+  enforceAuthenticatedActor
+);
 
 function formatDateToMySQL(date) {
   return date.toISOString().slice(0, 19).replace("T", " ");
@@ -490,7 +507,11 @@ async function usuarioPuedeEliminarMensajes(usuarioId) {
 }
 
 
-router.get("/contexto/:mensajeId", async (req, res) => {
+router.get(
+  "/contexto/:mensajeId",
+  requirePrivatePairQuery,
+  requirePrivateMessageParam("mensajeId"),
+  async (req, res) => {
   try {
     await ensureReplyColumn();
     const mensajeId = Number(req.params.mensajeId);
@@ -654,7 +675,10 @@ router.get("/contexto/:mensajeId", async (req, res) => {
   }
 });
 
-router.get("/", async (req, res) => {
+router.get(
+  "/",
+  requirePrivatePairQuery,
+  async (req, res) => {
   try {
     await ensureReplyColumn();
     const { usuario1, usuario2 } = req.query;
@@ -872,8 +896,15 @@ router.get("/", async (req, res) => {
 // =======================
 // Enviar un nuevo mensaje
 // =======================
-router.post("/", async (req, res) => {
-  const senderId = Number(req.body.senderId);
+router.post(
+  "/",
+  requireSameInstanceUserField(
+    "receiverId",
+    true
+  ),
+  validateReplyAccess,
+  async (req, res) => {
+  const senderId = Number(req.auth.userId);
   const receiverId = Number(req.body.receiverId);
   const { message, loteId, replyToId, replyToType, replyToGrupoId } = req.body;
   const replyToIdNum = Number(replyToId) || null;
@@ -961,8 +992,11 @@ router.post("/", async (req, res) => {
 // =======================
 // Reenviar mensajes a chats privados o grupos
 // =======================
-router.post("/reenviar", async (req, res) => {
-  const usuarioId = Number(req.body.usuarioId);
+router.post(
+  "/reenviar",
+  validateForwardDestinations,
+  async (req, res) => {
+  const usuarioId = Number(req.auth.userId);
   const mensajes = Array.isArray(req.body.mensajes) ? req.body.mensajes : [];
   const destinos = Array.isArray(req.body.destinos) ? req.body.destinos : [];
 
@@ -1030,8 +1064,14 @@ router.post("/reenviar", async (req, res) => {
 // =======================
 // Marcar mensajes como vistos
 // =======================
-router.put("/marcar-vistos", async (req, res) => {
-  const { userId, contactoId } = req.body;
+router.put(
+  "/marcar-vistos",
+  requireSameInstanceUserField(
+    "contactoId"
+  ),
+  async (req, res) => {
+  const userId = Number(req.auth.userId);
+  const { contactoId } = req.body;
 
   if (!userId || !contactoId) {
     return res.status(400).json({ error: "Faltan parámetros userId y contactoId" });
@@ -1062,9 +1102,13 @@ router.put("/marcar-vistos", async (req, res) => {
 // =======================
 // Añadir / quitar reacción
 // =======================
-router.post("/reaccion", async (req, res) => {
+router.post(
+  "/reaccion",
+  requirePrivateMessageBody("mensajeId"),
+  async (req, res) => {
   logDev("➡️ [BACK] Reacción privada recibida:", req.body);
-  const { mensajeId, usuarioId, emoji } = req.body;
+  const { mensajeId, emoji } = req.body;
+  const usuarioId = Number(req.auth.userId);
 
   if (!mensajeId || !usuarioId || !emoji) {
     return res.status(400).json({ error: "Faltan parámetros" });
@@ -1125,9 +1169,12 @@ router.post("/reaccion", async (req, res) => {
 // =======================
 // DELETE lógico de mensaje
 // =======================
-router.put("/:id/eliminar", async (req, res) => {
+router.put(
+  "/:id/eliminar",
+  requirePrivateMessageParam("id"),
+  async (req, res) => {
   const { id } = req.params;
-  const { usuarioId } = req.body;
+  const usuarioId = Number(req.auth.userId);
 
   try {
     if (!(await usuarioPuedeEliminarMensajes(usuarioId))) {
@@ -1166,9 +1213,12 @@ router.put("/:id/eliminar", async (req, res) => {
 // =======================
 // Deshacer eliminado
 // =======================
-router.put("/:id/deshacer", async (req, res) => {
+router.put(
+  "/:id/deshacer",
+  requirePrivateMessageParam("id"),
+  async (req, res) => {
   const { id } = req.params;
-  const { usuarioId } = req.body;
+  const usuarioId = Number(req.auth.userId);
 
   try {
     // Restaurar/deshacer un mensaje propio NO depende del permiso
@@ -1206,9 +1256,13 @@ router.put("/:id/deshacer", async (req, res) => {
 // =======================
 // Editar mensaje
 // =======================
-router.put("/:id/editar", async (req, res) => {
+router.put(
+  "/:id/editar",
+  requirePrivateMessageParam("id"),
+  async (req, res) => {
   const { id } = req.params;
-  const { usuarioId, nuevoTexto } = req.body;
+  const { nuevoTexto } = req.body;
+  const usuarioId = Number(req.auth.userId);
 
   if (!usuarioId || !nuevoTexto) {
     return res.status(400).json({ error: "Faltan parámetros usuarioId o nuevoTexto" });
@@ -1271,7 +1325,10 @@ router.put("/:id/editar", async (req, res) => {
 // =======================
 // Obtener historial de ediciones
 // =======================
-router.get("/:id/historial", async (req, res) => {
+router.get(
+  "/:id/historial",
+  requirePrivateMessageParam("id"),
+  async (req, res) => {
   const { id } = req.params;
 
   try {
@@ -1325,8 +1382,15 @@ router.get("/:id/historial", async (req, res) => {
 // =======================
 // FIJAR o DESFIJAR mensaje
 // =======================
-router.post("/fijar", async (req, res) => {
-  const { mensajeId, usuarioId, duracion = "24h" } = req.body;
+router.post(
+  "/fijar",
+  requirePrivateMessageBody("mensajeId"),
+  async (req, res) => {
+  const {
+    mensajeId,
+    duracion = "24h",
+  } = req.body;
+  const usuarioId = Number(req.auth.userId);
 
   if (!mensajeId || !usuarioId) {
     return res.status(400).json({ error: "Faltan parámetros" });
@@ -1422,7 +1486,10 @@ router.post("/fijar", async (req, res) => {
 // =======================
 // Obtener mensajes fijados
 // =======================
-router.get("/fijados", async (req, res) => {
+router.get(
+  "/fijados",
+  requirePrivatePairQuery,
+  async (req, res) => {
   const { usuario1, usuario2 } = req.query;
 
   if (!usuario1 || !usuario2) {
@@ -1492,9 +1559,17 @@ router.get("/fijados", async (req, res) => {
 // =======================
 // Subir archivo en chat individual
 // =======================
-router.post("/archivo", uploadArchivoConMiniatura, async (req, res) => {
+router.post(
+  "/archivo",
+  uploadArchivoConMiniatura,
+  requireSameInstanceUserField(
+    "receiver_id",
+    true
+  ),
+  validateReplyAccess,
+  async (req, res) => {
   try {
-    const sender_id = Number(req.body.sender_id || req.query.sender_id);
+    const sender_id = Number(req.auth.userId);
     const receiver_id = Number(req.body.receiver_id || req.query.receiver_id);
     const loteId = req.body.loteId || req.query.loteId || null;
     const replyToIdNum = Number(req.body.replyToId || req.query.replyToId) || null;
