@@ -9,10 +9,9 @@ import { getMessagePreview } from "../utils/messagePreview";
 import { Star } from "lucide-react";
 import toast from "react-hot-toast";
 import GroupAvatar from "../components/GroupAvatar";
+import { readChatListSnapshot, persistChatListSnapshot } from "../utils/chatListSnapshot";
 
 const CHAT_RENDER_BATCH_SIZE = 24;
-const CHAT_LIST_CACHE_TTL_MS = 5 * 60 * 1000;
-const chatListMemoryCache = new Map();
 
 
 const getRecordTime = (record = {}) => {
@@ -165,6 +164,7 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat, addToLi
   const [showAddToExistingList, setShowAddToExistingList] = useState(false);
   const [typingByChat, setTypingByChat] = useState({});
   const [isInitialLoading, setIsInitialLoading] = useState(true);
+  const [initialLoadError, setInitialLoadError] = useState("");
   const [visibleChatCount, setVisibleChatCount] = useState(CHAT_RENDER_BATCH_SIZE);
   const listScrollRef = useRef(null);
   const loadMoreSentinelRef = useRef(null);
@@ -174,6 +174,7 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat, addToLi
   const previousChatPositionsRef = useRef(new Map());
   const refreshInFlightRef = useRef(null);
   const lastRefreshAtRef = useRef(0);
+  const stableSnapshotReadyRef = useRef(false);
   // El orden de la lista solo debe animarse cuando cambia por un mensaje nuevo,
   // no al seleccionar un chat, marcarlo como visto o actualizar presencia.
   const animateChatReorderRef = useRef(false);
@@ -594,88 +595,142 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat, addToLi
     return Object.values(grouped);
   };
 
+  const buildUnifiedChats = (mensajesInput = [], gruposInput = [], currentUserId = userId) => {
+    const privados = agruparChatsPrivados(
+      (Array.isArray(mensajesInput) ? mensajesInput : []).filter((m) => !m.grupo_id),
+      currentUserId
+    );
+
+    const gruposAdaptados = (Array.isArray(gruposInput) ? gruposInput : []).map((g) => {
+      const eliminado = g.eliminado ?? 0;
+      const mensajeMostrado =
+        eliminado === 1 ? "Se eliminó este mensaje" : g.ultimo_mensaje || "Nuevo grupo creado";
+
+      return {
+        tipo: "grupo",
+        grupo_id: g.grupo_id,
+        user_id: currentUserId,
+        usuario_id: g.grupo_id,
+        usuario_nombre: g.nombre,
+        imagen_url: g.imagen_url,
+        background: "#6c757d",
+        mensajes_no_leidos: Number(g.mensajes_no_leidos || 0),
+        eliminado: g.eliminado,
+        ultimo_mensaje: mensajeMostrado,
+        ultimo_archivo_url: g.ultimo_archivo_url || g.archivo_url || null,
+        ultimo_tipo_archivo: g.ultimo_tipo_archivo || g.tipo_archivo || "",
+        ultimo_nombre_archivo: g.ultimo_nombre_archivo || g.nombre_archivo || "",
+        ultimo_mensaje_id: g.ultimo_mensaje_id || null,
+        ultimo_remitente: g.ultimo_remitente || null,
+        ultimo_remitente_avatar: g.ultimo_remitente_avatar || null,
+        ultimo_remitente_background: g.ultimo_remitente_background,
+        fecha_envio: g.fecha_envio || g.fecha_creacion,
+        tipo_mensaje: g.tipo_mensaje,
+        visto: g.visto,
+        lastTime: g.fecha_envio
+          ? getTimestamp(g.fecha_envio)
+          : getTimestamp(g.fecha_creacion),
+        descripcion: g.descripcion || "",
+        fecha_creacion: g.fecha_creacion,
+        privacidad: g.privacidad,
+        propietario: g.propietario || null,
+        admins: g.admins || [],
+        archivos: g.archivos || [],
+        es_favorito: g.es_favorito || false,
+        miembros: g.miembros || [],
+      };
+    });
+
+    return dedupeChatsByIdentity([...privados, ...gruposAdaptados]);
+  };
+
   // -------------------------------
-  // 🔹 Cargar resúmenes privados, grupos y preferencias.
-  // La versión anterior descargaba todo el historial privado y todos los archivos
-  // de cada grupo al iniciar sesión. Ahora sólo se trae una fila por conversación.
+  // 🔹 Carga inicial estilo WhatsApp:
+  // 1) Si existe un snapshot COMPLETO y reciente del MISMO usuario, se muestra
+  //    inmediatamente tras F5.
+  // 2) En paralelo se revalida contra el servidor.
+  // 3) Nunca se sustituye la lista por datos parciales: privados + grupos son
+  //    críticos y deben estar disponibles juntos antes de hacer commit.
+  // 4) Si cambia de usuario, se limpia el estado visible antes de restaurar el
+  //    snapshot correspondiente para impedir cualquier cruce de cuentas.
   useEffect(() => {
     if (!userId) return;
     let cancelled = false;
 
     const cacheKey = String(userId);
-    const cached = chatListMemoryCache.get(cacheKey);
-    const hasFreshCache = Boolean(
-      cached && Date.now() - Number(cached.updatedAt || 0) < CHAT_LIST_CACHE_TTL_MS
-    );
+    const cached = readChatListSnapshot(cacheKey);
+    const hasFreshCache = Boolean(cached);
+
+    setInitialLoadError("");
+    stableSnapshotReadyRef.current = hasFreshCache;
 
     if (hasFreshCache) {
-      setMensajes(Array.isArray(cached.mensajes) ? cached.mensajes : []);
-      setGrupos(Array.isArray(cached.grupos) ? cached.grupos : []);
+      const cachedMensajes = Array.isArray(cached.mensajes) ? cached.mensajes : [];
+      const cachedGrupos = Array.isArray(cached.grupos) ? cached.grupos : [];
+      setMensajes(cachedMensajes);
+      setGrupos(cachedGrupos);
       setFavoritos(Array.isArray(cached.favoritos) ? cached.favoritos : []);
       setSilenciados(Array.isArray(cached.silenciados) ? cached.silenciados : []);
       setChatEstados(Array.isArray(cached.chatEstados) ? cached.chatEstados : []);
       setChatLists(Array.isArray(cached.chatLists) ? cached.chatLists : []);
+      setChats(buildUnifiedChats(cachedMensajes, cachedGrupos, userId));
       setIsInitialLoading(false);
+    } else {
+      // Nunca dejamos visible el estado de otro usuario o una lista parcial.
+      setMensajes([]);
+      setGrupos([]);
+      setChats([]);
+      setFavoritos([]);
+      setSilenciados([]);
+      setChatEstados([]);
+      setChatLists([]);
+      setIsInitialLoading(true);
     }
+
+    const getCriticalDataset = async (primaryUrl, legacyUrl, label) => {
+      try {
+        const response = await axios.get(primaryUrl);
+        return {
+          available: true,
+          fallback: false,
+          data: Array.isArray(response.data) ? response.data : [],
+        };
+      } catch (primaryError) {
+        console.warn(`⚠️ Falló ${label}; intentando compatibilidad.`, primaryError);
+        try {
+          const legacy = await axios.get(legacyUrl);
+          return {
+            available: true,
+            fallback: true,
+            data: Array.isArray(legacy.data) ? legacy.data : [],
+          };
+        } catch (legacyError) {
+          console.error(`❌ No fue posible cargar ${label}.`, legacyError);
+          return { available: false, fallback: true, data: [] };
+        }
+      }
+    };
 
     const fetchData = async ({ showLoading = false, force = false } = {}) => {
       const now = Date.now();
       if (!force && now - lastRefreshAtRef.current < 1500) return;
       if (refreshInFlightRef.current) return refreshInFlightRef.current;
 
-      if (showLoading) setIsInitialLoading(true);
+      if (showLoading && !stableSnapshotReadyRef.current) setIsInitialLoading(true);
 
       const task = (async () => {
         try {
-          // IMPORTANTE: la lista principal no debe quedar vacía porque falle una
-          // preferencia secundaria (silencios, favoritos, estados o listas).
-          // Cargamos privados y grupos de forma independiente y las preferencias
-          // con allSettled, como una app de mensajería real.
-          let [privadosResult, gruposResult, preferenciasResult] = await Promise.all([
-            axios
-              .get(`/api/chats/resumen/${userId}`)
-              .then((res) => ({ ok: true, data: Array.isArray(res.data) ? res.data : [] }))
-              .catch(async (error) => {
-                console.error("❌ Falló /api/chats/resumen. Usando compatibilidad:", error);
-                try {
-                  const legacy = await axios.get(`/api/chats/${userId}`);
-                  return { ok: false, fallback: true, data: Array.isArray(legacy.data) ? legacy.data : [] };
-                } catch (legacyError) {
-                  console.error("❌ También falló /api/chats/:userId:", legacyError);
-                  return { ok: false, data: [] };
-                }
-              })
-              .then((result) => {
-                // Primer pintado progresivo: si los privados llegan antes que los
-                // grupos/preferencias, la lista ya se muestra y no espera a todo.
-                if (!cancelled && result.data.length > 0) {
-                  setMensajes(dedupeMessagesById(result.data));
-                  setIsInitialLoading(false);
-                }
-                return result;
-              }),
-            axios
-              .get(`/api/grupos/usuario-resumen/${userId}`)
-              .then((res) => ({ ok: true, data: Array.isArray(res.data) ? res.data : [] }))
-              .catch(async (error) => {
-                console.error("❌ Falló /api/grupos/usuario-resumen. Usando compatibilidad:", error);
-                try {
-                  const legacy = await axios.get(`/api/grupos/usuario/${userId}`);
-                  return { ok: false, fallback: true, data: Array.isArray(legacy.data) ? legacy.data : [] };
-                } catch (legacyError) {
-                  console.error("❌ También falló /api/grupos/usuario/:userId:", legacyError);
-                  return { ok: false, data: [] };
-                }
-              })
-              .then((result) => {
-                // Los grupos se incorporan apenas responden, sin bloquear los chats
-                // privados que ya puedan estar visibles.
-                if (!cancelled && result.data.length > 0) {
-                  setGrupos(dedupeGroupsById(result.data));
-                  setIsInitialLoading(false);
-                }
-                return result;
-              }),
+          const [privadosResult, gruposResult, preferenciasResult] = await Promise.all([
+            getCriticalDataset(
+              `/api/chats/resumen/${userId}`,
+              `/api/chats/${userId}`,
+              "los chats privados"
+            ),
+            getCriticalDataset(
+              `/api/grupos/usuario-resumen/${userId}`,
+              `/api/grupos/usuario/${userId}`,
+              "los grupos"
+            ),
             Promise.allSettled([
               axios.get(`/api/chats/favoritos/${userId}`),
               axios.get(`/api/notificaciones/silenciados/${userId}`),
@@ -684,68 +739,87 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat, addToLi
             ]),
           ]);
 
-          // Si los dos endpoints optimizados responden 200 pero vacíos, comprobamos
-          // una sola vez con las rutas históricas. Esto evita mostrar falsamente
-          // "No hay chats" durante una migración o si el resumen aún no es compatible
-          // con alguna versión de la base de datos.
-          if (privadosResult.data.length === 0 && gruposResult.data.length === 0) {
-            const [legacyPrivados, legacyGrupos] = await Promise.allSettled([
-              axios.get(`/api/chats/${userId}`),
-              axios.get(`/api/grupos/usuario/${userId}`),
-            ]);
-
-            if (legacyPrivados.status === "fulfilled" && Array.isArray(legacyPrivados.value.data) && legacyPrivados.value.data.length) {
-              privadosResult = { ok: false, fallback: true, data: legacyPrivados.value.data };
-            }
-
-            if (legacyGrupos.status === "fulfilled" && Array.isArray(legacyGrupos.value.data) && legacyGrupos.value.data.length) {
-              gruposResult = { ok: false, fallback: true, data: legacyGrupos.value.data };
-            }
-          }
-
           if (cancelled) return;
 
+          // La lista visible sólo cambia cuando ambos conjuntos críticos están
+          // disponibles. Si falla uno, conservamos el snapshot anterior; sin
+          // snapshot mostramos error/reintento en lugar de una lista equivocada.
+          if (!privadosResult.available || !gruposResult.available) {
+            if (!stableSnapshotReadyRef.current) {
+              setInitialLoadError("No se pudo sincronizar la lista completa de chats. Reintentando…");
+              setIsInitialLoading(false);
+            }
+            return;
+          }
+
+          const nextMensajes = dedupeMessagesById(privadosResult.data);
+          const nextGrupos = dedupeGroupsById(gruposResult.data);
           const [favoritosResult, silenciadosResult, estadosResult, listasResult] = preferenciasResult;
 
-          setMensajes(dedupeMessagesById(privadosResult.data));
-          setGrupos(dedupeGroupsById(gruposResult.data));
-
-          if (favoritosResult.status === "fulfilled") {
-            setFavoritos(Array.isArray(favoritosResult.value.data) ? favoritosResult.value.data : []);
-          } else {
-            console.warn("⚠️ No se pudieron cargar favoritos; la lista principal continúa.", favoritosResult.reason);
+          // El estado archivado/fijado/no-leído forma parte de la lista correcta.
+          // En una primera carga no mostramos chats si ese estado todavía no pudo
+          // obtenerse, porque aparecerían temporalmente conversaciones archivadas
+          // en la bandeja principal. Con snapshot previo, conservamos ese estado.
+          if (estadosResult.status !== "fulfilled" && !hasFreshCache) {
+            setInitialLoadError("No se pudo sincronizar el estado completo de los chats. Reintentando…");
+            setIsInitialLoading(false);
+            return;
           }
 
-          if (silenciadosResult.status === "fulfilled") {
-            setSilenciados(Array.isArray(silenciadosResult.value.data) ? silenciadosResult.value.data : []);
-          } else {
-            console.warn("⚠️ No se pudieron cargar silencios; la lista principal continúa.", silenciadosResult.reason);
-          }
+          // Construimos primero todos los valores y luego hacemos un único commit
+          // lógico. React 18 agrupa estas actualizaciones en el mismo render.
+          const nextFavoritos = favoritosResult.status === "fulfilled"
+            ? (Array.isArray(favoritosResult.value.data) ? favoritosResult.value.data : [])
+            : (Array.isArray(cached?.favoritos) ? cached.favoritos : []);
+          const nextSilenciados = silenciadosResult.status === "fulfilled"
+            ? (Array.isArray(silenciadosResult.value.data) ? silenciadosResult.value.data : [])
+            : (Array.isArray(cached?.silenciados) ? cached.silenciados : []);
+          const nextEstados = estadosResult.status === "fulfilled"
+            ? (Array.isArray(estadosResult.value.data) ? estadosResult.value.data : [])
+            : (Array.isArray(cached?.chatEstados) ? cached.chatEstados : []);
+          const nextListas = listasResult.status === "fulfilled"
+            ? (Array.isArray(listasResult.value.data) ? listasResult.value.data : [])
+            : (Array.isArray(cached?.chatLists) ? cached.chatLists : []);
 
-          if (estadosResult.status === "fulfilled") {
-            setChatEstados(Array.isArray(estadosResult.value.data) ? estadosResult.value.data : []);
-          } else {
-            console.warn("⚠️ No se pudieron cargar estados de chat; la lista principal continúa.", estadosResult.reason);
-          }
+          setMensajes(nextMensajes);
+          setGrupos(nextGrupos);
+          setFavoritos(nextFavoritos);
+          setSilenciados(nextSilenciados);
+          setChatEstados(nextEstados);
+          setChatLists(nextListas);
+          setChats(buildUnifiedChats(nextMensajes, nextGrupos, userId));
 
-          if (listasResult.status === "fulfilled") {
-            setChatLists(Array.isArray(listasResult.value.data) ? listasResult.value.data : []);
-          } else {
-            console.warn("⚠️ No se pudieron cargar listas personalizadas; la lista principal continúa.", listasResult.reason);
-          }
-
+          stableSnapshotReadyRef.current = true;
           lastRefreshAtRef.current = Date.now();
+          setInitialLoadError("");
+          setIsInitialLoading(false);
 
-          logDev("📋 Lista inicial cargada", {
-            privados: privadosResult.data.length,
-            grupos: gruposResult.data.length,
+          // Persistimos aquí, inmediatamente después del snapshot completo, para
+          // que un F5 posterior tenga una base coherente aunque ocurra antes del
+          // siguiente efecto de React.
+          persistChatListSnapshot(cacheKey, {
+            mensajes: nextMensajes,
+            grupos: nextGrupos,
+            favoritos: nextFavoritos,
+            silenciados: nextSilenciados,
+            chatEstados: nextEstados,
+            chatLists: nextListas,
+          });
+
+          logDev("📋 Snapshot completo de chats sincronizado", {
+            privados: nextMensajes.length,
+            grupos: nextGrupos.length,
             fallbackPrivados: Boolean(privadosResult.fallback),
             fallbackGrupos: Boolean(gruposResult.fallback),
           });
         } catch (error) {
-          if (!cancelled) console.error("❌ Error inesperado cargando ChatList:", error);
-        } finally {
-          if (!cancelled) setIsInitialLoading(false);
+          if (!cancelled) {
+            console.error("❌ Error inesperado cargando ChatList:", error);
+            if (!stableSnapshotReadyRef.current) {
+              setInitialLoadError("No se pudo cargar la lista de chats. Reintentando…");
+              setIsInitialLoading(false);
+            }
+          }
         }
       })();
 
@@ -759,9 +833,7 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat, addToLi
 
     fetchData({ showLoading: !hasFreshCache, force: true });
 
-    // Recuperar lo ocurrido mientras el socket estuvo desconectado, sin disparar
-    // varias cargas simultáneas durante una ráfaga de reconexiones.
-    const handleReconnect = () => fetchData();
+    const handleReconnect = () => fetchData({ force: true });
     socket.on("connect", handleReconnect);
 
     return () => {
@@ -770,13 +842,13 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat, addToLi
     };
   }, [userId]);
 
-  // Caché en memoria del navegador: al volver desde Administración/Perfil a
-  // Chats, la lista reaparece al instante y luego se refresca en segundo plano.
+  // Cada cambio estable producido por sockets/mensajes también actualiza el
+  // snapshot de sesión. sessionStorage sólo vive en esta pestaña y además está
+  // separado por userId; al cerrar sesión se elimina explícitamente.
   useEffect(() => {
-    if (!userId || isInitialLoading) return;
+    if (!userId || isInitialLoading || !stableSnapshotReadyRef.current) return;
 
-    chatListMemoryCache.set(String(userId), {
-      updatedAt: Date.now(),
+    persistChatListSnapshot(String(userId), {
       mensajes,
       grupos,
       favoritos,
@@ -796,63 +868,10 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat, addToLi
   ]);
 
   // -------------------------------
-  // 🔹 Unificar privados + grupos
+  // 🔹 Mantener la colección unificada para actualizaciones por socket.
   useEffect(() => {
     if (!userId) return;
-
-    const privados = agruparChatsPrivados(mensajes.filter((m) => !m.grupo_id), userId);
-
-    const gruposAdaptados = grupos.map((g) => {
-      const eliminado = g.eliminado ?? 0;
-      const mensajeMostrado =
-        eliminado === 1 ? "Se eliminó este mensaje" : g.ultimo_mensaje || "Nuevo grupo creado";
-      const mensajesNoLeidos = g.miembros?.some((m) => m.id === userId)
-        ? g.mensajes_no_leidos || 0
-        : 0;
-
-      return {
-        // 🔹 Identificación general
-        tipo: "grupo",
-        grupo_id: g.grupo_id,
-        user_id: userId,
-        usuario_id: g.grupo_id,
-        usuario_nombre: g.nombre,
-
-        // 🔹 Imagen y colores
-        imagen_url: g.imagen_url,
-        background: "#6c757d",
-
-        // 🔹 Estado de mensajes
-        mensajes_no_leidos: mensajesNoLeidos,
-        eliminado: g.eliminado,
-        ultimo_mensaje: mensajeMostrado,
-        ultimo_archivo_url: g.ultimo_archivo_url || g.archivo_url || null,
-        ultimo_tipo_archivo: g.ultimo_tipo_archivo || g.tipo_archivo || "",
-        ultimo_nombre_archivo: g.ultimo_nombre_archivo || g.nombre_archivo || "",
-        ultimo_mensaje_id: g.ultimo_mensaje_id || null,
-        ultimo_remitente: g.ultimo_remitente || null,
-        ultimo_remitente_avatar: g.ultimo_remitente_avatar || null,
-        ultimo_remitente_background: g.ultimo_remitente_background,
-        fecha_envio: g.fecha_envio || g.fecha_creacion,
-        tipo_mensaje: g.tipo_mensaje,
-        visto: g.visto,
-        lastTime: g.fecha_envio
-          ? getTimestamp(g.fecha_envio)
-          : getTimestamp(g.fecha_creacion),
-
-        // 🔹 NUEVOS CAMPOS — información extendida del grupo
-        descripcion: g.descripcion || "",
-        fecha_creacion: g.fecha_creacion,
-        privacidad: g.privacidad,
-        propietario: g.propietario || null,
-        admins: g.admins || [],
-        archivos: g.archivos || [],
-        es_favorito: g.es_favorito || false,
-        miembros: g.miembros || [],
-      };
-    });
-
-    setChats(dedupeChatsByIdentity([...privados, ...gruposAdaptados]));
+    setChats(buildUnifiedChats(mensajes, grupos, userId));
   }, [mensajes, grupos, userId]);
 
   // -------------------------------
@@ -2964,7 +2983,12 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat, addToLi
               )}
 
               <div className="card-list wa-chat-list">
-                {isInitialLoading && uniqueChats.length === 0 ? (
+                {initialLoadError && uniqueChats.length === 0 ? (
+                  <div className="wa-chat-list-loading-state">
+                    <i className="bi bi-cloud-slash" aria-hidden="true" />
+                    <span>{initialLoadError}</span>
+                  </div>
+                ) : isInitialLoading && uniqueChats.length === 0 ? (
                   <div className="wa-chat-list-skeleton" aria-label="Cargando conversaciones">
                     {Array.from({ length: 7 }).map((_, index) => (
                       <div className="wa-chat-skeleton-row" key={index}>

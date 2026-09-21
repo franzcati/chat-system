@@ -421,7 +421,66 @@ router.get(
 
   try {
     const [grupos] = await db.query(
-      `SELECT
+      `WITH
+        grupos_usuario AS (
+          SELECT ug.grupo_id, ug.rol
+          FROM usuario_grupo ug
+          WHERE ug.usuario_id = ?
+        ),
+        ultimos AS (
+          SELECT mg.grupo_id, MAX(mg.id) AS ultimo_id
+          FROM mensajes_grupo mg
+          INNER JOIN grupos_usuario gu ON gu.grupo_id = mg.grupo_id
+          GROUP BY mg.grupo_id
+        ),
+        no_leidos AS (
+          SELECT mg.grupo_id, COUNT(*) AS total
+          FROM mensajes_grupo mg
+          INNER JOIN grupos_usuario gu ON gu.grupo_id = mg.grupo_id
+          LEFT JOIN mensajes_grupo_vistos mgv
+            ON mgv.mensaje_id = mg.id
+           AND mgv.usuario_id = ?
+          WHERE mg.usuario_id <> ?
+            AND mgv.mensaje_id IS NULL
+          GROUP BY mg.grupo_id
+        ),
+        miembros_agregados AS (
+          SELECT
+            ug2.grupo_id,
+            JSON_ARRAYAGG(
+              JSON_OBJECT(
+                'id', u2.id,
+                'nombre', u2.nombre,
+                'apellido', u2.apellido,
+                'url_imagen', u2.url_imagen,
+                'background', u2.background,
+                'correo', u2.correo,
+                'rol', ug2.rol
+              )
+            ) AS miembros
+          FROM usuario_grupo ug2
+          INNER JOIN grupos_usuario gu ON gu.grupo_id = ug2.grupo_id
+          INNER JOIN usuario u2 ON u2.id = ug2.usuario_id
+          GROUP BY ug2.grupo_id
+        ),
+        recibos_ultimo AS (
+          SELECT
+            ult.grupo_id,
+            COUNT(DISTINCT CASE WHEN ugm.usuario_id <> m.usuario_id THEN ugm.usuario_id ELSE NULL END) AS esperados,
+            COUNT(DISTINCT CASE
+              WHEN ugm.usuario_id <> m.usuario_id AND mgv.usuario_id IS NOT NULL
+              THEN ugm.usuario_id
+              ELSE NULL
+            END) AS vistos
+          FROM ultimos ult
+          INNER JOIN mensajes_grupo m ON m.id = ult.ultimo_id
+          INNER JOIN usuario_grupo ugm ON ugm.grupo_id = ult.grupo_id
+          LEFT JOIN mensajes_grupo_vistos mgv
+            ON mgv.mensaje_id = m.id
+           AND mgv.usuario_id = ugm.usuario_id
+          GROUP BY ult.grupo_id
+        )
+      SELECT
         g.id AS grupo_id,
         g.nombre,
         g.descripcion,
@@ -429,7 +488,7 @@ router.get(
         g.propietario_id,
         g.privacidad,
         g.fecha_creacion,
-        ug.rol,
+        gu.rol,
 
         m.id AS ultimo_mensaje_id,
         m.mensaje AS ultimo_mensaje,
@@ -449,68 +508,25 @@ router.get(
         CASE WHEN u.id = ? THEN 'enviado' ELSE 'recibido' END AS tipo_mensaje,
         CASE WHEN cf.id IS NOT NULL THEN 1 ELSE 0 END AS es_favorito,
         COALESCE(nl.total, 0) AS mensajes_no_leidos,
-
         CASE
           WHEN m.id IS NULL THEN 1
-          WHEN (
-            SELECT COUNT(*)
-            FROM usuario_grupo ug_total
-            WHERE ug_total.grupo_id = g.id
-              AND ug_total.usuario_id <> m.usuario_id
-          ) <= (
-            SELECT COUNT(DISTINCT mgv_total.usuario_id)
-            FROM mensajes_grupo_vistos mgv_total
-            WHERE mgv_total.mensaje_id = m.id
-              AND mgv_total.usuario_id <> m.usuario_id
-          ) THEN 1
+          WHEN COALESCE(ru.esperados, 0) <= COALESCE(ru.vistos, 0) THEN 1
           ELSE 0
         END AS visto,
+        ma.miembros
 
-        (
-          SELECT JSON_ARRAYAGG(
-            JSON_OBJECT(
-              'id', u2.id,
-              'nombre', u2.nombre,
-              'apellido', u2.apellido,
-              'url_imagen', u2.url_imagen,
-              'background', u2.background,
-              'correo', u2.correo,
-              'rol', ug2.rol
-            )
-          )
-          FROM usuario_grupo ug2
-          JOIN usuario u2 ON u2.id = ug2.usuario_id
-          WHERE ug2.grupo_id = g.id
-        ) AS miembros
-
-      FROM grupos g
-      JOIN usuario_grupo ug
-        ON ug.grupo_id = g.id
-       AND ug.usuario_id = ?
-      LEFT JOIN (
-        SELECT mg.*
-        FROM mensajes_grupo mg
-        JOIN (
-          SELECT grupo_id, MAX(id) AS ultimo_id
-          FROM mensajes_grupo
-          GROUP BY grupo_id
-        ) ult ON ult.ultimo_id = mg.id
-      ) m ON m.grupo_id = g.id
+      FROM grupos_usuario gu
+      INNER JOIN grupos g ON g.id = gu.grupo_id
+      LEFT JOIN ultimos ult ON ult.grupo_id = g.id
+      LEFT JOIN mensajes_grupo m ON m.id = ult.ultimo_id
       LEFT JOIN usuario u ON u.id = m.usuario_id
       LEFT JOIN chats_favoritos cf
         ON cf.chat_id = g.id
        AND cf.usuario_id = ?
        AND cf.tipo = 'grupo'
-      LEFT JOIN (
-        SELECT mg_nl.grupo_id, COUNT(*) AS total
-        FROM mensajes_grupo mg_nl
-        LEFT JOIN mensajes_grupo_vistos mgv_nl
-          ON mgv_nl.mensaje_id = mg_nl.id
-         AND mgv_nl.usuario_id = ?
-        WHERE mg_nl.usuario_id <> ?
-          AND mgv_nl.mensaje_id IS NULL
-        GROUP BY mg_nl.grupo_id
-      ) nl ON nl.grupo_id = g.id
+      LEFT JOIN no_leidos nl ON nl.grupo_id = g.id
+      LEFT JOIN miembros_agregados ma ON ma.grupo_id = g.id
+      LEFT JOIN recibos_ultimo ru ON ru.grupo_id = g.id
       LEFT JOIN mensajes_grupo_archivos mga_direct
         ON mga_direct.id = (
           SELECT MIN(mga_d.id)

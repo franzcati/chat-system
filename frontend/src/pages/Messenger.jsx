@@ -7,6 +7,7 @@ import Sidebar from './Sidebar';
 import ChatList from './ChatList';
 import ProfileModal from "../components/ProfileModal";
 import socket, { conectarUsuarioSocket, emitirActividadUsuario } from "../socket";
+import { clearAllChatListSnapshots } from "../utils/chatListSnapshot";
 
 const ChatBox = lazy(() => import('./ChatBox'));
 const CreateChat = lazy(() => import('../components/CreateChat'));
@@ -584,6 +585,7 @@ const Messenger = () => {
             }
 
             try {
+              clearAllChatListSnapshots();
               localStorage.removeItem("usuario");
               socket.disconnect();
             } catch (error) {

@@ -5,6 +5,7 @@ import SidebarProfilePanel from "../components/SidebarProfilePanel";
 import { getAvatarUrl } from "../utils/url";
 import { useTheme } from "../context/ThemeContext.jsx";
 import socket from "../socket";
+import { clearAllChatListSnapshots } from "../utils/chatListSnapshot";
 
 const Sidebar = ({ usuario, active, setActive, onUsuarioUpdate, unreadTotal = 0, estadosUsuarios = {} }) => {
   const [showModal, setShowModal] = useState(false);
@@ -155,6 +156,7 @@ const Sidebar = ({ usuario, active, setActive, onUsuarioUpdate, unreadTotal = 0,
     }
 
     try {
+      clearAllChatListSnapshots();
       localStorage.removeItem("usuario");
       socket.disconnect();
     } catch (error) {
