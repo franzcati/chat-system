@@ -2967,277 +2967,6 @@
   color: #f1f6ff !important;
 }
 
-/* ==========================================================
-   NUEVO USUARIO / CREACION MASIVA
-   ========================================================== */
-
-.qc-batch-page {
-  position: relative;
-  min-height: 100%;
-  width: 100%;
-  padding: 32px 40px 60px;
-  overflow: auto;
-  color: #17233c;
-}
-
-.qc-batch-header {
-  position: relative;
-  z-index: 1;
-  max-width: 1480px;
-  margin: 0 auto 22px;
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 20px;
-}
-
-.qc-batch-kicker {
-  display: inline-block;
-  margin-bottom: 4px;
-  color: #168cff;
-  font-size: 10px;
-  font-weight: 900;
-  letter-spacing: .12em;
-}
-
-.qc-batch-header h1 {
-  margin: 0;
-  font-size: clamp(30px, 3vw, 48px);
-  font-weight: 900;
-  letter-spacing: -.04em;
-}
-
-.qc-batch-header p {
-  max-width: 710px;
-  margin: 7px 0 0;
-  color: #71809c;
-  font-size: 14px;
-}
-
-.qc-batch-back {
-  min-height: 45px;
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 0 18px;
-  border: 1px solid #d5dfed;
-  border-radius: 13px;
-  color: #344159;
-  background: #f4f7fb;
-  font-weight: 800;
-}
-
-.qc-batch-panel {
-  position: relative;
-  z-index: 1;
-  max-width: 1480px;
-  margin: 0 auto;
-  display: flex;
-  flex-direction: column;
-  gap: 18px;
-}
-
-.qc-batch-subtitle {
-  margin: 18px 0 10px;
-  color: #26344e;
-  font-size: 11px;
-  font-weight: 850;
-}
-
-.qc-batch-toolbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 12px;
-}
-
-.qc-batch-toolbar span {
-  color: #8190a9;
-  font-size: 10px;
-}
-
-.qc-batch-toolbar strong {
-  color: #168cff;
-}
-
-.qc-batch-toolbar button {
-  min-height: 38px;
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  padding: 0 13px;
-  border: 1px solid rgba(22, 140, 255, .25);
-  border-radius: 10px;
-  color: #087ee8;
-  background: rgba(22, 140, 255, .07);
-  font-size: 10px;
-  font-weight: 800;
-}
-
-.qc-batch-table-wrap {
-  overflow-x: auto;
-  border: 1px solid #dce5f1;
-  border-radius: 13px;
-}
-
-.qc-batch-table {
-  width: 100%;
-  min-width: 1100px;
-  border-collapse: collapse;
-}
-
-.qc-batch-table th {
-  padding: 11px 9px;
-  color: #72819c;
-  background: #f4f7fc;
-  border-bottom: 1px solid #dce5f1;
-  font-size: 9px;
-  font-weight: 850;
-  text-align: left;
-  white-space: nowrap;
-}
-
-.qc-batch-table td {
-  padding: 7px;
-  border-bottom: 1px solid #edf1f7;
-}
-
-.qc-batch-table tbody tr:last-child td {
-  border-bottom: 0;
-}
-
-.qc-batch-table input {
-  width: 100%;
-  min-height: 39px;
-  padding: 0 10px;
-  border: 1px solid #d6e0ee;
-  border-radius: 8px;
-  outline: none;
-  color: #26344d;
-  background: #fbfcff;
-  font-size: 10px;
-}
-
-.qc-batch-table input:focus {
-  border-color: #168cff;
-  box-shadow:
-    0 0 0 3px rgba(22, 140, 255, .07);
-}
-
-.qc-batch-index {
-  width: 42px;
-  color: #73819a;
-  text-align: center;
-  font-weight: 800;
-}
-
-.qc-batch-email {
-  min-width: 260px;
-  min-height: 39px;
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  padding: 0 10px;
-  border: 1px solid rgba(22, 140, 255, .18);
-  border-radius: 8px;
-  color: #087fe8;
-  background: rgba(22, 140, 255, .055);
-  font-size: 9px;
-}
-
-.qc-batch-email span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.qc-batch-remove {
-  width: 36px;
-  height: 36px;
-  display: grid;
-  place-items: center;
-  border: 1px solid rgba(236, 61, 91, .25);
-  border-radius: 9px;
-  color: #e63856;
-  background: rgba(236, 61, 91, .05);
-}
-
-.qc-batch-remove:disabled {
-  opacity: .25;
-  cursor: not-allowed;
-}
-
-:root[data-theme="dark"] .qc-batch-page {
-  color: #eef5ff;
-}
-
-:root[data-theme="dark"] .qc-batch-header p {
-  color: #93a6c5;
-}
-
-:root[data-theme="dark"] .qc-batch-back {
-  color: #dbe8fa;
-  background: #102746;
-  border-color: #28496e;
-}
-
-:root[data-theme="dark"] .qc-batch-back:hover {
-  color: #fff;
-  background: #173257;
-}
-
-:root[data-theme="dark"] .qc-batch-subtitle {
-  color: #dce8fa;
-}
-
-:root[data-theme="dark"] .qc-batch-table-wrap {
-  border-color: #24466f;
-}
-
-:root[data-theme="dark"] .qc-batch-table th {
-  color: #9cafcd;
-  background: #091c39;
-  border-color: #24466f;
-}
-
-:root[data-theme="dark"] .qc-batch-table td {
-  border-color: rgba(47, 82, 124, .35);
-}
-
-:root[data-theme="dark"] .qc-batch-table input {
-  color: #ecf4ff;
-  background: #0d2446;
-  border-color: #294b73;
-}
-
-:root[data-theme="dark"] .qc-batch-table input::placeholder {
-  color: #748bad;
-}
-
-:root[data-theme="dark"] .qc-batch-email {
-  color: #61b6ff;
-  background: rgba(21, 107, 201, .14);
-  border-color: rgba(73, 151, 231, .28);
-}
-
-:root[data-theme="dark"] .qc-batch-toolbar button {
-  color: #69b8ff;
-  background: rgba(22, 122, 226, .13);
-  border-color: rgba(75, 153, 237, .28);
-}
-
-@media (max-width: 800px) {
-  .qc-batch-page {
-    padding: 24px 18px 45px;
-  }
-
-  .qc-batch-header {
-    flex-direction: column;
-  }
-}
-
-
 /* PERFORMANCE TUNING
    Reduce repaint/compositing cost on integrated/older GPUs without changing layout. */
 .qc-users-panel,
@@ -3299,4 +3028,1393 @@
 :root[data-theme="dark"] .qc-user-admin-actions .btn-primary:hover,
 :root[data-theme="dark"] .qc-user-admin-save:hover {
   filter: none !important;
+}
+
+/* ==========================================================
+   NUEVO USUARIO / CREACIÓN MASIVA · REDISEÑO 2026
+   Scoped exclusivamente a .qc-batch-page para no alterar
+   Gestión de Usuarios ni Gestión de Proyectos.
+   ========================================================== */
+
+.qc-batch-page {
+  --qc-batch-text: #0d1a39;
+  --qc-batch-muted: #62769a;
+  --qc-batch-muted-2: #8ba0bf;
+  --qc-batch-surface: rgba(255, 255, 255, 0.97);
+  --qc-batch-surface-soft: rgba(247, 250, 255, 0.9);
+  --qc-batch-field: rgba(250, 252, 255, 0.96);
+  --qc-batch-border: rgba(112, 149, 205, 0.28);
+  --qc-batch-border-strong: rgba(50, 137, 255, 0.38);
+  --qc-batch-blue: #118eff;
+  --qc-batch-violet: #7044ff;
+  --qc-batch-shadow: 0 14px 34px rgba(41, 82, 137, 0.075);
+  --qc-batch-focus: 0 0 0 3px rgba(43, 129, 255, 0.13);
+
+  position: relative;
+  isolation: isolate;
+  width: 100%;
+  min-width: 0;
+  min-height: 100%;
+  padding: 32px clamp(22px, 3vw, 54px) 44px;
+  overflow-x: hidden;
+  color: var(--qc-batch-text);
+  font-family: "Inter", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  background:
+    radial-gradient(circle at 72% -8%, rgba(124, 58, 237, 0.10), transparent 34%),
+    radial-gradient(circle at 28% 0%, rgba(14, 165, 255, 0.10), transparent 28%),
+    linear-gradient(135deg, #f8fbff 0%, #f5f8ff 44%, #eef5ff 100%);
+}
+
+.qc-batch-page::before,
+.qc-batch-page::after {
+  content: "";
+  position: absolute;
+  z-index: 0;
+  pointer-events: none;
+}
+
+.qc-batch-page::before {
+  inset: 0;
+  opacity: 0.68;
+  background-image:
+    radial-gradient(circle, rgba(37, 99, 235, 0.14) 1.3px, transparent 1.4px),
+    linear-gradient(115deg, transparent 0 62%, rgba(14, 165, 255, 0.13) 62.2%, transparent 62.8%),
+    linear-gradient(150deg, transparent 0 70%, rgba(124, 58, 237, 0.11) 70.2%, transparent 70.8%);
+  background-size: 78px 78px, 680px 680px, 780px 780px;
+  background-position: 0 0, right -110px top -260px, right 80px top -260px;
+}
+
+.qc-batch-page::after {
+  top: 120px;
+  right: -120px;
+  width: 420px;
+  height: 420px;
+  border-radius: 50%;
+  opacity: 0.58;
+  background: radial-gradient(circle, rgba(124, 58, 237, 0.12), transparent 70%);
+}
+
+.qc-batch-page > .qc-users-bg-decor {
+  z-index: 0;
+  opacity: 0.9;
+}
+
+.qc-batch-page .qc-users-orb-one {
+  background: radial-gradient(circle, rgba(14, 165, 255, 0.20), transparent 70%);
+}
+
+.qc-batch-page .qc-users-orb-two {
+  background: radial-gradient(circle, rgba(124, 58, 237, 0.15), transparent 70%);
+}
+
+.qc-batch-header,
+.qc-batch-panel {
+  position: relative;
+  z-index: 1;
+  width: min(1480px, 100%);
+  max-width: 100%;
+  margin-inline: auto;
+}
+
+.qc-batch-header {
+  margin-bottom: 20px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+}
+
+.qc-batch-kicker {
+  display: inline-block;
+  margin-bottom: 5px;
+  color: var(--qc-batch-blue);
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.13em;
+}
+
+.qc-batch-header h1 {
+  margin: 0;
+  color: var(--qc-batch-text);
+  font-size: clamp(32px, 3vw, 48px);
+  font-weight: 900;
+  line-height: 1.02;
+  letter-spacing: -0.045em;
+}
+
+.qc-batch-header p {
+  max-width: 760px;
+  margin: 8px 0 0;
+  color: var(--qc-batch-muted);
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.qc-batch-back {
+  min-height: 46px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 0 18px;
+  flex: 0 0 auto;
+  border: 1px solid var(--qc-batch-border);
+  border-radius: 13px;
+  outline: none;
+  color: #34415b;
+  background: rgba(247, 250, 255, 0.9);
+  font-size: 13px;
+  font-weight: 800;
+  cursor: pointer;
+  transition: transform 0.16s ease, background-color 0.16s ease, border-color 0.16s ease, color 0.16s ease;
+}
+
+.qc-batch-back:hover {
+  color: #126fd2;
+  border-color: rgba(30, 126, 242, 0.34);
+  background: #ffffff;
+  transform: translateY(-1px);
+}
+
+.qc-batch-back:focus-visible,
+.qc-batch-page button:focus-visible,
+.qc-batch-page input:focus-visible,
+.qc-batch-page select:focus-visible {
+  outline: none;
+  box-shadow: var(--qc-batch-focus);
+}
+
+.qc-batch-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.qc-batch-page .qc-user-admin-section.qc-batch-card {
+  position: relative;
+  margin: 0;
+  padding: 20px;
+  overflow: hidden;
+  border: 1px solid var(--qc-batch-border) !important;
+  border-radius: 18px;
+  background: var(--qc-batch-surface) !important;
+  box-shadow: var(--qc-batch-shadow) !important;
+}
+
+.qc-batch-page .qc-batch-card > * {
+  position: relative;
+  z-index: 1;
+}
+
+.qc-batch-page .qc-batch-project-card::before {
+  content: "";
+  position: absolute;
+  z-index: 0;
+  inset: 0 0 auto;
+  height: 98px;
+  pointer-events: none;
+  background:
+    radial-gradient(circle at 82% 35%, rgba(14, 165, 255, 0.15), transparent 31%),
+    radial-gradient(circle at 47% 0%, rgba(124, 58, 237, 0.13), transparent 34%),
+    linear-gradient(100deg, rgba(255, 255, 255, 0.86), rgba(243, 247, 255, 0.72), rgba(239, 235, 255, 0.72));
+  border-bottom: 1px solid rgba(112, 149, 205, 0.16);
+}
+
+.qc-batch-card-watermark {
+  position: absolute !important;
+  z-index: 0 !important;
+  top: 28px;
+  right: 30px;
+  color: rgba(37, 99, 235, 0.10);
+  font-size: 58px;
+  line-height: 1;
+  pointer-events: none;
+}
+
+.qc-batch-page .qc-user-admin-section-head.qc-batch-card-head {
+  margin: 0 0 18px;
+  gap: 14px;
+}
+
+.qc-batch-page .qc-user-admin-section-icon {
+  width: 48px;
+  height: 48px;
+  flex-basis: 48px;
+  border-radius: 13px;
+  color: #fff;
+  background: linear-gradient(135deg, #0ea5ff 0%, #2563ff 48%, #7c3cff 100%);
+  box-shadow: 0 10px 24px rgba(37, 99, 235, 0.23), 0 0 18px rgba(124, 58, 237, 0.12);
+}
+
+.qc-batch-page .qc-user-admin-section-icon i {
+  font-size: 20px;
+}
+
+.qc-batch-page .qc-user-admin-section-head h4 {
+  margin: 0 !important;
+  color: var(--qc-batch-text) !important;
+  font-size: 18px;
+  font-weight: 850;
+  letter-spacing: -0.025em;
+}
+
+.qc-batch-page .qc-user-admin-section-head p {
+  margin: 4px 0 0 !important;
+  color: var(--qc-batch-muted) !important;
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.qc-batch-page .qc-user-admin-grid {
+  position: relative;
+  z-index: 1;
+  gap: 14px;
+}
+
+.qc-batch-page .qc-user-admin-field {
+  gap: 7px;
+}
+
+.qc-batch-page .qc-user-admin-field > span {
+  color: var(--qc-batch-text) !important;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.qc-batch-page .qc-user-admin-field select,
+.qc-batch-page .qc-user-readonly {
+  min-height: 46px;
+  border: 1px solid var(--qc-batch-border) !important;
+  border-radius: 11px;
+  color: #253552 !important;
+  background: var(--qc-batch-field) !important;
+  font-size: 12px;
+}
+
+.qc-batch-page .qc-user-admin-field select {
+  padding: 0 42px 0 13px;
+  cursor: pointer;
+}
+
+.qc-batch-page .qc-user-admin-field select:focus {
+  border-color: var(--qc-batch-blue) !important;
+  box-shadow: var(--qc-batch-focus) !important;
+}
+
+.qc-batch-page .qc-user-readonly {
+  gap: 9px;
+  color: #65789b !important;
+  background: rgba(239, 246, 255, 0.88) !important;
+}
+
+.qc-batch-page .qc-user-readonly i {
+  color: var(--qc-batch-blue);
+}
+
+.qc-batch-subtitle {
+  margin: 18px 0 10px;
+  color: var(--qc-batch-text);
+  font-size: 11px;
+  font-weight: 850;
+}
+
+.qc-batch-page .qc-user-project-grid {
+  gap: 10px;
+}
+
+.qc-batch-page .qc-user-project-option {
+  min-height: 66px;
+  border: 1px solid var(--qc-batch-border) !important;
+  border-radius: 12px;
+  color: var(--qc-batch-text) !important;
+  background: rgba(249, 251, 255, 0.9) !important;
+}
+
+.qc-batch-page .qc-user-project-option:hover:not(.is-principal) {
+  border-color: rgba(17, 142, 255, 0.38) !important;
+  background: rgba(237, 246, 255, 0.96) !important;
+}
+
+.qc-batch-page .qc-user-project-option.is-selected {
+  border-color: rgba(17, 142, 255, 0.45) !important;
+  background: linear-gradient(135deg, rgba(14, 165, 255, 0.08), rgba(124, 58, 237, 0.055)) !important;
+}
+
+.qc-batch-page .qc-user-project-option.is-principal {
+  border-color: rgba(112, 68, 255, 0.42) !important;
+  background: linear-gradient(135deg, rgba(37, 99, 235, 0.08), rgba(124, 58, 237, 0.09)) !important;
+}
+
+.qc-batch-section-topline {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+.qc-batch-section-topline .qc-batch-card-head {
+  flex: 1 1 360px;
+  min-width: 0;
+}
+
+.qc-batch-actions-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 10px;
+  flex: 0 1 auto;
+}
+
+.qc-batch-file-input {
+  position: fixed !important;
+  width: 1px !important;
+  height: 1px !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
+.qc-batch-actions-toolbar button {
+  min-height: 42px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 0 14px;
+  border: 1px solid rgba(17, 142, 255, 0.28);
+  border-radius: 11px;
+  outline: none;
+  color: #0b76df;
+  background: rgba(245, 250, 255, 0.92);
+  font-size: 11px;
+  font-weight: 800;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: transform 0.16s ease, background-color 0.16s ease, border-color 0.16s ease, color 0.16s ease;
+}
+
+.qc-batch-actions-toolbar button i {
+  color: var(--qc-batch-blue);
+  font-size: 15px;
+}
+
+.qc-batch-actions-toolbar button:hover:not(:disabled) {
+  color: #075eb4;
+  border-color: rgba(17, 142, 255, 0.48);
+  background: #f7fbff;
+  transform: translateY(-1px);
+}
+
+.qc-batch-actions-toolbar .qc-batch-add-row {
+  background: rgba(17, 142, 255, 0.07);
+}
+
+.qc-batch-actions-toolbar button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.qc-batch-count-pill {
+  width: fit-content;
+  min-height: 24px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin: -3px 0 10px;
+  padding: 0 10px;
+  border: 1px solid rgba(17, 142, 255, 0.20);
+  border-radius: 999px;
+  color: #2f5f9c;
+  background: rgba(17, 142, 255, 0.06);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.qc-batch-count-pill strong {
+  color: var(--qc-batch-blue);
+  font-weight: 900;
+}
+
+.qc-batch-table-wrap {
+  width: 100%;
+  max-height: min(52vh, 560px);
+  overflow: auto;
+  overscroll-behavior: contain;
+  border: 1px solid var(--qc-batch-border);
+  border-radius: 13px;
+  background: rgba(255, 255, 255, 0.72);
+  scrollbar-gutter: stable;
+}
+
+.qc-batch-table {
+  width: 100%;
+  min-width: 1120px;
+  border-collapse: separate;
+  border-spacing: 0;
+  table-layout: fixed;
+}
+
+.qc-batch-table th:nth-child(1),
+.qc-batch-table td:nth-child(1) {
+  width: 48px;
+}
+
+.qc-batch-table th:nth-child(2),
+.qc-batch-table td:nth-child(2),
+.qc-batch-table th:nth-child(3),
+.qc-batch-table td:nth-child(3) {
+  width: 160px;
+}
+
+.qc-batch-table th:nth-child(4),
+.qc-batch-table td:nth-child(4) {
+  width: 220px;
+}
+
+.qc-batch-table th:nth-child(5),
+.qc-batch-table td:nth-child(5) {
+  width: 220px;
+}
+
+.qc-batch-table th:nth-child(6),
+.qc-batch-table td:nth-child(6) {
+  width: 290px;
+}
+
+.qc-batch-table th:nth-child(7),
+.qc-batch-table td:nth-child(7) {
+  width: 58px;
+}
+
+.qc-batch-table th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  padding: 10px 9px;
+  border-bottom: 1px solid var(--qc-batch-border);
+  color: #5f7190;
+  background: rgba(242, 247, 255, 0.97);
+  font-size: 9px;
+  font-weight: 850;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.qc-batch-table td {
+  padding: 7px;
+  border-bottom: 1px solid rgba(112, 149, 205, 0.13);
+  background: rgba(255, 255, 255, 0.46);
+  vertical-align: middle;
+}
+
+.qc-batch-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.qc-batch-table tbody tr:hover td {
+  background: rgba(244, 249, 255, 0.74);
+}
+
+.qc-batch-table input {
+  width: 100%;
+  min-width: 0;
+  min-height: 40px;
+  padding: 0 11px;
+  border: 1px solid rgba(112, 149, 205, 0.30);
+  border-radius: 9px;
+  outline: none;
+  color: #263650;
+  background: rgba(249, 252, 255, 0.96);
+  font-size: 10px;
+}
+
+.qc-batch-table input::placeholder {
+  color: #9aa8bd;
+}
+
+.qc-batch-table input:focus {
+  border-color: var(--qc-batch-blue);
+  box-shadow: 0 0 0 3px rgba(17, 142, 255, 0.08);
+}
+
+.qc-batch-index {
+  color: #536784;
+  text-align: center;
+  font-size: 11px;
+  font-weight: 850;
+}
+
+.qc-batch-password-field {
+  min-height: 40px;
+  display: flex;
+  align-items: center;
+  overflow: hidden;
+  border: 1px solid rgba(112, 149, 205, 0.30);
+  border-radius: 9px;
+  background: rgba(249, 252, 255, 0.96);
+}
+
+.qc-batch-password-field:focus-within {
+  border-color: var(--qc-batch-blue);
+  box-shadow: 0 0 0 3px rgba(17, 142, 255, 0.08);
+}
+
+.qc-batch-password-toggle {
+  width: 38px;
+  min-width: 38px;
+  align-self: stretch;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  outline: none;
+  color: #416996;
+  background: transparent;
+  cursor: pointer;
+}
+
+.qc-batch-password-toggle:hover {
+  color: var(--qc-batch-blue);
+  background: rgba(17, 142, 255, 0.06);
+}
+
+.qc-batch-password-toggle:focus-visible {
+  box-shadow: inset 0 0 0 2px rgba(17, 142, 255, 0.46) !important;
+}
+
+.qc-batch-password-field input {
+  min-height: 38px;
+  padding-left: 2px;
+  border: 0 !important;
+  border-radius: 0;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.qc-batch-email {
+  min-width: 0;
+  min-height: 40px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 11px;
+  border: 1px solid rgba(17, 142, 255, 0.18);
+  border-radius: 9px;
+  color: #0b7edf;
+  background: rgba(17, 142, 255, 0.055);
+  font-size: 9px;
+}
+
+.qc-batch-email i {
+  flex: 0 0 auto;
+}
+
+.qc-batch-email span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.qc-batch-remove {
+  width: 38px;
+  height: 38px;
+  display: grid;
+  place-items: center;
+  margin: 0 auto;
+  padding: 0;
+  border: 1px solid rgba(239, 68, 68, 0.20);
+  border-radius: 9px;
+  outline: none;
+  color: #e5425d;
+  background: rgba(239, 68, 68, 0.055);
+  cursor: pointer;
+}
+
+.qc-batch-remove:hover:not(:disabled) {
+  color: #cc2947;
+  border-color: rgba(239, 68, 68, 0.34);
+  background: rgba(239, 68, 68, 0.09);
+}
+
+.qc-batch-remove:disabled {
+  opacity: 0.28;
+  cursor: not-allowed;
+}
+
+.qc-batch-page .qc-user-role-grid {
+  gap: 10px;
+}
+
+.qc-batch-page .qc-user-role-grid button {
+  min-height: 102px;
+  border: 1px solid var(--qc-batch-border) !important;
+  border-radius: 13px;
+  outline: none;
+  color: var(--qc-batch-text) !important;
+  background: rgba(249, 251, 255, 0.9) !important;
+  cursor: pointer;
+}
+
+.qc-batch-page .qc-user-role-grid button:hover:not(.is-selected) {
+  border-color: rgba(17, 142, 255, 0.38) !important;
+  background: rgba(239, 247, 255, 0.96) !important;
+}
+
+.qc-batch-page .qc-user-role-grid button.is-selected {
+  border-color: rgba(68, 105, 255, 0.62) !important;
+  color: #101f47 !important;
+  background: linear-gradient(135deg, rgba(14, 165, 255, 0.105), rgba(124, 58, 237, 0.12)) !important;
+  box-shadow: inset 0 0 0 1px rgba(124, 58, 237, 0.07) !important;
+}
+
+.qc-batch-page .qc-user-role-grid button > i {
+  color: var(--qc-batch-blue) !important;
+  font-size: 21px;
+}
+
+.qc-batch-page .qc-user-role-grid button strong {
+  color: inherit;
+  font-size: 12px;
+}
+
+.qc-batch-page .qc-user-role-grid button small {
+  color: var(--qc-batch-muted-2) !important;
+}
+
+.qc-batch-page .qc-user-permission-grid {
+  gap: 10px;
+}
+
+.qc-batch-page .qc-user-permission-option {
+  min-height: 66px;
+  border: 1px solid var(--qc-batch-border) !important;
+  border-radius: 12px;
+  color: var(--qc-batch-text) !important;
+  background: rgba(249, 251, 255, 0.9) !important;
+}
+
+.qc-batch-page .qc-user-permission-option:hover {
+  border-color: rgba(17, 142, 255, 0.34) !important;
+  background: rgba(241, 248, 255, 0.96) !important;
+}
+
+.qc-batch-page .qc-user-permission-icon {
+  color: var(--qc-batch-blue) !important;
+  background: rgba(17, 142, 255, 0.08) !important;
+}
+
+.qc-batch-page .qc-user-permission-option strong {
+  color: inherit !important;
+  font-size: 10px;
+}
+
+.qc-batch-page .qc-user-permission-option small {
+  color: var(--qc-batch-muted-2) !important;
+}
+
+.qc-batch-page .qc-user-permission-option input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+  accent-color: var(--qc-batch-blue);
+  cursor: pointer;
+}
+
+.qc-batch-page .qc-user-admin-error.qc-batch-error {
+  border-color: rgba(239, 68, 68, 0.25);
+  border-radius: 12px;
+  color: #be2947;
+  background: rgba(239, 68, 68, 0.075);
+  font-size: 11px;
+}
+
+.qc-batch-final-actions {
+  padding-top: 0;
+  gap: 10px;
+}
+
+.qc-batch-page .qc-batch-final-actions .btn {
+  min-width: 150px;
+  min-height: 48px;
+  border-radius: 14px !important;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.qc-batch-page .qc-batch-final-actions .btn-primary {
+  color: #fff !important;
+  background: linear-gradient(105deg, #0aa7ff 0%, #168cff 38%, #554fff 72%, #7641f3 100%) !important;
+  box-shadow: 0 10px 24px rgba(51, 101, 255, 0.22) !important;
+}
+
+.qc-batch-page .qc-batch-final-actions .btn-primary:hover:not(:disabled) {
+  color: #fff !important;
+  transform: translateY(-1px);
+  background: linear-gradient(105deg, #18b1ff 0%, #258fff 38%, #615aff 72%, #8250ff 100%) !important;
+}
+
+.qc-batch-page .qc-batch-final-actions .btn-secondary {
+  color: #344158 !important;
+  border: 1px solid #d2dce9 !important;
+  background: #eef2f7 !important;
+}
+
+.qc-batch-page .qc-batch-final-actions .btn-secondary:hover:not(:disabled) {
+  color: #1e2a40 !important;
+  background: #e2e9f2 !important;
+}
+
+.qc-batch-page button:disabled,
+.qc-batch-page select:disabled {
+  cursor: not-allowed;
+}
+
+/* ------------------------------ DARK ------------------------------ */
+:root[data-theme="dark"] .qc-batch-page {
+  --qc-batch-text: #f4f7ff;
+  --qc-batch-muted: #a4b4cf;
+  --qc-batch-muted-2: #7189ad;
+  --qc-batch-surface: rgba(4, 18, 42, 0.965);
+  --qc-batch-surface-soft: rgba(5, 25, 54, 0.76);
+  --qc-batch-field: rgba(7, 28, 58, 0.92);
+  --qc-batch-border: rgba(34, 130, 225, 0.30);
+  --qc-batch-border-strong: rgba(43, 150, 255, 0.52);
+  --qc-batch-blue: #0ea5ff;
+  --qc-batch-violet: #8b5cf6;
+  --qc-batch-shadow: 0 16px 34px rgba(0, 0, 0, 0.20);
+  --qc-batch-focus: 0 0 0 3px rgba(26, 151, 255, 0.20);
+
+  color-scheme: dark;
+  background:
+    radial-gradient(circle at 72% -8%, rgba(124, 58, 237, 0.24), transparent 34%),
+    radial-gradient(circle at 28% 0%, rgba(14, 165, 255, 0.16), transparent 30%),
+    linear-gradient(135deg, #020817 0%, #050b18 48%, #07111f 100%);
+}
+
+:root[data-theme="dark"] .qc-batch-page::before {
+  opacity: 0.78;
+  background-image:
+    radial-gradient(circle, rgba(125, 211, 252, 0.20) 1.3px, transparent 1.4px),
+    linear-gradient(115deg, transparent 0 62%, rgba(14, 165, 255, 0.16) 62.2%, transparent 62.8%),
+    linear-gradient(150deg, transparent 0 70%, rgba(139, 92, 246, 0.16) 70.2%, transparent 70.8%);
+  background-size: 78px 78px, 680px 680px, 780px 780px;
+  background-position: 0 0, right -110px top -260px, right 80px top -260px;
+}
+
+:root[data-theme="dark"] .qc-batch-page::after {
+  right: -140px;
+  background: radial-gradient(circle, rgba(124, 58, 237, 0.24), transparent 70%);
+}
+
+:root[data-theme="dark"] .qc-batch-page .qc-users-orb-one {
+  background: radial-gradient(circle, rgba(14, 165, 255, 0.30), transparent 70%);
+}
+
+:root[data-theme="dark"] .qc-batch-page .qc-users-orb-two {
+  background: radial-gradient(circle, rgba(124, 58, 237, 0.24), transparent 70%);
+}
+
+:root[data-theme="dark"] .qc-batch-header h1 {
+  color: #f8fafc;
+}
+
+:root[data-theme="dark"] .qc-batch-header p {
+  color: #a9b5cd;
+}
+
+:root[data-theme="dark"] .qc-batch-back {
+  color: #dbe8fa;
+  border-color: rgba(43, 150, 255, 0.28);
+  background: rgba(8, 31, 61, 0.88);
+}
+
+:root[data-theme="dark"] .qc-batch-back:hover {
+  color: #ffffff;
+  border-color: rgba(77, 167, 255, 0.42);
+  background: rgba(13, 47, 88, 0.96);
+}
+
+:root[data-theme="dark"] .qc-batch-page .qc-user-admin-section.qc-batch-card {
+  border-color: var(--qc-batch-border) !important;
+  background: var(--qc-batch-surface) !important;
+  box-shadow: var(--qc-batch-shadow) !important;
+}
+
+:root[data-theme="dark"] .qc-batch-page .qc-batch-project-card::before {
+  border-bottom-color: rgba(43, 150, 255, 0.19);
+  background:
+    radial-gradient(circle at 88% 50%, rgba(14, 165, 255, 0.18), transparent 27%),
+    radial-gradient(circle at 55% 5%, rgba(124, 58, 237, 0.30), transparent 34%),
+    linear-gradient(105deg, rgba(2, 11, 32, 0.86), rgba(4, 21, 54, 0.82), rgba(27, 15, 68, 0.72));
+}
+
+:root[data-theme="dark"] .qc-batch-card-watermark {
+  color: rgba(96, 165, 250, 0.13);
+}
+
+:root[data-theme="dark"] .qc-batch-page .qc-user-admin-section-head h4 {
+  color: #f4f7ff !important;
+}
+
+:root[data-theme="dark"] .qc-batch-page .qc-user-admin-section-head p {
+  color: #a4b4cf !important;
+}
+
+:root[data-theme="dark"] .qc-batch-page .qc-user-admin-field > span,
+:root[data-theme="dark"] .qc-batch-subtitle {
+  color: #e7efff !important;
+}
+
+:root[data-theme="dark"] .qc-batch-page .qc-user-admin-field select,
+:root[data-theme="dark"] .qc-batch-page .qc-user-readonly {
+  border-color: rgba(69, 128, 198, 0.38) !important;
+  color: #edf5ff !important;
+  background: rgba(8, 31, 62, 0.92) !important;
+}
+
+:root[data-theme="dark"] .qc-batch-page .qc-user-readonly {
+  color: #8ea7c9 !important;
+}
+
+:root[data-theme="dark"] .qc-batch-page .qc-user-project-option {
+  border-color: rgba(69, 128, 198, 0.34) !important;
+  color: #eaf2ff !important;
+  background: rgba(13, 35, 69, 0.88) !important;
+}
+
+:root[data-theme="dark"] .qc-batch-page .qc-user-project-option:hover:not(.is-principal) {
+  border-color: rgba(94, 165, 245, 0.46) !important;
+  background: rgba(17, 47, 88, 0.94) !important;
+}
+
+:root[data-theme="dark"] .qc-batch-page .qc-user-project-option.is-selected,
+:root[data-theme="dark"] .qc-batch-page .qc-user-project-option.is-principal {
+  border-color: rgba(95, 171, 255, 0.50) !important;
+  color: #ffffff !important;
+  background: linear-gradient(135deg, rgba(33, 86, 164, 0.30), rgba(108, 82, 255, 0.24)) !important;
+}
+
+:root[data-theme="dark"] .qc-batch-actions-toolbar button {
+  color: #9bd0ff;
+  border-color: rgba(61, 145, 230, 0.34);
+  background: rgba(7, 31, 63, 0.90);
+}
+
+:root[data-theme="dark"] .qc-batch-actions-toolbar button:hover:not(:disabled) {
+  color: #ffffff;
+  border-color: rgba(78, 167, 255, 0.54);
+  background: rgba(12, 48, 90, 0.96);
+}
+
+:root[data-theme="dark"] .qc-batch-actions-toolbar .qc-batch-add-row {
+  background: rgba(15, 75, 137, 0.28);
+}
+
+:root[data-theme="dark"] .qc-batch-count-pill {
+  color: #a9bad2;
+  border-color: rgba(78, 167, 255, 0.28);
+  background: rgba(12, 57, 109, 0.24);
+}
+
+:root[data-theme="dark"] .qc-batch-table-wrap {
+  border-color: rgba(69, 128, 198, 0.36);
+  background: rgba(5, 20, 43, 0.86);
+}
+
+:root[data-theme="dark"] .qc-batch-table th {
+  color: #a8b8d0;
+  border-color: rgba(69, 128, 198, 0.34);
+  background: rgba(5, 25, 54, 0.98);
+}
+
+:root[data-theme="dark"] .qc-batch-table td {
+  border-color: rgba(47, 82, 124, 0.34);
+  background: rgba(5, 22, 47, 0.62);
+}
+
+:root[data-theme="dark"] .qc-batch-table tbody tr:hover td {
+  background: rgba(10, 35, 68, 0.74);
+}
+
+:root[data-theme="dark"] .qc-batch-table input {
+  color: #edf5ff;
+  border-color: rgba(69, 128, 198, 0.38);
+  background: rgba(8, 31, 62, 0.94);
+}
+
+:root[data-theme="dark"] .qc-batch-table input::placeholder {
+  color: #748bae;
+}
+
+:root[data-theme="dark"] .qc-batch-index {
+  color: #b2c2d8;
+}
+
+:root[data-theme="dark"] .qc-batch-password-field {
+  border-color: rgba(69, 128, 198, 0.38);
+  background: rgba(8, 31, 62, 0.94);
+}
+
+:root[data-theme="dark"] .qc-batch-password-toggle {
+  color: #9bb4d4;
+}
+
+:root[data-theme="dark"] .qc-batch-password-toggle:hover {
+  color: #5fbdff;
+  background: rgba(22, 122, 226, 0.13);
+}
+
+:root[data-theme="dark"] .qc-batch-email {
+  color: #65bbff;
+  border-color: rgba(73, 151, 231, 0.30);
+  background: rgba(21, 107, 201, 0.14);
+}
+
+:root[data-theme="dark"] .qc-batch-remove {
+  color: #ff5770;
+  border-color: rgba(255, 82, 121, 0.20);
+  background: rgba(255, 82, 121, 0.08);
+}
+
+:root[data-theme="dark"] .qc-batch-remove:hover:not(:disabled) {
+  color: #ff7890;
+  border-color: rgba(255, 82, 121, 0.36);
+  background: rgba(255, 82, 121, 0.13);
+}
+
+:root[data-theme="dark"] .qc-batch-page .qc-user-role-grid button {
+  border-color: rgba(69, 128, 198, 0.34) !important;
+  color: #eaf2ff !important;
+  background: rgba(13, 35, 69, 0.88) !important;
+}
+
+:root[data-theme="dark"] .qc-batch-page .qc-user-role-grid button:hover:not(.is-selected) {
+  border-color: rgba(94, 165, 245, 0.46) !important;
+  background: rgba(17, 47, 88, 0.94) !important;
+}
+
+:root[data-theme="dark"] .qc-batch-page .qc-user-role-grid button.is-selected {
+  border-color: rgba(77, 157, 255, 0.72) !important;
+  color: #ffffff !important;
+  background: linear-gradient(135deg, rgba(22, 94, 189, 0.38), rgba(91, 62, 220, 0.38)) !important;
+  box-shadow: inset 0 0 0 1px rgba(124, 92, 246, 0.12) !important;
+}
+
+:root[data-theme="dark"] .qc-batch-page .qc-user-role-grid button small {
+  color: #92a8c8 !important;
+}
+
+:root[data-theme="dark"] .qc-batch-page .qc-user-permission-option {
+  border-color: rgba(69, 128, 198, 0.34) !important;
+  color: #eaf2ff !important;
+  background: rgba(13, 35, 69, 0.88) !important;
+}
+
+:root[data-theme="dark"] .qc-batch-page .qc-user-permission-option:hover {
+  border-color: rgba(94, 165, 245, 0.44) !important;
+  background: rgba(17, 47, 88, 0.94) !important;
+}
+
+:root[data-theme="dark"] .qc-batch-page .qc-user-permission-icon {
+  color: #5fbdff !important;
+  background: rgba(18, 108, 211, 0.20) !important;
+}
+
+:root[data-theme="dark"] .qc-batch-page .qc-user-permission-option small {
+  color: #8ca2c3 !important;
+}
+
+:root[data-theme="dark"] .qc-batch-page .qc-user-admin-error.qc-batch-error {
+  color: #ff91a4;
+  border-color: rgba(255, 82, 121, 0.30);
+  background: rgba(255, 82, 121, 0.10);
+}
+
+:root[data-theme="dark"] .qc-batch-page .qc-batch-final-actions .btn-secondary {
+  color: #eef5ff !important;
+  border: 1px solid rgba(90, 125, 172, 0.36) !important;
+  background: #20395d !important;
+}
+
+:root[data-theme="dark"] .qc-batch-page .qc-batch-final-actions .btn-secondary:hover:not(:disabled) {
+  color: #ffffff !important;
+  background: #29486f !important;
+}
+
+:root[data-theme="dark"] .qc-batch-page .qc-batch-final-actions .btn-primary {
+  box-shadow: 0 10px 22px rgba(34, 126, 255, 0.20), 0 0 18px rgba(124, 58, 237, 0.10) !important;
+}
+
+/* --------------------------- RESPONSIVE --------------------------- */
+@media (max-width: 1180px) {
+  .qc-batch-section-topline {
+    flex-wrap: wrap;
+  }
+
+  .qc-batch-actions-toolbar {
+    width: 100%;
+    justify-content: flex-end;
+    margin-top: -4px;
+  }
+}
+
+@media (max-width: 900px) {
+  .qc-batch-page {
+    padding: 28px 20px 40px;
+  }
+
+  .qc-batch-header {
+    gap: 16px;
+  }
+
+  .qc-batch-page .qc-user-admin-grid,
+  .qc-batch-page .qc-user-permission-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .qc-batch-page .qc-user-project-grid,
+  .qc-batch-page .qc-user-role-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 700px) {
+  .qc-batch-header {
+    flex-direction: column;
+  }
+
+  .qc-batch-back {
+    align-self: flex-start;
+  }
+
+  .qc-batch-actions-toolbar {
+    justify-content: flex-start;
+  }
+
+  .qc-batch-actions-toolbar button {
+    flex: 1 1 180px;
+  }
+
+  .qc-batch-final-actions {
+    flex-wrap: wrap;
+  }
+
+  .qc-batch-page .qc-batch-final-actions .btn {
+    flex: 1 1 180px;
+  }
+}
+
+@media (max-width: 520px) {
+  .qc-batch-page {
+    padding: 22px 14px 34px;
+  }
+
+  .qc-batch-page .qc-user-admin-section.qc-batch-card {
+    padding: 16px;
+    border-radius: 15px;
+  }
+
+  .qc-batch-page .qc-user-project-grid,
+  .qc-batch-page .qc-user-role-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .qc-batch-actions-toolbar button {
+    flex-basis: 100%;
+  }
+
+  .qc-batch-card-watermark {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce), (update: slow) {
+  .qc-batch-page *,
+  .qc-batch-page *::before,
+  .qc-batch-page *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+
+  .qc-batch-back:hover,
+  .qc-batch-actions-toolbar button:hover:not(:disabled),
+  .qc-batch-page .qc-batch-final-actions .btn-primary:hover:not(:disabled) {
+    transform: none !important;
+  }
+}
+
+/* Focus visible de alto contraste para controles del lote, incluso cuando
+   algún botón seleccionado ya utiliza una sombra propia. */
+.qc-batch-page button:focus-visible,
+.qc-batch-page input:focus-visible,
+.qc-batch-page select:focus-visible {
+  outline: 2px solid var(--qc-batch-blue) !important;
+  outline-offset: 2px;
+}
+
+/* ======================== AJUSTES NUEVO USUARIO · REV 2 ======================== */
+.qc-batch-page .qc-batch-project-card {
+  padding-top: 0;
+}
+
+.qc-batch-page .qc-batch-project-card::before {
+  display: none;
+}
+
+.qc-batch-page .qc-batch-card-hero {
+  position: relative;
+  min-height: 106px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+  margin: -20px -20px 20px;
+  padding: 22px 24px 18px;
+  overflow: hidden;
+  border-radius: 18px 18px 0 0;
+  border-bottom: 1px solid rgba(112, 149, 205, 0.16);
+  background:
+    radial-gradient(circle at 84% 46%, rgba(14, 165, 255, 0.16), transparent 29%),
+    radial-gradient(circle at 48% 0%, rgba(124, 58, 237, 0.14), transparent 32%),
+    linear-gradient(110deg, rgba(255, 255, 255, 0.92), rgba(243, 247, 255, 0.80), rgba(239, 234, 255, 0.82));
+}
+
+.qc-batch-page .qc-batch-card-hero::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  opacity: 0.72;
+  pointer-events: none;
+  background-image:
+    radial-gradient(circle, rgba(37, 99, 235, 0.12) 1.15px, transparent 1.4px),
+    linear-gradient(120deg, transparent 0 62%, rgba(37, 99, 235, 0.10) 62.2%, transparent 62.8%);
+  background-size: 88px 88px, 540px 540px;
+  background-position: 0 0, right -210px top -280px;
+}
+
+.qc-batch-page .qc-batch-card-hero .qc-batch-card-head {
+  position: relative;
+  z-index: 1;
+  max-width: min(100%, 520px);
+  margin: 0;
+}
+
+.qc-batch-page .qc-batch-card-hero .qc-batch-card-watermark {
+  top: 50%;
+  right: 26px;
+  transform: translateY(-50%);
+  font-size: 56px;
+}
+
+.qc-batch-users-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px 16px;
+  flex-wrap: wrap;
+  margin: -2px 0 12px;
+}
+
+.qc-batch-generic-bar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-left: auto;
+}
+
+.qc-batch-generic-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--qc-batch-text);
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.qc-batch-generic-check input {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: var(--qc-batch-blue);
+  cursor: pointer;
+}
+
+.qc-batch-generic-info {
+  width: 26px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  outline: none;
+  color: var(--qc-batch-muted);
+  background: transparent;
+  cursor: help;
+}
+
+.qc-batch-generic-info:hover {
+  color: var(--qc-batch-blue);
+  background: transparent;
+  transform: none;
+}
+
+.qc-batch-generic-password-field {
+  min-width: 280px;
+  width: min(100%, 340px);
+  min-height: 42px;
+  display: flex;
+  align-items: center;
+  border: 1px solid var(--qc-batch-border);
+  border-radius: 11px;
+  background: var(--qc-batch-field);
+  overflow: hidden;
+}
+
+.qc-batch-generic-password-field:focus-within {
+  border-color: var(--qc-batch-blue);
+  box-shadow: var(--qc-batch-focus);
+}
+
+.qc-batch-generic-password-field.is-disabled {
+  opacity: 0.72;
+}
+
+.qc-batch-generic-prefix {
+  width: 38px;
+  min-width: 38px;
+  align-self: stretch;
+  display: grid;
+  place-items: center;
+  color: #5d7195;
+}
+
+.qc-batch-generic-password-field input {
+  min-width: 0;
+  flex: 1 1 auto;
+  min-height: 40px;
+  padding: 0 8px 0 0;
+  border: 0 !important;
+  outline: none;
+  color: var(--qc-batch-text);
+  background: transparent !important;
+  font-size: 12px;
+  font-weight: 600;
+  box-shadow: none !important;
+}
+
+.qc-batch-generic-password-field input::placeholder {
+  color: var(--qc-batch-muted-2);
+}
+
+.qc-batch-generic-password-field .qc-batch-password-toggle {
+  border-left: 1px solid rgba(112, 149, 205, 0.18);
+}
+
+.qc-batch-password-field.is-disabled {
+  opacity: 0.76;
+}
+
+.qc-batch-password-field.is-disabled .qc-batch-password-toggle,
+.qc-batch-password-field.is-disabled input {
+  cursor: not-allowed;
+}
+
+:root[data-theme="dark"] .qc-batch-page .qc-batch-card-hero {
+  border-bottom-color: rgba(43, 150, 255, 0.19);
+  background:
+    radial-gradient(circle at 87% 48%, rgba(14, 165, 255, 0.18), transparent 27%),
+    radial-gradient(circle at 55% 5%, rgba(124, 58, 237, 0.30), transparent 34%),
+    linear-gradient(105deg, rgba(2, 11, 32, 0.92), rgba(4, 21, 54, 0.86), rgba(27, 15, 68, 0.76));
+}
+
+:root[data-theme="dark"] .qc-batch-page .qc-batch-card-hero::before {
+  opacity: 0.42;
+  background-image:
+    radial-gradient(circle, rgba(125, 211, 252, 0.30) 1.1px, transparent 1.4px),
+    linear-gradient(120deg, transparent 0 62%, rgba(125, 211, 252, 0.12) 62.2%, transparent 62.8%);
+}
+
+:root[data-theme="dark"] .qc-batch-generic-check {
+  color: #edf5ff;
+}
+
+:root[data-theme="dark"] .qc-batch-generic-info {
+  color: #8ea7c9;
+}
+
+:root[data-theme="dark"] .qc-batch-generic-info:hover {
+  color: #5fbdff;
+}
+
+:root[data-theme="dark"] .qc-batch-generic-password-field {
+  border-color: rgba(69, 128, 198, 0.38);
+  background: rgba(8, 31, 62, 0.94);
+}
+
+:root[data-theme="dark"] .qc-batch-generic-prefix {
+  color: #9bb4d4;
+}
+
+:root[data-theme="dark"] .qc-batch-generic-password-field input {
+  color: #edf5ff;
+}
+
+:root[data-theme="dark"] .qc-batch-generic-password-field input::placeholder {
+  color: #748bae;
+}
+
+:root[data-theme="dark"] .qc-batch-generic-password-field .qc-batch-password-toggle {
+  border-left-color: rgba(69, 128, 198, 0.28);
+}
+
+@media (max-width: 1180px) {
+  .qc-batch-users-meta {
+    align-items: flex-start;
+  }
+
+  .qc-batch-generic-bar {
+    width: 100%;
+    justify-content: flex-start;
+    margin-left: 0;
+  }
+}
+
+@media (max-width: 700px) {
+  .qc-batch-page .qc-batch-card-hero {
+    margin: -16px -16px 18px;
+    padding: 18px 18px 16px;
+  }
+
+  .qc-batch-generic-bar {
+    gap: 8px;
+  }
+
+  .qc-batch-generic-password-field {
+    width: 100%;
+    min-width: 0;
+  }
+}
+
+@media (max-width: 520px) {
+  .qc-batch-page .qc-batch-card-hero {
+    margin: -16px -16px 16px;
+  }
+
+  .qc-batch-page .qc-batch-card-hero .qc-batch-card-watermark {
+    display: none;
+  }
+
+  .qc-batch-generic-check {
+    width: 100%;
+  }
+
+  .qc-batch-generic-info {
+    display: none;
+  }
 }
