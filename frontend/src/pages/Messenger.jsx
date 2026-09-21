@@ -482,9 +482,15 @@ const Messenger = () => {
       )}
 
       {activeTab === "edit" && (
-        <Suspense fallback={<LazyPanelFallback />}>
-          <CreateChat proyectoId={usuario?.proyectoId} usuarioId={usuario?.id} />
-        </Suspense>
+        <div className="flex-1 wa-admin-stage">
+          <Suspense fallback={<LazyPanelFallback />}>
+            <CreateChat
+              proyectoId={usuario?.proyectoId}
+              usuarioId={usuario?.id}
+              onCancel={() => setActiveTab("chat")}
+            />
+          </Suspense>
+        </div>
       )}
       {activeTab === "add-user" && (
         <div className="flex-1 wa-admin-stage">

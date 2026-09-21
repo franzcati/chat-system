@@ -3,46 +3,74 @@ import socket, { conectarUsuarioSocket } from "../socket";
 import { getAvatarUrl } from "../utils/url";
 import { logDev } from "../utils/logger";
 
-/**
- * PersonasGrupos
- *
- * Props:
- *  - proyectoId (number) optional: proyectId a mostrar (usa mock data si no se pasan usuarios)
- *  - usuarios (array) optional: lista de usuarios ya filtrada por proyecto (anula proyectoId)
- *  - onSelectionChange (fn) optional: callback(selectedIds) cuando cambian selecciones
- */
-const PersonasGrupos = ({ proyectoId, usuarioId, onSelectionChange }) => {
-  // Mock de usuarios (basado en tu INSERT de ejemplo)
+const getInitials = (usuario) => {
+  const nombre = String(usuario?.nombre || "").trim();
+  const apellido = String(usuario?.apellido || "").trim();
+  return `${nombre.charAt(0)}${apellido.charAt(0)}`.toUpperCase() || "U";
+};
+
+const getPresence = (usuario, usuariosSocket) => {
+  const socketState = usuariosSocket?.[String(usuario.id)] || usuariosSocket?.[Number(usuario.id)];
+  const raw = socketState?.estado || "desconectado";
+
+  if (raw === "online" || raw === "en_linea") {
+    return { label: "En línea", className: "online" };
+  }
+
+  if (raw === "inactivo" || raw === "ausente") {
+    return { label: "Ausente", className: "away" };
+  }
+
+  if (raw === "no_molestar") {
+    return { label: "No molestar", className: "dnd" };
+  }
+
+  return { label: "Desconectado", className: "offline" };
+};
+
+const PersonasGrupos = ({ usuarioId, selectedMembers = [], onSelectionChange }) => {
   const [usuarios, setUsuarios] = useState([]);
   const [usuariosSocket, setUsuariosSocket] = useState({});
-  // Selección de miembros
-  const [selectedIds, setSelectedIds] = useState([]);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
 
-
-  // 👇 Cargar usuarios reales desde la API
   useEffect(() => {
     const fetchUsuarios = async () => {
+      setLoading(true);
+      setLoadError("");
+
       try {
-        // ✅ ahora pedimos todos los usuarios de todos los proyectos de este usuario
-        const res = await fetch(`/api/grupos/${usuarioId}/todos-usuarios`);
-        const data = await res.json();
-        setUsuarios(data);
+        const response = await fetch(`/api/grupos/${usuarioId}/todos-usuarios`);
+        const data = await response.json().catch(() => []);
+
+        if (!response.ok) {
+          throw new Error(data?.error || "No se pudieron cargar los usuarios");
+        }
+
+        setUsuarios(Array.isArray(data) ? data : []);
       } catch (error) {
         console.error("Error cargando usuarios:", error);
+        setLoadError(error.message || "No se pudieron cargar los usuarios");
+      } finally {
+        setLoading(false);
       }
     };
 
-    if (usuarioId) fetchUsuarios();
+    if (usuarioId) {
+      fetchUsuarios();
+    } else {
+      setLoading(false);
+    }
   }, [usuarioId]);
 
-  // 👉 Conectarse al socket y escuchar cambios de estado
   useEffect(() => {
-    if (!usuarioId) return;
+    if (!usuarioId) return undefined;
 
     conectarUsuarioSocket(usuarioId);
 
     const handleActualizarUsuarios = (data) => {
-      setUsuariosSocket(data);
+      setUsuariosSocket(data || {});
     };
 
     socket.on("actualizarUsuarios", handleActualizarUsuarios);
@@ -52,150 +80,118 @@ const PersonasGrupos = ({ proyectoId, usuarioId, onSelectionChange }) => {
     };
   }, [usuarioId]);
 
-  // 👉 Filtrar: no mostrar al logueado
-  const usuariosProyecto = useMemo(() => {
-    return usuarios.filter((u) => u.id !== usuarioId);
-  }, [usuarios, usuarioId]);
+  const selectedIds = useMemo(
+    () => new Set(selectedMembers.map((member) => Number(member?.id ?? member))),
+    [selectedMembers]
+  );
 
-  // Agrupar por inicial
-  const grouped = useMemo(() => {
-    const map = {};
-    usuariosProyecto.forEach((u) => {
-      const inicial = (u.nombre || "?").charAt(0).toUpperCase();
-      if (!map[inicial]) map[inicial] = [];
-      map[inicial].push(u);
-    });
-    Object.keys(map).forEach((k) => {
-      map[k].sort((a, b) => a.nombre.localeCompare(b.nombre));
-    });
-    return map;
-  }, [usuariosProyecto]);
+  const usuariosFiltrados = useMemo(() => {
+    const query = searchTerm.trim().toLowerCase();
 
-  
-
-  const toggleMember = (id) => {
-    setSelectedIds((prev) => {
-      const next = prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id];
-      if (typeof onSelectionChange === "function") onSelectionChange(next);
-      return next;
-    });
-  };
-
-  
-  const toggleSelect = (id) => {
-    setSelectedIds((prev) => {
-      const next = prev.includes(id)
-        ? prev.filter((x) => x !== id)
-        : [...prev, id];
-      logDev("✅ Nuevo estado de selección:", next);
-      // ❌ Quitar esta línea porque ya notificamos en el useEffect
-      // if (typeof onSelectionChange === "function") onSelectionChange(next);
-      return next;
-    });
-  };
-
-  // 🔹 Cada vez que cambia la selección, avisamos al padre
-  useEffect(() => {
-    if (onSelectionChange) {
-      logDev("📤 Notificando selección al padre:", selectedIds);
-      onSelectionChange(selectedIds);
-    }
-  }, [selectedIds, onSelectionChange]);
-
-  
-  // 👉 Renderizar el estado de cada usuario
-  const renderEstado = (usuario) => {
-    const estadoSocket = usuariosSocket[usuario.id];
-
-    if (!estadoSocket) {
-      return <span className="text-muted">Desconectado</span>;
-    }
-
-    if (estadoSocket.estado === "desconectado") {
-      const fecha = estadoSocket.ultimaConexion
-        ? new Date(estadoSocket.ultimaConexion).toLocaleString("es-ES")
-        : "";
-
-      return (
-        <span className="text-muted">
-          Desconectado {fecha && `(${fecha})`}
-        </span>
+    return usuarios
+      .filter((usuario) => Number(usuario.id) !== Number(usuarioId))
+      .filter((usuario) => {
+        if (!query) return true;
+        const searchable = `${usuario.nombre || ""} ${usuario.apellido || ""} ${usuario.correo || ""}`.toLowerCase();
+        return searchable.includes(query);
+      })
+      .sort((a, b) =>
+        `${a.nombre || ""} ${a.apellido || ""}`.localeCompare(
+          `${b.nombre || ""} ${b.apellido || ""}`,
+          "es",
+          { sensitivity: "base" }
+        )
       );
-    }
+  }, [usuarios, usuarioId, searchTerm]);
 
-    return <span>{estadoSocket.estado}</span>;
+  const toggleMember = (usuario) => {
+    const id = Number(usuario.id);
+    const isSelected = selectedIds.has(id);
+
+    const next = isSelected
+      ? selectedMembers.filter((member) => Number(member?.id ?? member) !== id)
+      : [...selectedMembers, usuario];
+
+    logDev("📤 Notificando selección al padre:", next);
+    onSelectionChange?.(next);
   };
-  
+
   return (
-    <nav>
-      {Object.keys(grouped).length === 0 ? (
-        <p className="text-muted">No hay usuarios en este proyecto</p>
-      ) : (
-        Object.keys(grouped)
-          .sort()
-          .map((inicial) => (
-            <div key={inicial}>
-              <div className="my-5">
-                <small className="text-uppercase text-muted">{inicial}</small>
-              </div>
+    <div className="qc-group-users-browser">
+      <div className="qc-group-search-wrap">
+        <i className="bi bi-search" aria-hidden="true" />
+        <input
+          type="search"
+          value={searchTerm}
+          placeholder="Buscar usuarios por nombre o correo..."
+          aria-label="Buscar usuarios"
+          onChange={(event) => setSearchTerm(event.target.value)}
+        />
+      </div>
 
-              {grouped[inicial].map((usuario) => (
-                <div className="card border-0 mt-5" key={usuario.id}>
-                  <div className="card-body">
-                    <div className="row align-items-center gx-5">
-                      <div className="col-auto">
-                        <div className="avatar avatar-xl">
-                          {usuario.url_imagen ? (
-                            <img
-                              src={getAvatarUrl(usuario.url_imagen)}
-                              alt={`${usuario.nombre} ${usuario.apellido}`}
-                              className="rounded-circle border border-warning"
-                              style={{ width: "40px", height: "40px", objectFit: "cover" }}
-                            />
-                          ) : (
-                            <div
-                              className="rounded-circle d-flex align-items-center justify-content-center text-white fw-bold"
-                              style={{
-                                width: "40px",
-                                height: "40px",
-                                backgroundColor: usuario.background || "#6c757d",
-                                fontSize: "18px",
-                              }}
-                            >
-                              {(usuario.nombre || "?").charAt(0).toUpperCase()}
-                            </div>
-                          )}
-                        </div>
-                      </div>
+      <div className="qc-group-users-list" role="list">
+        {loading && (
+          <div className="qc-group-list-state">
+            <span className="qc-group-spinner" aria-hidden="true" />
+            <p>Cargando usuarios...</p>
+          </div>
+        )}
 
-                      <div className="col">
-                        <h5>{`${usuario.nombre} ${usuario.apellido}`}</h5>
-                        <p className="mb-0">{renderEstado(usuario)}</p>
-                      </div>
+        {!loading && loadError && (
+          <div className="qc-group-list-state is-error">
+            <i className="bi bi-exclamation-circle" aria-hidden="true" />
+            <p>{loadError}</p>
+          </div>
+        )}
 
-                      <div className="col-auto">
-                        <div className="form-check">
-                          <input
-                            className="form-check-input"
-                            type="checkbox"
-                            value={usuario.id}
-                            id={`id-member-${usuario.id}`}
-                            checked={selectedIds.includes(usuario.id)}
-                            onChange={() => toggleSelect(usuario.id)} // 👈 usamos toggleSelect
-                          />
-                          <label className="form-check-label" htmlFor={`id-member-${usuario.id}`}></label>
-                        </div>
-                      </div>
-                    </div>
+        {!loading && !loadError && usuariosFiltrados.length === 0 && (
+          <div className="qc-group-list-state">
+            <i className="bi bi-people" aria-hidden="true" />
+            <p>{searchTerm ? "No encontramos usuarios con esa búsqueda." : "No hay usuarios disponibles."}</p>
+          </div>
+        )}
 
-                    <label className="stretched-label" htmlFor={`id-member-${usuario.id}`}></label>
-                  </div>
-                </div>
-              ))}
+        {!loading && !loadError && usuariosFiltrados.map((usuario) => {
+          const isSelected = selectedIds.has(Number(usuario.id));
+          const presence = getPresence(usuario, usuariosSocket);
+
+          return (
+            <div className={`qc-group-user-row ${isSelected ? "is-selected" : ""}`} key={usuario.id} role="listitem">
+              <span
+                className="qc-group-member-avatar"
+                style={{ background: usuario.background || "#2f7cf6" }}
+              >
+                {usuario.url_imagen ? (
+                  <img src={getAvatarUrl(usuario.url_imagen)} alt="" />
+                ) : (
+                  getInitials(usuario)
+                )}
+              </span>
+
+              <span className="qc-group-user-copy">
+                <strong>{`${usuario.nombre || ""} ${usuario.apellido || ""}`.trim()}</strong>
+                <small>{usuario.correo || "Usuario del sistema"}</small>
+              </span>
+
+              <span className={`qc-group-presence ${presence.className}`}>
+                <span />
+                {presence.label}
+              </span>
+
+              <button
+                type="button"
+                className="qc-group-add-member"
+                onClick={() => toggleMember(usuario)}
+                aria-label={isSelected ? `Quitar a ${usuario.nombre}` : `Agregar a ${usuario.nombre}`}
+                title={isSelected ? "Quitar miembro" : "Agregar miembro"}
+              >
+                <i className={isSelected ? "bi bi-check-lg" : "bi bi-plus-lg"} aria-hidden="true" />
+              </button>
             </div>
-          ))
-      )}
-    </nav>
+          );
+        })}
+      </div>
+    </div>
   );
 };
 
