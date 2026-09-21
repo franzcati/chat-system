@@ -12399,3 +12399,48 @@ body.dark .wa-reactions-modal-emoji:hover,
   }
 }
 
+
+
+/* ==========================================================
+   PERFORMANCE PASS v15
+   Chat scrolling benefits from lighter per-message shadows and
+   modal overlays without live background blur.
+   ========================================================== */
+.wa-edit-modal-backdrop,
+.wa-history-modal-backdrop,
+.wa-reactions-modal-backdrop {
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+  background: rgba(11, 20, 26, .70) !important;
+}
+
+.wa-edit-modal-card,
+.wa-history-modal-card,
+.wa-reactions-modal-card {
+  box-shadow: 0 16px 44px rgba(15, 23, 42, .22) !important;
+}
+
+:root[data-theme="dark"] .wa-edit-modal-card,
+body.dark .wa-edit-modal-card,
+[data-bs-theme="dark"] .wa-edit-modal-card,
+:root[data-theme="dark"] .wa-history-modal-card,
+body.dark .wa-history-modal-card,
+[data-bs-theme="dark"] .wa-history-modal-card,
+:root[data-theme="dark"] .wa-reactions-modal-card,
+body.dark .wa-reactions-modal-card,
+[data-bs-theme="dark"] .wa-reactions-modal-card {
+  box-shadow: 0 18px 46px rgba(0, 0, 0, .34) !important;
+}
+
+/* Hundreds of bubble shadows compound during scroll on weak GPUs. */
+:root {
+  --msg-in-shadow: 0 1px 3px rgba(15, 23, 42, .06);
+  --msg-out-shadow: 0 2px 5px rgba(39, 135, 245, .13);
+}
+
+:root[data-theme="dark"],
+body.dark,
+[data-bs-theme="dark"] {
+  --msg-in-shadow: 0 1px 3px rgba(0, 0, 0, .20);
+  --msg-out-shadow: 0 2px 5px rgba(37, 136, 247, .12);
+}

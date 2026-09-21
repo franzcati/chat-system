@@ -1,6 +1,7 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   Check,
+  ChevronDown,
   Lock,
   Search,
   Trash2,
@@ -23,6 +24,7 @@ const ProjectMembersManager = ({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [refreshKey, setRefreshKey] = useState(0);
+  const [selectedCache, setSelectedCache] = useState({});
 
   const fetchJson = async (url, options = {}) => {
     const response = await fetch(url, {
@@ -256,6 +258,48 @@ const ProjectMembersManager = ({
 
     return `${a}${b}`.toUpperCase() || "U";
   };
+  useEffect(() => {
+    if (mode !== "create") return;
+
+    setSelectedCache((prev) => {
+      const next = { ...prev };
+      let changed = false;
+
+      candidates.forEach((usuario) => {
+        const id = Number(usuario?.id);
+        if (!Number.isNaN(id) && selectedIds.includes(id)) {
+          next[id] = usuario;
+          changed = true;
+        }
+      });
+
+      Object.keys(next).forEach((key) => {
+        if (!selectedIds.includes(Number(key))) {
+          delete next[key];
+          changed = true;
+        }
+      });
+
+      return changed ? next : prev;
+    });
+  }, [candidates, mode, selectedIds]);
+
+  const selectedUsers = useMemo(() => {
+    const pool = [...members, ...candidates, ...Object.values(selectedCache)];
+    const byId = new Map();
+
+    pool.forEach((usuario) => {
+      const id = Number(usuario?.id);
+      if (!Number.isNaN(id) && !byId.has(id)) {
+        byId.set(id, usuario);
+      }
+    });
+
+    return (selectedIds || [])
+      .map((id) => byId.get(Number(id)))
+      .filter(Boolean);
+  }, [candidates, members, selectedCache, selectedIds]);
+
 
   return (
     <section className="pmm-box">
@@ -338,6 +382,7 @@ const ProjectMembersManager = ({
                       type="button"
                       className="pmm-remove"
                       title="Quitar del proyecto"
+                      aria-label={`Quitar a ${[member.nombre, member.apellido].filter(Boolean).join(" ").trim() || "usuario"} del proyecto`}
                       disabled={busy}
                       onClick={() =>
                         removeMember(member)
@@ -368,7 +413,35 @@ const ProjectMembersManager = ({
         </b>
       </div>
 
-      <div className="pmm-search">
+      <div className={`pmm-search ${mode === "create" ? "is-create" : ""}`}>
+        {mode === "create" && (
+          <div className="pmm-inline-selected" aria-hidden="true">
+            {selectedUsers.length === 0 ? (
+              <span className="pmm-inline-placeholder">Sin miembros</span>
+            ) : (
+              <>
+                {selectedUsers.slice(0, 4).map((usuario) => (
+                  <span
+                    key={usuario.id}
+                    className="pmm-inline-avatar"
+                    style={{ background: usuario.background || "#168cff" }}
+                  >
+                    {usuario.url_imagen ? (
+                      <img src={usuario.url_imagen} alt="" />
+                    ) : (
+                      initials(usuario)
+                    )}
+                  </span>
+                ))}
+
+                {selectedUsers.length > 4 && (
+                  <span className="pmm-inline-more">+{selectedUsers.length - 4}</span>
+                )}
+              </>
+            )}
+          </div>
+        )}
+
         <Search size={16} />
 
         <input
@@ -376,8 +449,15 @@ const ProjectMembersManager = ({
           onChange={(event) =>
             setSearch(event.target.value)
           }
-          placeholder="Buscar por nombre o correo..."
+          placeholder={
+            mode === "create"
+              ? "Buscar y agregar miembros..."
+              : "Buscar por nombre o correo..."
+          }
+          aria-label="Buscar usuarios para el proyecto"
         />
+
+        {mode === "create" && <ChevronDown size={16} className="pmm-inline-chevron" />}
       </div>
 
       <div className="pmm-candidates">
@@ -407,6 +487,7 @@ const ProjectMembersManager = ({
                 className={`pmm-candidate ${
                   checked ? "selected" : ""
                 }`}
+                aria-pressed={checked}
                 onClick={() =>
                   mode === "create"
                     ? toggleCreateMember(usuario.id)

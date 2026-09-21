@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Activity,
   Briefcase,
-  Clock,
+  Check,
   Edit2,
   Eye,
   Folder,
@@ -10,7 +10,6 @@ import {
   Headphones,
   Info,
   MessageCircle,
-  Plus,
   Power,
   Search,
   Shield,
@@ -520,274 +519,327 @@ const ProjectManagement = () => {
     [form.tipo]
   );
 
+  const selectedEditType = useMemo(
+    () =>
+      PROJECT_TYPES.find((item) => item.value === editForm.tipo) ||
+      PROJECT_TYPES[0],
+    [editForm.tipo]
+  );
+
   return (
     <section className="pm2-page">
-      <header className="pm2-header">
-        <div>
-          <h1>Gestión de proyectos</h1>
-          <p>Crea y administra tus proyectos de chat y sus dominios.</p>
-        </div>
+      <div className="pm2-bg-decor" aria-hidden="true">
+        <span className="pm2-orb pm2-orb-one" />
+        <span className="pm2-orb pm2-orb-two" />
+        <span className="pm2-chat-line pm2-chat-line-one" />
+        <span className="pm2-chat-line pm2-chat-line-two" />
+        <i className="bi bi-chat-dots pm2-floating-icon pm2-floating-icon-one" />
+        <i className="bi bi-chat-left-text pm2-floating-icon pm2-floating-icon-two" />
+      </div>
 
-        <button type="button" className="pm2-new-btn" onClick={openCreate}>
-          <Plus size={19} />
-          Nuevo proyecto
-        </button>
-      </header>
-
-      <section className="pm2-stats">
-        <article className="pm2-stat pm2-stat-blue">
-          <div className="pm2-stat-icon"><Folder /></div>
-          <div>
-            <strong>{stats?.total_proyectos ?? "—"}</strong>
-            <span>Proyectos</span>
-            <small>En total</small>
+      <div className="pm2-shell">
+        <header className="pm2-header">
+          <div className="pm2-header-copy">
+            <h1>Gestión de proyectos</h1>
+            <p>Crea y administra tus proyectos de chat y sus dominios.</p>
           </div>
-        </article>
 
-        <article className="pm2-stat pm2-stat-green">
-          <div className="pm2-stat-icon"><Users /></div>
-          <div>
-            <strong>{stats?.total_usuarios ?? "—"}</strong>
-            <span>Usuarios</span>
-            <small>Asignados</small>
+          <div className="pm2-header-actions">
+            <button type="button" className="pm2-new-btn" onClick={openCreate}>
+              <i className="bi bi-plus-lg" aria-hidden="true" />
+              <span>Nuevo proyecto</span>
+            </button>
           </div>
-        </article>
+        </header>
 
-        <article className="pm2-stat pm2-stat-purple">
-          <div className="pm2-stat-icon"><Activity /></div>
-          <div>
-            <strong>{stats?.proyectos_activos ?? "—"}</strong>
-            <span>Proyectos activos</span>
-            <small>En funcionamiento</small>
+        <div className="pm2-board">
+          <section className="pm2-hero" aria-label="Resumen principal de proyectos">
+            <div className="pm2-hero-main">
+              <div className="pm2-hero-icon" aria-hidden="true">
+                <i className="bi bi-folder" />
+              </div>
+              <div className="pm2-hero-heading">
+                <div className="pm2-hero-title-row">
+                  <h2>Lista de proyectos</h2>
+                  <span className="pm2-hero-badge">
+                    {stats?.total_proyectos ?? total ?? 0} proyectos
+                  </span>
+                </div>
+                <p>Administra y supervisa tus proyectos, dominios y miembros asociados.</p>
+              </div>
+            </div>
+            <i className="bi bi-folder2-open pm2-hero-watermark" aria-hidden="true" />
+          </section>
+
+          <section className="pm2-stats">
+            <article className="pm2-stat pm2-stat-blue">
+              <div className="pm2-stat-icon"><Folder /></div>
+              <div>
+                <strong>{stats?.total_proyectos ?? "—"}</strong>
+                <span>Proyectos</span>
+                <small>En total</small>
+              </div>
+            </article>
+
+            <article className="pm2-stat pm2-stat-green">
+              <div className="pm2-stat-icon"><Users /></div>
+              <div>
+                <strong>{stats?.total_usuarios ?? "—"}</strong>
+                <span>Usuarios</span>
+                <small>Asignados</small>
+              </div>
+            </article>
+
+            <article className="pm2-stat pm2-stat-purple">
+              <div className="pm2-stat-icon"><Activity /></div>
+              <div>
+                <strong>{stats?.proyectos_activos ?? "—"}</strong>
+                <span>Proyectos activos</span>
+                <small>En funcionamiento</small>
+              </div>
+            </article>
+
+            <article className="pm2-stat pm2-stat-red">
+              <div className="pm2-stat-icon"><Power /></div>
+              <div>
+                <strong>{stats?.proyectos_inactivos ?? "—"}</strong>
+                <span>Proyectos inactivos</span>
+                <small>Desactivados</small>
+              </div>
+            </article>
+          </section>
+
+          <section className="pm2-panel">
+          <div className="pm2-toolbar">
+            <form className="pm2-search" onSubmit={handleBuscar} role="search">
+              <Search size={18} />
+              <input
+                type="search"
+                value={searchInput}
+                onChange={(event) => setSearchInput(event.target.value)}
+                placeholder="Buscar proyectos..."
+                aria-label="Buscar proyectos"
+              />
+            </form>
+
+            <div className="pm2-filters">
+              <select
+                aria-label="Filtrar proyectos por estado"
+                value={estado}
+                onChange={(event) => {
+                  setEstado(event.target.value);
+                  setPage(1);
+                }}
+              >
+                <option value="">Todos los estados</option>
+                <option value="activo">Activos</option>
+                <option value="inactivo">Inactivos</option>
+              </select>
+
+              <select
+                aria-label="Cantidad de proyectos por página"
+                value={limit}
+                onChange={(event) => {
+                  setLimit(Number(event.target.value));
+                  setPage(1);
+                }}
+              >
+                <option value={10}>Mostrar 10</option>
+                <option value={25}>Mostrar 25</option>
+                <option value={50}>Mostrar 50</option>
+                <option value={100}>Mostrar 100</option>
+              </select>
+            </div>
           </div>
-        </article>
 
-        <article className="pm2-stat pm2-stat-red">
-          <div className="pm2-stat-icon"><Clock /></div>
-          <div>
-            <strong>{stats?.proyectos_inactivos ?? "—"}</strong>
-            <span>Proyectos inactivos</span>
-            <small>Desactivados</small>
-          </div>
-        </article>
-      </section>
+          {error && <div className="pm2-error">{error}</div>}
 
-      <section className="pm2-panel">
-        <div className="pm2-toolbar">
-          <form className="pm2-search" onSubmit={handleBuscar}>
-            <Search size={18} />
-            <input
-              type="search"
-              value={searchInput}
-              onChange={(event) => setSearchInput(event.target.value)}
-              placeholder="Buscar proyectos..."
-            />
-          </form>
-
-          <div className="pm2-filters">
-            <select
-              value={estado}
-              onChange={(event) => {
-                setEstado(event.target.value);
-                setPage(1);
-              }}
-            >
-              <option value="">Todos los estados</option>
-              <option value="activo">Activos</option>
-              <option value="inactivo">Inactivos</option>
-            </select>
-
-            <select
-              value={limit}
-              onChange={(event) => {
-                setLimit(Number(event.target.value));
-                setPage(1);
-              }}
-            >
-              <option value={10}>Mostrar 10</option>
-              <option value={25}>Mostrar 25</option>
-              <option value={50}>Mostrar 50</option>
-              <option value={100}>Mostrar 100</option>
-            </select>
-          </div>
-        </div>
-
-        {error && <div className="pm2-error">{error}</div>}
-
-        <div className="pm2-table-wrap">
-          <table className="pm2-table">
-            <thead>
-              <tr>
-                <th>#</th>
-                <th>Nombre del proyecto</th>
-                <th>Dominio</th>
-                <th>Usuarios</th>
-                <th>Estado</th>
-                <th>Fecha de creación</th>
-                <th>Acciones</th>
-              </tr>
-            </thead>
-
-            <tbody>
-              {loading ? (
+          <div className="pm2-table-wrap" aria-busy={loading}>
+            <table className="pm2-table">
+              <thead>
                 <tr>
-                  <td colSpan="7" className="pm2-empty">
-                    Cargando proyectos...
-                  </td>
+                  <th>#</th>
+                  <th>Nombre del proyecto</th>
+                  <th>Dominio</th>
+                  <th>Usuarios</th>
+                  <th>Estado</th>
+                  <th>Fecha de creación</th>
+                  <th>Acciones</th>
                 </tr>
-              ) : proyectos.length === 0 ? (
-                <tr>
-                  <td colSpan="7" className="pm2-empty">
-                    No se encontraron proyectos.
-                  </td>
-                </tr>
-              ) : (
-                proyectos.map((proyecto, index) => {
-                  const initial = (proyecto.nombre || "P").charAt(0).toUpperCase();
+              </thead>
 
-                  return (
-                    <tr key={proyecto.id}>
-                      <td className="pm2-number">
-                        {(page - 1) * limit + index + 1}
-                      </td>
+              <tbody>
+                {loading ? (
+                  <tr>
+                    <td colSpan="7" className="pm2-empty is-loading" aria-live="polite">
+                      <span className="pm2-loading-spinner" aria-hidden="true" />
+                      Cargando proyectos...
+                    </td>
+                  </tr>
+                ) : proyectos.length === 0 ? (
+                  <tr>
+                    <td colSpan="7" className="pm2-empty is-empty">
+                      No se encontraron proyectos.
+                    </td>
+                  </tr>
+                ) : (
+                  proyectos.map((proyecto, index) => {
+                    const initial = (proyecto.nombre || "P").charAt(0).toUpperCase();
 
-                      <td>
-                        <div className="pm2-project-name">
-                          <span
-                            className="pm2-avatar"
-                            style={{
-                              background: `linear-gradient(135deg, ${
-                                proyecto.color || "#168cff"
-                              }, #6c38ff)`,
-                            }}
-                          >
-                            {initial}
-                          </span>
+                    return (
+                      <tr key={proyecto.id}>
+                        <td className="pm2-number">
+                          {(page - 1) * limit + index + 1}
+                        </td>
 
-                          <div>
-                            <strong>{proyecto.nombre}</strong>
-                            <small>ID #{proyecto.id}</small>
+                        <td>
+                          <div className="pm2-project-name">
+                            <span
+                              className="pm2-avatar"
+                              style={{
+                                background: `linear-gradient(135deg, ${
+                                  proyecto.color || "#168cff"
+                                }, #6c38ff)`,
+                              }}
+                            >
+                              {initial}
+                            </span>
+
+                            <div>
+                              <strong>{proyecto.nombre}</strong>
+                              <small>ID: {proyecto.id}</small>
+                            </div>
                           </div>
-                        </div>
-                      </td>
+                        </td>
 
-                      <td>
-                        <span className="pm2-domain">
-                          {proyecto.dominio || "Sin dominio"}
-                        </span>
-                      </td>
+                        <td>
+                          <span className="pm2-domain">
+                            {proyecto.dominio || "Sin dominio"}
+                          </span>
+                        </td>
 
-                      <td>
-                        <span className="pm2-users-count">
-                          {proyecto.usuarios ??
-                           proyecto.total_usuarios ??
-                           proyecto.total_miembros ??
-                           0}
-                        </span>
-                      </td>
+                        <td>
+                          <span className="pm2-users-count">
+                            {proyecto.usuarios ??
+                             proyecto.total_usuarios ??
+                             proyecto.total_miembros ??
+                             0}
+                          </span>
+                        </td>
 
-                      <td>
-                        <span
-                          className={`pm2-status ${
-                            proyecto.estado === "inactivo"
-                              ? "is-inactive"
-                              : "is-active"
-                          }`}
-                        >
-                          <i />
-                          {proyecto.estado === "inactivo" ? "Inactivo" : "Activo"}
-                        </span>
-                      </td>
-
-                      <td>
-                        {proyecto.created_at
-                          ? new Date(proyecto.created_at.replace(" ", "T"))
-                              .toLocaleDateString("es-PE")
-                          : "—"}
-                      </td>
-
-                      <td>
-                        <div className="pm2-actions">
-                          <button
-                            type="button"
-                            className="pm2-action view"
-                            title="Ver proyecto"
-                            onClick={() => handleView(proyecto.id)}
-                          >
-                            <Eye size={17} />
-                          </button>
-
-                          <button
-                            type="button"
-                            className="pm2-action edit"
-                            title="Editar proyecto"
-                            onClick={() => handleEdit(proyecto.id)}
-                          >
-                            <Edit2 size={17} />
-                          </button>
-
-                          <button
-                            type="button"
-                            className={`pm2-action power ${
-                              proyecto.estado === "inactivo" ? "activate" : ""
-                            }`}
-                            title={
+                        <td>
+                          <span
+                            className={`pm2-status ${
                               proyecto.estado === "inactivo"
-                                ? "Activar proyecto"
-                                : "Desactivar proyecto"
-                            }
-                            disabled={stateBusyId === proyecto.id}
-                            onClick={() => handleToggleState(proyecto)}
+                                ? "is-inactive"
+                                : "is-active"
+                            }`}
                           >
-                            <Power size={17} />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
-        </div>
+                            <i />
+                            {proyecto.estado === "inactivo" ? "Inactivo" : "Activo"}
+                          </span>
+                        </td>
 
-        <footer className="pm2-pagination">
-          <span>
-            Mostrando {shownFrom} a {shownTo} de {total} proyectos
-          </span>
+                        <td>
+                          {proyecto.created_at
+                            ? new Date(proyecto.created_at.replace(" ", "T"))
+                                .toLocaleDateString("es-PE")
+                            : "—"}
+                        </td>
 
-          <div>
-            <button
-              type="button"
-              disabled={page <= 1 || loading}
-              onClick={() => setPage((value) => Math.max(1, value - 1))}
-            >
-              ‹
-            </button>
+                        <td>
+                          <div className="pm2-actions">
+                            <button
+                              type="button"
+                              className="pm2-action view"
+                              title="Ver proyecto"
+                              aria-label={`Ver proyecto ${proyecto.nombre || ""}`}
+                              onClick={() => handleView(proyecto.id)}
+                            >
+                              <Eye size={17} />
+                            </button>
 
-            <strong>{page}</strong>
+                            <button
+                              type="button"
+                              className="pm2-action edit"
+                              title="Editar proyecto"
+                              aria-label={`Editar proyecto ${proyecto.nombre || ""}`}
+                              onClick={() => handleEdit(proyecto.id)}
+                            >
+                              <Edit2 size={17} />
+                            </button>
 
-            <button
-              type="button"
-              disabled={page >= totalPages || loading}
-              onClick={() =>
-                setPage((value) => Math.min(totalPages, value + 1))
-              }
-            >
-              ›
-            </button>
+                            <button
+                              type="button"
+                              className={`pm2-action power ${
+                                proyecto.estado === "inactivo" ? "activate" : ""
+                              }`}
+                              title={
+                                proyecto.estado === "inactivo"
+                                  ? "Activar proyecto"
+                                  : "Desactivar proyecto"
+                              }
+                              aria-label={`${
+                                proyecto.estado === "inactivo"
+                                  ? "Activar"
+                                  : "Desactivar"
+                              } proyecto ${proyecto.nombre || ""}`}
+                              disabled={stateBusyId === proyecto.id}
+                              onClick={() => handleToggleState(proyecto)}
+                            >
+                              <Power size={17} />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
           </div>
-        </footer>
-      </section>
 
-      <div className="pm2-domain-note">
-        <Info size={22} />
-        <div>
-          <strong>Dominio del proyecto</strong>
-          <p>
-            El dominio principal determina el correo administrado de los usuarios
-            cuyo proyecto principal utiliza gestión automática de correo.
-          </p>
+          <footer className="pm2-pagination">
+            <span>
+              Mostrando {shownFrom} a {shownTo} de {total} proyectos
+            </span>
+
+            <div>
+              <button
+                type="button"
+                aria-label="Página anterior"
+                disabled={page <= 1 || loading}
+                onClick={() => setPage((value) => Math.max(1, value - 1))}
+              >
+                ‹
+              </button>
+
+              <strong>{page}</strong>
+
+              <button
+                type="button"
+                aria-label="Página siguiente"
+                disabled={page >= totalPages || loading}
+                onClick={() =>
+                  setPage((value) => Math.min(totalPages, value + 1))
+                }
+              >
+                ›
+              </button>
+            </div>
+          </footer>
+        </section>
+
+          <div className="pm2-domain-note">
+            <Info size={22} />
+            <div>
+              <strong>Dominio del proyecto</strong>
+              <p>
+                El dominio principal determina el correo administrado de los usuarios
+                cuyo proyecto principal utiliza gestión automática de correo.
+              </p>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -800,6 +852,7 @@ const ProjectManagement = () => {
             <button
               type="button"
               className="pm2-modal-close"
+              aria-label="Cerrar modal"
               onClick={closeCreate}
               disabled={creating}
             >
@@ -915,8 +968,9 @@ const ProjectManagement = () => {
                             setForm((prev) => ({ ...prev, color }))
                           }
                           aria-label={`Seleccionar color ${color}`}
+                          aria-pressed={form.color === color}
                         >
-                          {form.color === color ? "✓" : ""}
+                          {form.color === color ? <Check size={14} /> : null}
                         </button>
                       ))}
                     </div>
@@ -940,6 +994,8 @@ const ProjectManagement = () => {
                                 icono: item.value,
                               }))
                             }
+                            aria-label={`Seleccionar ícono ${item.value}`}
+                            aria-pressed={form.icono === item.value}
                           >
                             <Icon size={21} />
                           </button>
@@ -948,21 +1004,33 @@ const ProjectManagement = () => {
                     </div>
                   </div>
 
-                  <label className="pm2-field">
+                  <div className="pm2-field pm2-status-field">
                     <span>Estado del proyecto</span>
-                    <select
-                      value={form.estado}
-                      onChange={(event) =>
-                        setForm((prev) => ({
-                          ...prev,
-                          estado: event.target.value,
-                        }))
-                      }
+                    <small className="pm2-field-help">
+                      Define si el proyecto estará activo o inactivo
+                    </small>
+                    <div
+                      className={`pm2-state-select ${
+                        form.estado === "inactivo" ? "is-inactive" : "is-active"
+                      }`}
                     >
-                      <option value="activo">Activo</option>
-                      <option value="inactivo">Inactivo</option>
-                    </select>
-                  </label>
+                      <span className="pm2-state-dot" aria-hidden="true" />
+                      <select
+                        value={form.estado}
+                        aria-label="Estado del proyecto"
+                        onChange={(event) =>
+                          setForm((prev) => ({
+                            ...prev,
+                            estado: event.target.value,
+                          }))
+                        }
+                      >
+                        <option value="activo">Activo</option>
+                        <option value="inactivo">Inactivo</option>
+                      </select>
+                      <span className="pm2-state-chevron" aria-hidden="true" />
+                    </div>
+                  </div>
 
                   <ProjectMembersManager
                     mode="create"
@@ -1001,19 +1069,21 @@ const ProjectManagement = () => {
                       {form.estado === "inactivo" ? "Inactivo" : "Activo"}
                     </span>
 
-                    <div className="pm2-preview-row">
-                      <Users size={21} />
-                      <div>
-                        <strong>0</strong>
-                        <small>Usuarios iniciales</small>
+                    <div className="pm2-preview-meta">
+                      <div className="pm2-preview-row">
+                        <Users size={21} />
+                        <div>
+                          <strong>{createMemberIds.length}</strong>
+                          <small>Miembros</small>
+                        </div>
                       </div>
-                    </div>
 
-                    <div className="pm2-preview-row">
-                      {React.createElement(selectedType.icon, { size: 21 })}
-                      <div>
-                        <strong>{selectedType.label}</strong>
-                        <small>Tipo de proyecto</small>
+                      <div className="pm2-preview-row">
+                        {React.createElement(selectedType.icon, { size: 21 })}
+                        <div>
+                          <strong>{selectedType.label}</strong>
+                          <small>Tipo de proyecto</small>
+                        </div>
                       </div>
                     </div>
 
@@ -1073,6 +1143,7 @@ const ProjectManagement = () => {
             <button
               type="button"
               className="pm2-modal-close"
+              aria-label="Cerrar modal"
               onClick={() => setSelectedProject(null)}
             >
               <X size={22} />
@@ -1178,6 +1249,7 @@ const ProjectManagement = () => {
             <button
               type="button"
               className="pm2-modal-close"
+              aria-label="Cerrar modal"
               onClick={closeEdit}
               disabled={savingEdit || changingDomain}
             >
@@ -1289,35 +1361,51 @@ const ProjectManagement = () => {
                         </small>
                       </label>
 
-                      <div className="pm2-edit-row">
-                        <label className="pm2-field">
-                          <span>Tipo de proyecto</span>
+                      <div className="pm2-field">
+                        <span>Tipo de proyecto</span>
 
-                          <select
-                            value={editForm.tipo}
-                            onChange={(event) =>
-                              setEditForm((prev) => ({
-                                ...prev,
-                                tipo: event.target.value,
-                              }))
-                            }
-                          >
-                            {PROJECT_TYPES.map((type) => (
-                              <option
+                        <div className="pm2-type-grid">
+                          {PROJECT_TYPES.map((type) => {
+                            const Icon = type.icon;
+
+                            return (
+                              <button
+                                type="button"
                                 key={type.value}
-                                value={type.value}
+                                className={
+                                  editForm.tipo === type.value ? "selected" : ""
+                                }
+                                onClick={() =>
+                                  setEditForm((prev) => ({
+                                    ...prev,
+                                    tipo: type.value,
+                                  }))
+                                }
+                                aria-pressed={editForm.tipo === type.value}
                               >
-                                {type.label}
-                              </option>
-                            ))}
-                          </select>
-                        </label>
+                                <Icon size={20} />
+                                <strong>{type.label}</strong>
+                                <small>{type.description}</small>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
 
-                        <label className="pm2-field">
-                          <span>Estado del proyecto</span>
-
+                      <div className="pm2-field pm2-status-field">
+                        <span>Estado del proyecto</span>
+                        <small className="pm2-field-help">
+                          Define si el proyecto estará activo o inactivo
+                        </small>
+                        <div
+                          className={`pm2-state-select ${
+                            editForm.estado === "inactivo" ? "is-inactive" : "is-active"
+                          }`}
+                        >
+                          <span className="pm2-state-dot" aria-hidden="true" />
                           <select
                             value={editForm.estado}
+                            aria-label="Estado del proyecto"
                             onChange={(event) =>
                               setEditForm((prev) => ({
                                 ...prev,
@@ -1325,15 +1413,11 @@ const ProjectManagement = () => {
                               }))
                             }
                           >
-                            <option value="activo">
-                              Activo
-                            </option>
-
-                            <option value="inactivo">
-                              Inactivo
-                            </option>
+                            <option value="activo">Activo</option>
+                            <option value="inactivo">Inactivo</option>
                           </select>
-                        </label>
+                          <span className="pm2-state-chevron" aria-hidden="true" />
+                        </div>
                       </div>
 
                       <div className="pm2-field">
@@ -1356,10 +1440,11 @@ const ProjectManagement = () => {
                                   color,
                                 }))
                               }
+                              aria-pressed={editForm.color === color}
                             >
-                              {editForm.color === color
-                                ? "✓"
-                                : ""}
+                              {editForm.color === color ? (
+                                <Check size={14} />
+                              ) : null}
                             </button>
                           ))}
                         </div>
@@ -1387,6 +1472,8 @@ const ProjectManagement = () => {
                                     icono: item.value,
                                   }))
                                 }
+                                aria-label={`Seleccionar ícono ${item.value}`}
+                                aria-pressed={editForm.icono === item.value}
                               >
                                 <Icon size={21} />
                               </button>
@@ -1453,31 +1540,26 @@ const ProjectManagement = () => {
                             : "Activo"}
                         </span>
 
-                        <div className="pm2-preview-row">
-                          <Users size={21} />
+                        <div className="pm2-preview-meta">
+                          <div className="pm2-preview-row">
+                            <Users size={21} />
 
-                          <div>
-                            <strong>
-                              {editingProject?.usuarios ?? 0}
-                            </strong>
-                            <small>Usuarios</small>
+                            <div>
+                              <strong>
+                                {editingProject?.usuarios ?? 0}
+                              </strong>
+                              <small>Usuarios</small>
+                            </div>
                           </div>
-                        </div>
 
-                        <div className="pm2-preview-row">
-                          <Activity size={21} />
+                          <div className="pm2-preview-row">
+                            {React.createElement(selectedEditType.icon, { size: 21 })}
 
-                          <div>
-                            <strong>
-                              {
-                                PROJECT_TYPES.find(
-                                  (type) =>
-                                    type.value === editForm.tipo
-                                )?.label
-                              }
-                            </strong>
+                            <div>
+                              <strong>{selectedEditType.label}</strong>
 
-                            <small>Tipo de proyecto</small>
+                              <small>Tipo de proyecto</small>
+                            </div>
                           </div>
                         </div>
 
@@ -1560,6 +1642,7 @@ const ProjectManagement = () => {
             <button
               type="button"
               className="pm2-modal-close"
+              aria-label="Cerrar modal"
               disabled={changingDomain}
               onClick={() => setDomainImpact(null)}
             >

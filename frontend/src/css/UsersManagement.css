@@ -1,7 +1,7 @@
 :root {
   --qc-users-bg: linear-gradient(135deg, #f8fbff 0%, #f5f8ff 44%, #eef5ff 100%);
-  --qc-users-surface: rgba(255, 255, 255, 0.9);
-  --qc-users-card: rgba(255, 255, 255, 0.82);
+  --qc-users-surface: rgba(255, 255, 255, 0.975);
+  --qc-users-card: rgba(255, 255, 255, 0.955);
   --qc-users-soft: rgba(241, 247, 255, 0.78);
   --qc-users-text: #081a44;
   --qc-users-muted: #66769f;
@@ -15,8 +15,8 @@
   --qc-users-red: #ef4444;
   --qc-users-warning: #f59e0b;
   --qc-users-active: linear-gradient(135deg, #0ea5ff 0%, #2563ff 48%, #7c3cff 100%);
-  --qc-users-shadow: 0 24px 70px rgba(37, 99, 235, 0.14);
-  --qc-users-card-shadow: 0 18px 44px rgba(15, 23, 42, 0.07);
+  --qc-users-shadow: 0 16px 40px rgba(37, 99, 235, 0.11);
+  --qc-users-card-shadow: 0 12px 28px rgba(15, 23, 42, 0.06);
   --qc-users-glow: 0 0 0 rgba(14, 165, 255, 0);
   --qc-users-table-row: rgba(255, 255, 255, 0.74);
   --qc-users-table-row-hover: rgba(239, 246, 255, 0.92);
@@ -27,8 +27,8 @@
   --qc-users-bg: radial-gradient(circle at 72% -8%, rgba(124, 58, 237, 0.24), transparent 34%),
     radial-gradient(circle at 28% 0%, rgba(14, 165, 255, 0.16), transparent 30%),
     linear-gradient(135deg, #020817 0%, #050b18 48%, #07111f 100%);
-  --qc-users-surface: rgba(5, 14, 34, 0.84);
-  --qc-users-card: rgba(8, 18, 42, 0.78);
+  --qc-users-surface: rgba(5, 14, 34, 0.965);
+  --qc-users-card: rgba(8, 18, 42, 0.94);
   --qc-users-soft: rgba(9, 20, 47, 0.72);
   --qc-users-text: #f8fafc;
   --qc-users-muted: #aeb8d8;
@@ -42,8 +42,8 @@
   --qc-users-red: #fb4d4d;
   --qc-users-warning: #fbbf24;
   --qc-users-active: linear-gradient(135deg, #0ea5ff 0%, #2563eb 46%, #8b5cf6 100%);
-  --qc-users-shadow: 0 30px 80px rgba(0, 0, 0, 0.38), 0 0 46px rgba(37, 99, 235, 0.16);
-  --qc-users-card-shadow: 0 18px 48px rgba(0, 0, 0, 0.28);
+  --qc-users-shadow: 0 18px 44px rgba(0, 0, 0, 0.30), 0 0 24px rgba(37, 99, 235, 0.10);
+  --qc-users-card-shadow: 0 12px 28px rgba(0, 0, 0, 0.22);
   --qc-users-glow: 0 0 28px rgba(14, 165, 255, 0.16);
   --qc-users-table-row: rgba(6, 17, 40, 0.58);
   --qc-users-table-row-hover: rgba(14, 37, 80, 0.72);
@@ -92,8 +92,7 @@
 .qc-users-orb {
   position: absolute;
   border-radius: 999px;
-  filter: blur(8px);
-  opacity: 0.78;
+  opacity: 0.58;
 }
 
 .qc-users-orb-one {
@@ -207,7 +206,7 @@
   font-weight: 700;
   letter-spacing: -0.02em;
   cursor: pointer;
-  transition: transform 180ms ease, box-shadow 180ms ease, filter 180ms ease;
+  transition: transform 180ms ease, box-shadow 180ms ease;
 }
 
 .qc-users-new-btn::before {
@@ -230,7 +229,6 @@
 }
 
 .qc-users-new-btn:hover {
-  filter: saturate(1.08) brightness(1.02);
   transform: translateY(-2px);
   box-shadow: 0 20px 42px rgba(37, 99, 235, 0.38), 0 0 32px rgba(124, 58, 237, 0.28);
 }
@@ -249,8 +247,6 @@
   border-radius: 28px;
   background: var(--qc-users-surface);
   box-shadow: var(--qc-users-shadow);
-  backdrop-filter: blur(22px);
-  -webkit-backdrop-filter: blur(22px);
 }
 
 .qc-users-panel::before {
@@ -330,7 +326,7 @@
   border-radius: 24px;
   color: #fff;
   background: var(--qc-users-active);
-  box-shadow: 0 16px 36px rgba(37, 99, 235, 0.3), 0 0 28px rgba(124, 58, 237, 0.28);
+  box-shadow: 0 12px 26px rgba(37, 99, 235, 0.24), 0 0 16px rgba(124, 58, 237, 0.18);
 }
 
 .qc-users-hero-icon::after {
@@ -403,7 +399,7 @@
 
 :root[data-theme="dark"] .qc-users-hero-watermark {
   color: rgba(96, 165, 250, 0.18);
-  text-shadow: 0 0 28px rgba(124, 58, 237, 0.18);
+  text-shadow: 0 0 16px rgba(124, 58, 237, 0.12);
 }
 
 .qc-users-stats {
@@ -423,8 +419,6 @@
   border-radius: 16px;
   background: var(--qc-users-card);
   box-shadow: var(--qc-users-card-shadow);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
 }
 
 .qc-users-stat-icon {
@@ -3241,4 +3235,68 @@
   .qc-batch-header {
     flex-direction: column;
   }
+}
+
+
+/* PERFORMANCE TUNING
+   Reduce repaint/compositing cost on integrated/older GPUs without changing layout. */
+.qc-users-panel,
+.qc-users-stat-card,
+.qc-users-panel-hero {
+  contain: layout style;
+}
+
+@media (prefers-reduced-motion: reduce), (update: slow) {
+  .qc-users-page *,
+  .qc-users-page *::before,
+  .qc-users-page *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+
+  .qc-users-new-btn:hover,
+  .qc-users-stat-card:hover,
+  .qc-users-action-btn:hover {
+    transform: none !important;
+  }
+}
+
+
+/* ==========================================================
+   PERFORMANCE PASS v15
+   Forms and user-management cards keep the same appearance,
+   but avoid animating expensive shadows on every hover.
+   ========================================================== */
+.qc-users-bg-decor {
+  contain: paint;
+}
+
+.qc-users-new-btn,
+.qc-user-account-mode button,
+.qc-user-project-option,
+.qc-user-role-grid button,
+.qc-user-permission-option,
+.qc-user-admin-actions button,
+.qc-users-action-btn,
+.qc-users-pagination button {
+  transition-property: transform, background-color, border-color, color, opacity !important;
+}
+
+.qc-users-new-btn:hover {
+  box-shadow: 0 14px 30px rgba(37, 99, 235, .28), 0 0 20px rgba(124, 58, 237, .14);
+}
+
+:root[data-theme="dark"] .qc-user-admin-section,
+:root[data-theme="dark"] .qc-mfa-admin-card {
+  box-shadow: 0 8px 18px rgba(0, 0, 0, .14) !important;
+}
+
+:root[data-theme="light"] .qc-user-admin-section {
+  box-shadow: 0 6px 18px rgba(38, 63, 110, .03) !important;
+}
+
+:root[data-theme="dark"] .qc-user-admin-actions .btn-primary:hover,
+:root[data-theme="dark"] .qc-user-admin-save:hover {
+  filter: none !important;
 }

@@ -627,3 +627,15 @@ html[data-theme="dark"] .qc-recovery-code-grid code, body.dark .qc-recovery-code
   .qc-recovery-code-grid { grid-template-columns: 1fr; }
 }
 
+
+
+/* Performance: full-screen live blur is expensive on integrated GPUs. */
+.qc-devices-backdrop {
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+  background: rgba(2, 6, 23, .72);
+}
+
+.qc-devices-modal {
+  box-shadow: 0 20px 58px rgba(2, 6, 23, .32);
+}

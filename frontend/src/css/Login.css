@@ -952,3 +952,31 @@
     transition-duration: 0.001ms !important;
   }
 }
+
+
+/* ==========================================================
+   PERFORMANCE PASS v15
+   Keep the login artwork, but avoid continuous expensive filter
+   composition on machines with integrated / older graphics.
+   ========================================================== */
+.quick-login-card {
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+}
+
+.quick-bg-orb,
+.quick-brand-logo::before {
+  filter: none !important;
+}
+
+.quick-plane,
+.quick-network,
+:root[data-theme="dark"] .quick-plane,
+:root[data-theme="dark"] .quick-lightning,
+.quick-brand-logo img {
+  filter: none !important;
+}
+
+.quick-login-bg {
+  contain: paint;
+}
