@@ -640,6 +640,18 @@ const Message = ({
   const [galeriaImagenes, setGaleriaImagenes] = useState([]); // urls normalizadas
   const [galeriaIndice, setGaleriaIndice] = useState(0);
   const [galeriaZoomed, setGaleriaZoomed] = useState(false);
+  const [galeriaScale, setGaleriaScale] = useState(1);
+  const [galeriaOffset, setGaleriaOffset] = useState({ x: 0, y: 0 });
+  const galeriaScaleRef = useRef(1);
+  const galeriaPanRef = useRef({
+    dragging: false,
+    moved: false,
+    pointerId: null,
+    startX: 0,
+    startY: 0,
+    originX: 0,
+    originY: 0,
+  });
 
   // 👇 AQUÍ pegamos lo del modal del sticker
   const [showStickerModal, setShowStickerModal] = useState(false);
@@ -1304,12 +1316,110 @@ const Message = ({
     return finalUrl;
   };
 
+  const resetGaleriaTransform = () => {
+    galeriaScaleRef.current = 1;
+    setGaleriaScale(1);
+    setGaleriaOffset({ x: 0, y: 0 });
+    setGaleriaZoomed(false);
+    galeriaPanRef.current.dragging = false;
+    galeriaPanRef.current.moved = false;
+    galeriaPanRef.current.pointerId = null;
+  };
+
+  const setGaleriaZoom = (nextScale) => {
+    const scale = Math.min(5, Math.max(1, Number(nextScale) || 1));
+    galeriaScaleRef.current = scale;
+    setGaleriaScale(scale);
+    setGaleriaZoomed(scale > 1.01);
+
+    if (scale <= 1.01) {
+      setGaleriaOffset({ x: 0, y: 0 });
+    }
+  };
+
+  const toggleGaleriaZoom = () => {
+    if (galeriaScaleRef.current > 1.01) {
+      resetGaleriaTransform();
+      return;
+    }
+
+    setGaleriaZoom(2);
+  };
+
+  const handleGaleriaWheel = (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+
+    const factor = event.deltaY < 0 ? 1.14 : 0.88;
+    setGaleriaZoom(galeriaScaleRef.current * factor);
+  };
+
+  const handleGaleriaPointerDown = (event) => {
+    if (galeriaScaleRef.current <= 1.01 || event.button !== 0) return;
+
+    event.preventDefault();
+    event.stopPropagation();
+
+    galeriaPanRef.current = {
+      dragging: true,
+      moved: false,
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      originX: galeriaOffset.x,
+      originY: galeriaOffset.y,
+    };
+
+    try {
+      event.currentTarget.setPointerCapture?.(event.pointerId);
+    } catch {
+      // Algunos navegadores no permiten capturar el puntero en imágenes.
+    }
+  };
+
+  const handleGaleriaPointerMove = (event) => {
+    const pan = galeriaPanRef.current;
+    if (!pan.dragging || pan.pointerId !== event.pointerId) return;
+
+    event.preventDefault();
+    event.stopPropagation();
+
+    const dx = event.clientX - pan.startX;
+    const dy = event.clientY - pan.startY;
+
+    if (Math.abs(dx) > 3 || Math.abs(dy) > 3) {
+      pan.moved = true;
+    }
+
+    setGaleriaOffset({
+      x: pan.originX + dx,
+      y: pan.originY + dy,
+    });
+  };
+
+  const handleGaleriaPointerEnd = (event) => {
+    const pan = galeriaPanRef.current;
+    if (!pan.dragging || pan.pointerId !== event.pointerId) return;
+
+    event.preventDefault();
+    event.stopPropagation();
+
+    try {
+      event.currentTarget.releasePointerCapture?.(event.pointerId);
+    } catch {
+      // Sin captura activa.
+    }
+
+    pan.dragging = false;
+    pan.pointerId = null;
+  };
+
   const abrirGaleria = (imagenes, indiceInicial = 0) => {
     if (!imagenes || !imagenes.length) return;
     const normalizadas = imagenes.map(normalizarUrlImagen);
     setGaleriaImagenes(normalizadas);
     setGaleriaIndice(indiceInicial);
-    setGaleriaZoomed(false);
+    resetGaleriaTransform();
     setGaleriaAbierta(true);
   };
 
@@ -1352,11 +1462,11 @@ const Message = ({
         setGaleriaAbierta(false);
       }
       if (e.key === "ArrowRight") {
-        setGaleriaZoomed(false);
+        resetGaleriaTransform();
         setGaleriaIndice((prev) => (prev + 1) % galeriaImagenes.length);
       }
       if (e.key === "ArrowLeft") {
-        setGaleriaZoomed(false);
+        resetGaleriaTransform();
         setGaleriaIndice((prev) =>
           prev - 1 < 0 ? galeriaImagenes.length - 1 : prev - 1
         );
@@ -4022,11 +4132,13 @@ const Message = ({
           <div
             className="wa-gallery-modal"
             onClick={() => setGaleriaAbierta(false)}
+            onWheel={handleGaleriaWheel}
           >
             <button
               type="button"
               onClick={(e) => {
                 e.stopPropagation();
+                resetGaleriaTransform();
                 setGaleriaAbierta(false);
               }}
               className="wa-gallery-close"
@@ -4039,7 +4151,7 @@ const Message = ({
               type="button"
               onClick={(e) => {
                 e.stopPropagation();
-                setGaleriaZoomed((prev) => !prev);
+                toggleGaleriaZoom();
               }}
               className="wa-gallery-zoom"
               aria-label={galeriaZoomed ? "Reducir imagen" : "Ampliar imagen"}
@@ -4056,7 +4168,7 @@ const Message = ({
                 type="button"
                 onClick={(e) => {
                   e.stopPropagation();
-                  setGaleriaZoomed(false);
+                  resetGaleriaTransform();
                   setGaleriaIndice((prev) =>
                     prev - 1 < 0 ? galeriaImagenes.length - 1 : prev - 1
                   );
@@ -4072,9 +4184,24 @@ const Message = ({
               src={galeriaImagenes[galeriaIndice]}
               alt="vista ampliada"
               className={`wa-gallery-image ${galeriaZoomed ? "zoomed" : ""}`}
+              draggable="false"
+              style={{
+                transform: `translate3d(${galeriaOffset.x}px, ${galeriaOffset.y}px, 0) scale(${galeriaScale})`,
+              }}
+              onDragStart={(e) => e.preventDefault()}
+              onPointerDown={handleGaleriaPointerDown}
+              onPointerMove={handleGaleriaPointerMove}
+              onPointerUp={handleGaleriaPointerEnd}
+              onPointerCancel={handleGaleriaPointerEnd}
               onClick={(e) => {
                 e.stopPropagation();
-                setGaleriaZoomed((prev) => !prev);
+
+                if (galeriaPanRef.current.moved) {
+                  galeriaPanRef.current.moved = false;
+                  return;
+                }
+
+                toggleGaleriaZoom();
               }}
             />
 
@@ -4083,7 +4210,7 @@ const Message = ({
                 type="button"
                 onClick={(e) => {
                   e.stopPropagation();
-                  setGaleriaZoomed(false);
+                  resetGaleriaTransform();
                   setGaleriaIndice((prev) =>
                     (prev + 1) % galeriaImagenes.length
                   );

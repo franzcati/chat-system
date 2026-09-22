@@ -13128,10 +13128,16 @@ body.dark,
 }
 
 .message.message-out .message-text:not(.message-sticker-bubble) .wa-rich-message,
-.message.message-out .message-text:not(.message-sticker-bubble) .wa-rich-message *,
-.message.message-out .message-text:not(.message-sticker-bubble) .break-words,
-.message.message-out .message-text:not(.message-sticker-bubble) .break-words * {
+.message.message-out .message-text:not(.message-sticker-bubble) .break-words {
   color: inherit !important;
+  -webkit-text-fill-color: currentColor !important;
+}
+
+/* IMPORTANTE: no forzar color sobre .wa-rich-color. El editor guarda el
+   color elegido en el style inline del span; un color:inherit !important
+   aquí lo anulaba. Los descendientes heredan naturalmente ese color. */
+.message.message-out .message-text:not(.message-sticker-bubble) .wa-rich-message *:not(.wa-rich-color),
+.message.message-out .message-text:not(.message-sticker-bubble) .break-words *:not(.wa-rich-color) {
   -webkit-text-fill-color: currentColor !important;
 }
 
@@ -13455,3 +13461,767 @@ body.dark,
   }
 }
 
+
+/* =========================================================
+   QUICKCHAT · FIX FINAL STICKERS SIN BURBUJA + FLECHA LIGHT
+   - Mantiene únicamente el sticker y su chip de hora/checks.
+   - Elimina el fondo/borde/sombra del contenedor del sticker.
+   - En modo claro, el botón/flecha de acciones usa azul del tema.
+   ========================================================= */
+
+/* La regla premium general del chat tiene más especificidad que las reglas
+   antiguas de stickers; por eso aquí igualamos/superamos esa especificidad. */
+.wa-messenger-root.active-tab-chat .message-text.message-sticker-bubble,
+.wa-messenger-root.active-tab-chat .message.message-out .message-text.message-sticker-bubble,
+:root[data-theme="dark"] .wa-messenger-root.active-tab-chat .message-text.message-sticker-bubble,
+:root[data-theme="dark"] .wa-messenger-root.active-tab-chat .message.message-out .message-text.message-sticker-bubble {
+  min-width: 0 !important;
+  width: fit-content !important;
+  max-width: 190px !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  background: transparent !important;
+  background-color: transparent !important;
+  background-image: none !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  border-radius: 0 !important;
+  overflow: visible !important;
+}
+
+/* En grupos de stickers tampoco debe reaparecer la burbuja. */
+.wa-messenger-root.active-tab-chat .wa-sticker-cluster .message-text.message-sticker-bubble,
+:root[data-theme="dark"] .wa-messenger-root.active-tab-chat .wa-sticker-cluster .message-text.message-sticker-bubble {
+  background: transparent !important;
+  background-color: transparent !important;
+  background-image: none !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+}
+
+/* El propio recurso visual permanece limpio, sin panel detrás. */
+.wa-messenger-root.active-tab-chat .message-text.message-sticker-bubble .wa-sticker-message-wrap,
+.wa-messenger-root.active-tab-chat .message-text.message-sticker-bubble .wa-sticker-message,
+.wa-messenger-root.active-tab-chat .message-text.message-sticker-bubble .wa-sticker-message img {
+  background: transparent !important;
+  box-shadow: none !important;
+  border: 0 !important;
+}
+
+/* La hora/checks conserva únicamente su pequeño chip, como WhatsApp. */
+:root:not([data-theme="dark"])
+.wa-messenger-root.active-tab-chat .message-text.message-sticker-bubble .message-footer {
+  background: rgba(255, 255, 255, 0.88) !important;
+  color: #4f6690 !important;
+  border: 1px solid rgba(126, 157, 220, 0.24) !important;
+  box-shadow: 0 2px 7px rgba(40, 75, 135, 0.10) !important;
+  backdrop-filter: blur(8px) !important;
+}
+
+:root[data-theme="dark"]
+.wa-messenger-root.active-tab-chat .message-text.message-sticker-bubble .message-footer {
+  background: rgba(4, 18, 43, 0.76) !important;
+  color: #eef5ff !important;
+  border: 1px solid rgba(86, 139, 238, 0.26) !important;
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.20) !important;
+  backdrop-filter: blur(8px) !important;
+}
+
+/* FLECHA / BOTÓN DE ACCIONES DEL STICKER EN MODO CLARO:
+   azul del mismo lenguaje visual usado en el resto del chat. */
+:root:not([data-theme="dark"])
+.wa-messenger-root.active-tab-chat .message-text.message-sticker-bubble .wa-message-menu-btn {
+  width: 26px !important;
+  height: 26px !important;
+  border-radius: 999px !important;
+  color: #2f6fff !important;
+  background: rgba(47, 111, 255, 0.10) !important;
+  border: 1px solid rgba(47, 111, 255, 0.16) !important;
+  box-shadow: 0 3px 10px rgba(47, 111, 255, 0.10) !important;
+}
+
+:root:not([data-theme="dark"])
+.wa-messenger-root.active-tab-chat .message-text.message-sticker-bubble .wa-message-menu-btn.visible,
+:root:not([data-theme="dark"])
+.wa-messenger-root.active-tab-chat .message-text.message-sticker-bubble .wa-message-menu-btn:hover {
+  color: #1d5cff !important;
+  background: rgba(47, 111, 255, 0.18) !important;
+  border-color: rgba(47, 111, 255, 0.26) !important;
+}
+
+/* En oscuro se mantiene discreto y sin un cuadro gris claro. */
+:root[data-theme="dark"]
+.wa-messenger-root.active-tab-chat .message-text.message-sticker-bubble .wa-message-menu-btn {
+  width: 26px !important;
+  height: 26px !important;
+  border-radius: 999px !important;
+  color: #d8e8ff !important;
+  background: rgba(13, 38, 82, 0.72) !important;
+  border: 1px solid rgba(88, 137, 230, 0.22) !important;
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.16) !important;
+}
+
+:root[data-theme="dark"]
+.wa-messenger-root.active-tab-chat .message-text.message-sticker-bubble .wa-message-menu-btn.visible,
+:root[data-theme="dark"]
+.wa-messenger-root.active-tab-chat .message-text.message-sticker-bubble .wa-message-menu-btn:hover {
+  color: #ffffff !important;
+  background: rgba(34, 91, 197, 0.74) !important;
+}
+
+/* =========================================================
+   QUICKCHAT · MEDIA / STICKER VIEWER V20
+   - Video con burbuja ajustada al tamaño real del media.
+   - Detalle de sticker sobre overlay oscuro sin ocultar sidebars.
+   - Visor de imágenes con wheel-zoom y pan por arrastre.
+   ========================================================= */
+
+/* ---------- VIDEO: mismo tratamiento compacto que las fotos ---------- */
+.wa-messenger-root.active-tab-chat .message-text.message-video-bubble {
+  display: inline-flex !important;
+  flex-direction: column !important;
+  align-items: stretch !important;
+  width: fit-content !important;
+  min-width: 0 !important;
+  max-width: min(340px, 72vw) !important;
+  padding: 3px 3px 6px 3px !important;
+  border-radius: 16px !important;
+  overflow: hidden !important;
+}
+
+.wa-messenger-root.active-tab-chat .message-text.message-video-bubble .wa-message-media-stack,
+.wa-messenger-root.active-tab-chat .message-text.message-video-bubble .wa-video-wrap {
+  width: fit-content !important;
+  min-width: 0 !important;
+  max-width: min(330px, 70vw) !important;
+  margin: 0 !important;
+}
+
+.wa-messenger-root.active-tab-chat .message-text.message-video-bubble .wa-video-wrap {
+  display: block !important;
+  overflow: hidden !important;
+  border-radius: 12px !important;
+  background: #000000 !important;
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+}
+
+:root:not([data-theme="dark"])
+.wa-messenger-root.active-tab-chat .message-text.message-video-bubble .wa-video-wrap {
+  border-color: rgba(70, 104, 170, 0.18) !important;
+}
+
+.wa-messenger-root.active-tab-chat .message-text.message-video-bubble .wa-message-video {
+  display: block !important;
+  width: auto !important;
+  max-width: min(330px, 70vw) !important;
+  min-width: 180px !important;
+  height: auto !important;
+  max-height: 430px !important;
+  object-fit: contain !important;
+  border-radius: 11px !important;
+  margin: 0 !important;
+  background: #000000 !important;
+}
+
+.wa-messenger-root.active-tab-chat .message-text.message-video-bubble .message-footer {
+  align-self: stretch !important;
+  width: 100% !important;
+  margin-top: 5px !important;
+  padding: 0 7px 1px 7px !important;
+}
+
+/* ---------- STICKER DETAIL: mantener toda la app visible detrás ---------- */
+body.wa-sticker-detail-open .wa-app-rail,
+body.wa-sticker-detail-open #root > .flex.h-screen > .sidebar,
+body.wa-sticker-detail-open .chat-footer,
+body.wa-sticker-detail-open .wa-chat-form,
+body.wa-sticker-detail-open .reply-compose-bar {
+  visibility: visible !important;
+  opacity: 1 !important;
+}
+
+/* Los elementos flotantes sí permanecen ocultos detrás del modal para no
+   atravesar el overlay. */
+body.wa-sticker-detail-open .wa-sticker-message-info,
+body.wa-sticker-detail-open .message-reply-shortcut,
+body.wa-sticker-detail-open .wa-chat-options-menu,
+body.wa-sticker-detail-open .dropdown-menu.show,
+body.wa-sticker-detail-open .reactions-popover {
+  visibility: hidden !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
+body.wa-sticker-detail-open .wa-sticker-detail-backdrop {
+  background: rgba(0, 0, 0, 0.88) !important;
+  backdrop-filter: blur(1px) !important;
+  -webkit-backdrop-filter: blur(1px) !important;
+}
+
+/* ---------- GALERÍA: viewport fijo sin scrollbars ---------- */
+.wa-gallery-modal {
+  overflow: hidden !important;
+  overscroll-behavior: none !important;
+  touch-action: none !important;
+  cursor: default !important;
+}
+
+.wa-gallery-image,
+.wa-gallery-image.zoomed {
+  display: block !important;
+  width: auto !important;
+  height: auto !important;
+  max-width: calc(100vw - 96px) !important;
+  max-height: calc(100vh - 96px) !important;
+  object-fit: contain !important;
+  transform-origin: center center !important;
+  will-change: transform !important;
+  transition: none !important;
+  user-select: none !important;
+  -webkit-user-drag: none !important;
+  touch-action: none !important;
+}
+
+.wa-gallery-image {
+  cursor: zoom-in !important;
+}
+
+.wa-gallery-image.zoomed {
+  cursor: grab !important;
+}
+
+.wa-gallery-image.zoomed:active {
+  cursor: grabbing !important;
+}
+
+@media (max-width: 767px) {
+  .wa-gallery-image,
+  .wa-gallery-image.zoomed {
+    max-width: calc(100vw - 28px) !important;
+    max-height: calc(100vh - 82px) !important;
+  }
+}
+
+/* =========================================================
+   QUICKCHAT · RESTAURAR STICKERS V20.1 (OVERRIDE FINAL)
+   Este bloque va DELIBERADAMENTE al final del archivo para que
+   los ajustes de Media Viewer V20 no puedan volver a pintar la
+   burbuja del sticker.
+   ========================================================= */
+
+/* 1-2) Sticker completamente libre de burbuja, borde y sombra. */
+.wa-messenger-root.active-tab-chat .message:has(.message-sticker-bubble) .message-inner,
+.wa-messenger-root.active-tab-chat .message:has(.message-sticker-bubble) .message-body,
+.wa-messenger-root.active-tab-chat .message:has(.message-sticker-bubble) .message-content,
+.wa-messenger-root.active-tab-chat .message-text.message-sticker-bubble,
+.wa-messenger-root.active-tab-chat .message.message-out .message-text.message-sticker-bubble,
+:root[data-theme="dark"] .wa-messenger-root.active-tab-chat .message-text.message-sticker-bubble,
+:root[data-theme="dark"] .wa-messenger-root.active-tab-chat .message.message-out .message-text.message-sticker-bubble {
+  background: transparent !important;
+  background-color: transparent !important;
+  background-image: none !important;
+  border: 0 !important;
+  outline: 0 !important;
+  box-shadow: none !important;
+}
+
+.wa-messenger-root.active-tab-chat .message:has(.message-sticker-bubble) .message-body {
+  padding-top: 4px !important;
+  padding-bottom: 4px !important;
+}
+
+.wa-messenger-root.active-tab-chat .message-text.message-sticker-bubble,
+.wa-messenger-root.active-tab-chat .message.message-out .message-text.message-sticker-bubble {
+  min-width: 0 !important;
+  width: fit-content !important;
+  max-width: 190px !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  border-radius: 0 !important;
+  overflow: visible !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-sticker-cluster .message-text.message-sticker-bubble,
+.wa-messenger-root.active-tab-chat .wa-sticker-cluster .message-body,
+.wa-messenger-root.active-tab-chat .wa-sticker-cluster .message-content {
+  background: transparent !important;
+  background-color: transparent !important;
+  background-image: none !important;
+  border: 0 !important;
+  box-shadow: none !important;
+}
+
+.wa-messenger-root.active-tab-chat .message-text.message-sticker-bubble .wa-sticker-message-wrap,
+.wa-messenger-root.active-tab-chat .message-text.message-sticker-bubble .wa-sticker-message,
+.wa-messenger-root.active-tab-chat .message-text.message-sticker-bubble .wa-sticker-message img {
+  background: transparent !important;
+  background-color: transparent !important;
+  background-image: none !important;
+  border: 0 !important;
+  box-shadow: none !important;
+}
+
+/* 3) Solo permanece el chip pequeño de hora/checks. */
+.wa-messenger-root.active-tab-chat .message-text.message-sticker-bubble .message-footer {
+  position: absolute !important;
+  right: 2px !important;
+  bottom: 2px !important;
+  width: auto !important;
+  min-width: 0 !important;
+  min-height: 18px !important;
+  margin: 0 !important;
+  padding: 2px 6px !important;
+  border-radius: 999px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: flex-end !important;
+  gap: 2px !important;
+  line-height: 1 !important;
+  backdrop-filter: blur(7px) !important;
+  -webkit-backdrop-filter: blur(7px) !important;
+}
+
+:root:not([data-theme="dark"])
+.wa-messenger-root.active-tab-chat .message-text.message-sticker-bubble .message-footer {
+  background: rgba(255, 255, 255, 0.88) !important;
+  color: #4f6690 !important;
+  border: 1px solid rgba(107, 145, 221, 0.24) !important;
+  box-shadow: 0 2px 7px rgba(40, 75, 135, 0.10) !important;
+}
+
+:root[data-theme="dark"]
+.wa-messenger-root.active-tab-chat .message-text.message-sticker-bubble .message-footer {
+  background: rgba(5, 20, 48, 0.76) !important;
+  color: #eef5ff !important;
+  border: 1px solid rgba(86, 139, 238, 0.26) !important;
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.20) !important;
+}
+
+.wa-messenger-root.active-tab-chat .message-text.message-sticker-bubble .message-footer .extra-small,
+.wa-messenger-root.active-tab-chat .message-text.message-sticker-bubble .message-footer .extra-small.text-muted,
+.wa-messenger-root.active-tab-chat .message-text.message-sticker-bubble .message-footer .ms-2,
+.wa-messenger-root.active-tab-chat .message-text.message-sticker-bubble .message-footer button {
+  color: inherit !important;
+  -webkit-text-fill-color: currentColor !important;
+  margin-top: 0 !important;
+}
+
+/* 4) Flechita del sticker en modo claro: azul del tema, no gris. */
+:root:not([data-theme="dark"])
+.wa-messenger-root.active-tab-chat .message-text.message-sticker-bubble .wa-message-menu-btn {
+  width: 26px !important;
+  height: 26px !important;
+  border-radius: 999px !important;
+  color: #2f6fff !important;
+  background: rgba(47, 111, 255, 0.11) !important;
+  border: 1px solid rgba(47, 111, 255, 0.18) !important;
+  box-shadow: 0 3px 10px rgba(47, 111, 255, 0.11) !important;
+}
+
+:root:not([data-theme="dark"])
+.wa-messenger-root.active-tab-chat .message-text.message-sticker-bubble .wa-message-menu-btn.visible,
+:root:not([data-theme="dark"])
+.wa-messenger-root.active-tab-chat .message-text.message-sticker-bubble .wa-message-menu-btn:hover {
+  color: #1455ff !important;
+  background: rgba(47, 111, 255, 0.20) !important;
+  border-color: rgba(47, 111, 255, 0.30) !important;
+}
+
+/* 5) Modo oscuro: flechita discreta azulada, nunca gris. */
+:root[data-theme="dark"]
+.wa-messenger-root.active-tab-chat .message-text.message-sticker-bubble .wa-message-menu-btn {
+  width: 26px !important;
+  height: 26px !important;
+  border-radius: 999px !important;
+  color: #b9d8ff !important;
+  background: rgba(13, 44, 96, 0.76) !important;
+  border: 1px solid rgba(88, 137, 230, 0.24) !important;
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.16) !important;
+}
+
+:root[data-theme="dark"]
+.wa-messenger-root.active-tab-chat .message-text.message-sticker-bubble .wa-message-menu-btn.visible,
+:root[data-theme="dark"]
+.wa-messenger-root.active-tab-chat .message-text.message-sticker-bubble .wa-message-menu-btn:hover {
+  color: #ffffff !important;
+  background: rgba(31, 91, 200, 0.78) !important;
+  border-color: rgba(92, 155, 255, 0.32) !important;
+}
+
+/* =========================================================
+   QUICKCHAT · RESTAURACIÓN DEFINITIVA LIGHT + STICKERS V20.2
+   ---------------------------------------------------------
+   Este bloque debe permanecer AL FINAL del archivo.
+   Recupera los ajustes de contraste del modo claro y mantiene
+   los stickers completamente libres de burbuja.
+   ========================================================= */
+
+/* ---------- MODO CLARO: mensaje eliminado ---------- */
+:root:not([data-theme="dark"])
+.wa-messenger-root.active-tab-chat .message.message-out .message-text.message-deleted-bubble .wa-deleted-message {
+  color: #29456f !important;
+  -webkit-text-fill-color: #29456f !important;
+  font-style: normal !important;
+  font-weight: 600 !important;
+  opacity: 1 !important;
+}
+
+:root:not([data-theme="dark"])
+.wa-messenger-root.active-tab-chat .message.message-out .message-text.message-deleted-bubble .wa-deleted-message svg {
+  color: #365b96 !important;
+  fill: currentColor !important;
+  opacity: 1 !important;
+}
+
+:root:not([data-theme="dark"])
+.wa-messenger-root.active-tab-chat .message.message-out .message-text.message-deleted-bubble .wa-undo-delete-btn {
+  color: #1769ff !important;
+  -webkit-text-fill-color: #1769ff !important;
+  font-weight: 800 !important;
+  opacity: 1 !important;
+}
+
+:root:not([data-theme="dark"])
+.wa-messenger-root.active-tab-chat .message.message-out .message-text.message-deleted-bubble .wa-undo-delete-btn:hover,
+:root:not([data-theme="dark"])
+.wa-messenger-root.active-tab-chat .message.message-out .message-text.message-deleted-bubble .wa-undo-delete-btn:focus-visible {
+  color: #0f56dc !important;
+  -webkit-text-fill-color: #0f56dc !important;
+}
+
+:root:not([data-theme="dark"])
+.wa-messenger-root.active-tab-chat .message.message-out .message-text.message-deleted-bubble .message-footer .extra-small,
+:root:not([data-theme="dark"])
+.wa-messenger-root.active-tab-chat .message.message-out .message-text.message-deleted-bubble .message-footer .ms-2 {
+  color: #56709e !important;
+  -webkit-text-fill-color: #56709e !important;
+  opacity: 1 !important;
+}
+
+/* ---------- MODO CLARO: audio ---------- */
+:root:not([data-theme="dark"])
+.wa-messenger-root.active-tab-chat .message.message-out .message-text.message-audio-bubble .wa-audio-times {
+  color: #466696 !important;
+  -webkit-text-fill-color: #466696 !important;
+  opacity: 1 !important;
+}
+
+:root:not([data-theme="dark"])
+.wa-messenger-root.active-tab-chat .message.message-out .message-text.message-audio-bubble .message-footer .extra-small,
+:root:not([data-theme="dark"])
+.wa-messenger-root.active-tab-chat .message.message-out .message-text.message-audio-bubble .message-footer .ms-2 {
+  color: #526d9d !important;
+  -webkit-text-fill-color: #526d9d !important;
+  opacity: 1 !important;
+}
+
+/* ---------- MODO CLARO: respuestas/citas ---------- */
+:root:not([data-theme="dark"])
+.wa-messenger-root.active-tab-chat .message.message-out .message-text:not(.message-sticker-bubble) .wa-quoted-message,
+:root:not([data-theme="dark"])
+.wa-messenger-root.active-tab-chat .message.message-out .message-text:not(.message-sticker-bubble) .wa-quoted-message.out {
+  background: rgba(255, 255, 255, 0.42) !important;
+  border: 1px solid rgba(103, 141, 236, 0.20) !important;
+}
+
+:root:not([data-theme="dark"])
+.wa-messenger-root.active-tab-chat .message.message-out .message-text:not(.message-sticker-bubble) .wa-quote-line,
+:root:not([data-theme="dark"])
+.wa-messenger-root.active-tab-chat .message.message-out .message-text:not(.message-sticker-bubble) .wa-quoted-message.out .wa-quote-line {
+  background: #4b7dff !important;
+  box-shadow: none !important;
+}
+
+:root:not([data-theme="dark"])
+.wa-messenger-root.active-tab-chat .message.message-out .message-text:not(.message-sticker-bubble) .wa-quote-author,
+:root:not([data-theme="dark"])
+.wa-messenger-root.active-tab-chat .message.message-out .message-text:not(.message-sticker-bubble) .wa-quoted-message.out .wa-quote-author {
+  color: #2f6fff !important;
+  -webkit-text-fill-color: #2f6fff !important;
+  text-shadow: none !important;
+  opacity: 1 !important;
+}
+
+:root:not([data-theme="dark"])
+.wa-messenger-root.active-tab-chat .message.message-out .message-text:not(.message-sticker-bubble) .wa-quote-text,
+:root:not([data-theme="dark"])
+.wa-messenger-root.active-tab-chat .message.message-out .message-text:not(.message-sticker-bubble) .wa-quoted-message.out .wa-quote-text,
+:root:not([data-theme="dark"])
+.wa-messenger-root.active-tab-chat .message.message-out .message-text:not(.message-sticker-bubble) .wa-quote-text *,
+:root:not([data-theme="dark"])
+.wa-messenger-root.active-tab-chat .message.message-out .message-text:not(.message-sticker-bubble) .wa-quoted-message.out .wa-quote-text * {
+  color: #52698f !important;
+  -webkit-text-fill-color: #52698f !important;
+  opacity: 1 !important;
+}
+
+/* ---------- RICH TEXT: respetar el color elegido ---------- */
+.wa-messenger-root.active-tab-chat .message-text .wa-rich-color {
+  -webkit-text-fill-color: currentColor !important;
+  opacity: 1 !important;
+}
+
+.wa-messenger-root.active-tab-chat .message-text .wa-rich-color * {
+  color: inherit !important;
+  -webkit-text-fill-color: currentColor !important;
+  opacity: 1 !important;
+}
+
+/* ---------- STICKERS: cero burbuja, cero borde, cero sombra ---------- */
+.wa-messenger-root.active-tab-chat .message:has(.message-sticker-bubble) .message-inner,
+.wa-messenger-root.active-tab-chat .message:has(.message-sticker-bubble) .message-body,
+.wa-messenger-root.active-tab-chat .message:has(.message-sticker-bubble) .message-content,
+.wa-messenger-root.active-tab-chat .message:has(.message-sticker-bubble) .message-text,
+.wa-messenger-root.active-tab-chat .message-text.message-sticker-bubble,
+.wa-messenger-root.active-tab-chat .message.message-out .message-text.message-sticker-bubble,
+.wa-messenger-root.active-tab-chat .wa-sticker-cluster,
+.wa-messenger-root.active-tab-chat .wa-sticker-cluster .message-body,
+.wa-messenger-root.active-tab-chat .wa-sticker-cluster .message-content,
+.wa-messenger-root.active-tab-chat .wa-sticker-cluster .message-text.message-sticker-bubble {
+  background: transparent !important;
+  background-color: transparent !important;
+  background-image: none !important;
+  border: 0 !important;
+  outline: 0 !important;
+  box-shadow: none !important;
+}
+
+.wa-messenger-root.active-tab-chat .message-text.message-sticker-bubble {
+  min-width: 0 !important;
+  width: fit-content !important;
+  max-width: 190px !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  border-radius: 0 !important;
+  overflow: visible !important;
+}
+
+.wa-messenger-root.active-tab-chat .message-text.message-sticker-bubble .wa-sticker-message-wrap,
+.wa-messenger-root.active-tab-chat .message-text.message-sticker-bubble .wa-sticker-message,
+.wa-messenger-root.active-tab-chat .message-text.message-sticker-bubble .wa-sticker-message img {
+  background: transparent !important;
+  background-color: transparent !important;
+  background-image: none !important;
+  border: 0 !important;
+  outline: 0 !important;
+  box-shadow: none !important;
+}
+
+/* Solo chip pequeño de hora/checks. */
+.wa-messenger-root.active-tab-chat .message-text.message-sticker-bubble .message-footer {
+  position: absolute !important;
+  right: 2px !important;
+  bottom: 2px !important;
+  width: auto !important;
+  min-width: 0 !important;
+  min-height: 18px !important;
+  margin: 0 !important;
+  padding: 2px 6px !important;
+  border-radius: 999px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: flex-end !important;
+  gap: 2px !important;
+  line-height: 1 !important;
+  backdrop-filter: blur(7px) !important;
+  -webkit-backdrop-filter: blur(7px) !important;
+}
+
+:root:not([data-theme="dark"])
+.wa-messenger-root.active-tab-chat .message-text.message-sticker-bubble .message-footer {
+  background: rgba(255, 255, 255, 0.90) !important;
+  color: #4f6690 !important;
+  border: 1px solid rgba(107, 145, 221, 0.24) !important;
+  box-shadow: 0 2px 7px rgba(40, 75, 135, 0.10) !important;
+}
+
+:root[data-theme="dark"]
+.wa-messenger-root.active-tab-chat .message-text.message-sticker-bubble .message-footer {
+  background: rgba(5, 20, 48, 0.78) !important;
+  color: #eef5ff !important;
+  border: 1px solid rgba(86, 139, 238, 0.26) !important;
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.20) !important;
+}
+
+/* Flecha/acción sticker azul en light. */
+:root:not([data-theme="dark"])
+.wa-messenger-root.active-tab-chat .message-text.message-sticker-bubble .wa-message-menu-btn {
+  width: 26px !important;
+  height: 26px !important;
+  border-radius: 999px !important;
+  color: #2f6fff !important;
+  background: rgba(47, 111, 255, 0.11) !important;
+  border: 1px solid rgba(47, 111, 255, 0.18) !important;
+  box-shadow: 0 3px 10px rgba(47, 111, 255, 0.11) !important;
+}
+
+:root:not([data-theme="dark"])
+.wa-messenger-root.active-tab-chat .message-text.message-sticker-bubble .wa-message-menu-btn.visible,
+:root:not([data-theme="dark"])
+.wa-messenger-root.active-tab-chat .message-text.message-sticker-bubble .wa-message-menu-btn:hover {
+  color: #1455ff !important;
+  background: rgba(47, 111, 255, 0.20) !important;
+  border-color: rgba(47, 111, 255, 0.30) !important;
+}
+
+/* Flecha/acción sticker discreta azulada en dark. */
+:root[data-theme="dark"]
+.wa-messenger-root.active-tab-chat .message-text.message-sticker-bubble .wa-message-menu-btn {
+  width: 26px !important;
+  height: 26px !important;
+  border-radius: 999px !important;
+  color: #b9d8ff !important;
+  background: rgba(13, 44, 96, 0.76) !important;
+  border: 1px solid rgba(88, 137, 230, 0.24) !important;
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.16) !important;
+}
+
+:root[data-theme="dark"]
+.wa-messenger-root.active-tab-chat .message-text.message-sticker-bubble .wa-message-menu-btn.visible,
+:root[data-theme="dark"]
+.wa-messenger-root.active-tab-chat .message-text.message-sticker-bubble .wa-message-menu-btn:hover {
+  color: #ffffff !important;
+  background: rgba(31, 91, 200, 0.78) !important;
+  border-color: rgba(92, 155, 255, 0.32) !important;
+}
+
+/* =========================================================
+   QUICKCHAT · FIX V20.3
+   1) Sticker enviado: sin burbuja/fondo aunque alguna regla
+      general de mensajes salientes intente aplicarlo.
+   2) Botón/flecha de opciones azul para TODOS los mensajes
+      en modo claro (texto, reply, foto, GIF, video, audio,
+      archivo y sticker).
+   ========================================================= */
+
+/* ---------------------------------------------------------
+   STICKER ENVIADO / RECIBIDO
+   Detectamos el sticker por el elemento real .wa-sticker-message,
+   no solo por la clase message-sticker-bubble. Esto cubre también
+   mensajes optimistas/locales y evita que el fondo de message-out
+   reaparezca sobre stickers enviados.
+   --------------------------------------------------------- */
+.wa-messenger-root.active-tab-chat .message:has(.wa-sticker-message),
+.wa-messenger-root.active-tab-chat .message:has(.wa-sticker-message) .message-inner,
+.wa-messenger-root.active-tab-chat .message:has(.wa-sticker-message) .message-body,
+.wa-messenger-root.active-tab-chat .message:has(.wa-sticker-message) .message-content,
+.wa-messenger-root.active-tab-chat .message:has(.wa-sticker-message) .message-text,
+.wa-messenger-root.active-tab-chat .message.message-out:has(.wa-sticker-message) .message-text,
+:root:not([data-theme="dark"]) .wa-messenger-root.active-tab-chat .message.message-out:has(.wa-sticker-message) .message-text,
+:root[data-theme="dark"] .wa-messenger-root.active-tab-chat .message.message-out:has(.wa-sticker-message) .message-text {
+  background: transparent !important;
+  background-color: transparent !important;
+  background-image: none !important;
+  border: 0 !important;
+  outline: 0 !important;
+  box-shadow: none !important;
+}
+
+.wa-messenger-root.active-tab-chat .message:has(.wa-sticker-message) .message-text {
+  width: fit-content !important;
+  min-width: 0 !important;
+  max-width: 190px !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  border-radius: 0 !important;
+  overflow: visible !important;
+}
+
+.wa-messenger-root.active-tab-chat .message:has(.wa-sticker-message) .wa-sticker-message-wrap,
+.wa-messenger-root.active-tab-chat .message:has(.wa-sticker-message) .wa-sticker-message,
+.wa-messenger-root.active-tab-chat .message:has(.wa-sticker-message) .wa-sticker-message img {
+  background: transparent !important;
+  background-color: transparent !important;
+  background-image: none !important;
+  border: 0 !important;
+  outline: 0 !important;
+  box-shadow: none !important;
+}
+
+/* El único fondo permitido en un sticker es el pequeño chip de hora/checks. */
+.wa-messenger-root.active-tab-chat .message:has(.wa-sticker-message) .message-footer {
+  position: absolute !important;
+  right: 2px !important;
+  bottom: 2px !important;
+  width: auto !important;
+  min-width: 0 !important;
+  min-height: 18px !important;
+  padding: 2px 6px !important;
+  margin: 0 !important;
+  border-radius: 999px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: flex-end !important;
+  gap: 2px !important;
+  line-height: 1 !important;
+}
+
+:root:not([data-theme="dark"])
+.wa-messenger-root.active-tab-chat .message:has(.wa-sticker-message) .message-footer {
+  background: rgba(255, 255, 255, 0.90) !important;
+  color: #4f6690 !important;
+  border: 1px solid rgba(107, 145, 221, 0.24) !important;
+  box-shadow: 0 2px 7px rgba(40, 75, 135, 0.10) !important;
+  backdrop-filter: blur(7px) !important;
+  -webkit-backdrop-filter: blur(7px) !important;
+}
+
+:root[data-theme="dark"]
+.wa-messenger-root.active-tab-chat .message:has(.wa-sticker-message) .message-footer {
+  background: rgba(5, 20, 48, 0.78) !important;
+  color: #eef5ff !important;
+  border: 1px solid rgba(86, 139, 238, 0.26) !important;
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.20) !important;
+  backdrop-filter: blur(7px) !important;
+  -webkit-backdrop-filter: blur(7px) !important;
+}
+
+/* ---------------------------------------------------------
+   BOTÓN / FLECHA DE OPCIONES — MODO CLARO
+   Una sola apariencia para todos los tipos de mensajes.
+   --------------------------------------------------------- */
+:root:not([data-theme="dark"])
+.wa-messenger-root.active-tab-chat .message .wa-message-menu-btn {
+  width: 26px !important;
+  height: 26px !important;
+  min-width: 26px !important;
+  padding: 0 !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  border-radius: 999px !important;
+  color: #2f6fff !important;
+  background: rgba(47, 111, 255, 0.11) !important;
+  border: 1px solid rgba(47, 111, 255, 0.18) !important;
+  box-shadow: 0 3px 10px rgba(47, 111, 255, 0.11) !important;
+  opacity: 0 !important;
+  transition:
+    opacity 0.15s ease,
+    background-color 0.15s ease,
+    border-color 0.15s ease,
+    color 0.15s ease,
+    box-shadow 0.15s ease !important;
+}
+
+:root:not([data-theme="dark"])
+.wa-messenger-root.active-tab-chat .message:hover .wa-message-menu-btn,
+:root:not([data-theme="dark"])
+.wa-messenger-root.active-tab-chat .message .wa-message-menu-btn.visible,
+:root:not([data-theme="dark"])
+.wa-messenger-root.active-tab-chat .message .wa-message-menu-btn:hover,
+:root:not([data-theme="dark"])
+.wa-messenger-root.active-tab-chat .message .wa-message-menu-btn[aria-expanded="true"] {
+  opacity: 1 !important;
+  color: #1455ff !important;
+  background: rgba(47, 111, 255, 0.18) !important;
+  border-color: rgba(47, 111, 255, 0.30) !important;
+  box-shadow: 0 4px 12px rgba(47, 111, 255, 0.14) !important;
+}
+
+:root:not([data-theme="dark"])
+.wa-messenger-root.active-tab-chat .message .wa-message-menu-btn svg {
+  width: 17px !important;
+  height: 17px !important;
+  stroke: currentColor !important;
+}
