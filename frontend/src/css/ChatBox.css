@@ -14225,3 +14225,1011 @@ body.wa-sticker-detail-open .wa-sticker-detail-backdrop {
   height: 17px !important;
   stroke: currentColor !important;
 }
+
+/* =========================================================
+   QUICKCHAT 2026 · INFO. DEL GRUPO PREMIUM V21
+   ---------------------------------------------------------
+   Scope estricto: panel lateral de Info. del grupo / Archivos.
+   Reutiliza las variables del rediseño premium del módulo Chat.
+   No altera fondo, burbujas, composer, lista ni header central.
+   ========================================================= */
+.wa-messenger-root.active-tab-chat .wa-group-info-panel {
+  --gi-panel-bg: linear-gradient(180deg, rgba(251, 253, 255, .99) 0%, rgba(244, 249, 255, .99) 100%);
+  --gi-card-bg: rgba(255, 255, 255, .94);
+  --gi-card-bg-hover: rgba(247, 251, 255, .98);
+  --gi-border: rgba(94, 141, 207, .22);
+  --gi-border-strong: rgba(48, 128, 255, .38);
+  --gi-text: var(--qc-chat-text, #0c1a3b);
+  --gi-muted: var(--qc-chat-muted, #61749c);
+  --gi-muted-2: var(--qc-chat-muted-2, #91a1bf);
+  --gi-blue: var(--qc-chat-blue, #1498ff);
+  --gi-violet: var(--qc-chat-violet, #7347ff);
+  --gi-gradient: var(--qc-chat-gradient, linear-gradient(135deg, #16a7ff 0%, #2671ff 52%, #7b46ff 100%));
+  --gi-shadow: 0 14px 34px rgba(43, 78, 131, .08);
+
+  color: var(--gi-text) !important;
+  background: transparent !important;
+  border-left: 0 !important;
+  box-shadow: none !important;
+  box-sizing: border-box !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-group-info-panel .wa-group-info-inner {
+  min-height: 0 !important;
+  overflow: hidden !important;
+  color: var(--gi-text) !important;
+  background:
+    radial-gradient(circle at 72% 0%, rgba(118, 77, 255, .08), transparent 28%),
+    radial-gradient(circle at 18% 0%, rgba(20, 152, 255, .08), transparent 30%),
+    var(--gi-panel-bg) !important;
+  border: 1px solid var(--gi-border) !important;
+  box-shadow: var(--gi-shadow) !important;
+  box-sizing: border-box !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-group-info-panel .wa-group-info-topbar {
+  position: sticky !important;
+  top: 0 !important;
+  z-index: 35 !important;
+  height: 58px !important;
+  min-height: 58px !important;
+  gap: 10px !important;
+  padding: 0 14px !important;
+  color: var(--gi-text) !important;
+  background: rgba(255, 255, 255, .92) !important;
+  border-bottom: 1px solid var(--gi-border) !important;
+  box-shadow: 0 6px 18px rgba(44, 77, 126, .035) !important;
+  font-size: .95rem !important;
+  font-weight: 800 !important;
+  letter-spacing: -.01em !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-group-info-panel .wa-info-icon-btn {
+  width: 36px !important;
+  height: 36px !important;
+  min-width: 36px !important;
+  border-radius: 11px !important;
+  color: #526994 !important;
+  border: 1px solid transparent !important;
+  background: transparent !important;
+  transition: background .16s ease, color .16s ease, border-color .16s ease, transform .16s ease !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-group-info-panel .wa-info-icon-btn:hover {
+  color: #1c72ff !important;
+  border-color: rgba(47, 121, 255, .22) !important;
+  background: rgba(226, 240, 255, .80) !important;
+  transform: translateY(-1px) !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-group-info-panel .wa-group-info-scroll {
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
+  overscroll-behavior: contain !important;
+  padding: 12px 12px 16px !important;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(77, 121, 183, .34) transparent;
+}
+
+.wa-messenger-root.active-tab-chat .wa-group-info-panel .wa-group-info-scroll::-webkit-scrollbar,
+.wa-messenger-root.active-tab-chat .wa-group-info-panel .wa-files-content::-webkit-scrollbar {
+  width: 7px;
+}
+
+.wa-messenger-root.active-tab-chat .wa-group-info-panel .wa-group-info-scroll::-webkit-scrollbar-thumb,
+.wa-messenger-root.active-tab-chat .wa-group-info-panel .wa-files-content::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: rgba(77, 121, 183, .28);
+}
+
+.wa-messenger-root.active-tab-chat .wa-group-info-panel .wa-info-card {
+  min-width: 0 !important;
+  margin: 0 0 10px !important;
+  padding: 14px !important;
+  overflow: visible !important;
+  color: var(--gi-text) !important;
+  background: var(--gi-card-bg) !important;
+  border: 1px solid var(--gi-border) !important;
+  border-radius: 15px !important;
+  box-shadow: 0 8px 24px rgba(43, 78, 131, .045) !important;
+}
+
+/* Perfil principal: limpio, sin una tarjeta extra detrás. */
+.wa-messenger-root.active-tab-chat .wa-group-info-panel .wa-group-profile-card {
+  padding: 10px 12px 12px !important;
+  margin-bottom: 4px !important;
+  background: transparent !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-group-info-panel .wa-group-profile-avatar-wrap {
+  margin: 0 auto 12px !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-group-info-panel .wa-group-avatar-composite {
+  border: 1px solid rgba(62, 133, 255, .34) !important;
+  box-shadow:
+    0 12px 28px rgba(49, 99, 194, .18),
+    inset 0 1px 0 rgba(255,255,255,.28) !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-group-info-panel .wa-group-title-row {
+  gap: 6px !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-group-info-panel .wa-group-title-row h2 {
+  max-width: calc(100% - 34px) !important;
+  margin: 0 !important;
+  color: var(--gi-text) !important;
+  font-family: "Sora", "Inter", system-ui, sans-serif !important;
+  font-size: 1.18rem !important;
+  line-height: 1.22 !important;
+  font-weight: 850 !important;
+  letter-spacing: -.025em !important;
+  overflow-wrap: anywhere !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-group-info-panel .wa-info-small-btn {
+  width: 30px !important;
+  height: 30px !important;
+  min-width: 30px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  color: #5270a6 !important;
+  border-radius: 9px !important;
+  background: transparent !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-group-info-panel .wa-info-small-btn:hover {
+  color: #1d6fff !important;
+  background: rgba(34, 118, 255, .09) !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-group-info-panel .wa-group-subtitle,
+.wa-messenger-root.active-tab-chat .wa-group-info-panel .wa-created-text {
+  color: var(--gi-muted) !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-group-info-panel .wa-group-subtitle {
+  margin-top: 5px !important;
+  font-size: .78rem !important;
+  font-weight: 650 !important;
+}
+
+/* Acciones principales: cuatro mini-cards, sin verde de interfaz. */
+.wa-messenger-root.active-tab-chat .wa-group-info-panel .wa-group-actions-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+  gap: 8px !important;
+  padding: 0 !important;
+  margin: 0 0 10px !important;
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-group-info-panel .wa-group-action-btn {
+  min-width: 0 !important;
+  min-height: 62px !important;
+  padding: 9px 5px !important;
+  gap: 6px !important;
+  color: var(--gi-text) !important;
+  background: var(--gi-card-bg) !important;
+  border: 1px solid var(--gi-border) !important;
+  border-radius: 14px !important;
+  box-shadow: 0 7px 18px rgba(43, 78, 131, .04) !important;
+  font-size: .72rem !important;
+  font-weight: 750 !important;
+  opacity: 1 !important;
+  transition: transform .16s ease, border-color .16s ease, background .16s ease, box-shadow .16s ease !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-group-info-panel .wa-group-action-btn:not(:disabled):hover {
+  transform: translateY(-1px) !important;
+  border-color: var(--gi-border-strong) !important;
+  background: rgba(244, 249, 255, .98) !important;
+  box-shadow: 0 10px 22px rgba(43, 95, 185, .09) !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-group-info-panel .wa-group-action-btn:disabled {
+  cursor: default !important;
+  opacity: 1 !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-group-info-panel .wa-group-action-btn i {
+  font-size: 1rem !important;
+  color: var(--gi-blue) !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-group-info-panel .wa-group-action-btn:nth-child(2) i {
+  color: #7b55ff !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-group-info-panel .wa-group-action-btn:nth-child(3) i {
+  color: #14a3ff !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-group-info-panel .wa-group-action-btn:nth-child(4) i {
+  color: #1978ff !important;
+}
+
+/* Descripción */
+.wa-messenger-root.active-tab-chat .wa-group-info-panel .wa-description-card {
+  padding: 14px 15px !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-group-info-panel .wa-description-title-row {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 10px !important;
+  margin-bottom: 7px !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-group-info-panel .wa-description-title-row h3,
+.wa-messenger-root.active-tab-chat .wa-group-info-panel .wa-privacy-card h3,
+.wa-messenger-root.active-tab-chat .wa-group-info-panel .wa-members-card h3 {
+  margin: 0 !important;
+  color: var(--gi-text) !important;
+  font-size: .93rem !important;
+  font-weight: 800 !important;
+  letter-spacing: -.012em !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-group-info-panel .wa-description-text {
+  color: var(--gi-text) !important;
+  font-size: .82rem !important;
+  line-height: 1.48 !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-group-info-panel .wa-description-text.is-empty {
+  color: var(--gi-muted) !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-group-info-panel .wa-description-text button {
+  color: #1a75ff !important;
+  font-weight: 700 !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-group-info-panel .wa-created-text {
+  margin-top: 8px !important;
+  font-size: .72rem !important;
+  font-weight: 600 !important;
+}
+
+/* Filas de información */
+.wa-messenger-root.active-tab-chat .wa-group-info-panel .wa-info-section-row {
+  min-width: 0 !important;
+  gap: 10px !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-group-info-panel .wa-info-section-title {
+  min-width: 0 !important;
+  gap: 11px !important;
+  color: var(--gi-text) !important;
+  font-size: .82rem !important;
+  font-weight: 760 !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-group-info-panel .wa-info-section-title span {
+  min-width: 0 !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-group-info-panel .wa-info-section-title i {
+  width: 22px !important;
+  color: #1688ff !important;
+  font-size: .94rem !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-group-info-panel .wa-info-section-meta {
+  flex: 0 0 auto !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 10px !important;
+  color: var(--gi-muted) !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-group-info-panel .wa-info-section-meta > i {
+  font-size: .75rem !important;
+  color: #6b83ac !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-group-info-panel .wa-info-count {
+  color: var(--gi-muted) !important;
+  font-size: .76rem !important;
+  font-weight: 700 !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-group-info-panel .wa-media-card {
+  cursor: pointer !important;
+  transition: transform .16s ease, border-color .16s ease, background .16s ease !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-group-info-panel .wa-media-card:hover {
+  transform: translateY(-1px) !important;
+  border-color: var(--gi-border-strong) !important;
+  background: var(--gi-card-bg-hover) !important;
+}
+
+/* La referencia final usa una fila compacta; las miniaturas siguen disponibles en Archivos. */
+.wa-messenger-root.active-tab-chat .wa-group-info-panel .wa-media-preview-strip {
+  display: none !important;
+}
+
+/* Privacidad */
+.wa-messenger-root.active-tab-chat .wa-group-info-panel .wa-privacy-card {
+  padding: 12px 14px !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-group-info-panel .wa-info-section-copy {
+  min-width: 0 !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 11px !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-group-info-panel .wa-info-card-icon {
+  width: 34px !important;
+  height: 34px !important;
+  min-width: 34px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  border-radius: 10px !important;
+  color: #1688ff !important;
+  background: linear-gradient(135deg, rgba(20, 152, 255, .11), rgba(115, 71, 255, .10)) !important;
+  border: 1px solid rgba(53, 129, 255, .15) !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-group-info-panel .wa-privacy-card p {
+  max-width: 225px !important;
+  margin: 3px 0 0 !important;
+  color: var(--gi-muted) !important;
+  font-size: .70rem !important;
+  line-height: 1.35 !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-group-info-panel .wa-switch {
+  width: 42px !important;
+  height: 24px !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-group-info-panel .wa-switch span {
+  background: #c6d2e5 !important;
+  box-shadow: inset 0 0 0 1px rgba(82, 111, 158, .12) !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-group-info-panel .wa-switch input:checked + span {
+  background: var(--gi-gradient) !important;
+  box-shadow: 0 5px 14px rgba(58, 101, 255, .22) !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-group-info-panel .wa-switch span::before {
+  box-shadow: 0 2px 5px rgba(24, 46, 84, .26) !important;
+}
+
+/* Miembros */
+.wa-messenger-root.active-tab-chat .wa-group-info-panel .wa-members-card {
+  padding: 12px 10px 8px !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-group-info-panel .wa-members-card > .wa-info-section-row {
+  padding: 0 4px 7px !important;
+  margin-bottom: 0 !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-group-info-panel .wa-add-member-btn,
+.wa-messenger-root.active-tab-chat .wa-group-info-panel .wa-show-more-members {
+  color: #167dff !important;
+  background: transparent !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-group-info-panel .wa-add-member-btn {
+  gap: 6px !important;
+  padding: 6px 7px !important;
+  border-radius: 9px !important;
+  font-size: .72rem !important;
+  font-weight: 800 !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-group-info-panel .wa-add-member-btn:hover,
+.wa-messenger-root.active-tab-chat .wa-group-info-panel .wa-show-more-members:hover {
+  background: rgba(33, 118, 255, .08) !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-group-info-panel .wa-member-list {
+  margin: 0 !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-group-info-panel .wa-member-item-wrap + .wa-member-item-wrap {
+  border-top: 1px solid rgba(103, 139, 194, .11) !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-group-info-panel .wa-member-item {
+  min-height: 58px !important;
+  gap: 10px !important;
+  padding: 7px 4px !important;
+  border-radius: 10px !important;
+  overflow: visible !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-group-info-panel .wa-member-item.can-manage:hover,
+.wa-messenger-root.active-tab-chat .wa-group-info-panel .wa-member-item-wrap:has(.wa-member-context-menu) .wa-member-item {
+  background: rgba(231, 241, 255, .68) !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-group-info-panel .wa-member-avatar,
+.wa-messenger-root.active-tab-chat .wa-group-info-panel .wa-member-avatar img,
+.wa-messenger-root.active-tab-chat .wa-group-info-panel .wa-member-avatar > div {
+  width: 40px !important;
+  height: 40px !important;
+  flex: 0 0 40px !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-group-info-panel .wa-member-name-row {
+  gap: 6px !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-group-info-panel .wa-member-name {
+  color: var(--gi-text) !important;
+  font-size: .79rem !important;
+  font-weight: 800 !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-group-info-panel .wa-member-subtitle {
+  margin-top: 2px !important;
+  color: var(--gi-muted) !important;
+  font-size: .64rem !important;
+  line-height: 1.25 !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-group-info-panel .wa-role-badge {
+  margin-left: auto !important;
+  padding: 3px 7px !important;
+  border: 1px solid transparent !important;
+  border-radius: 999px !important;
+  font-size: .58rem !important;
+  line-height: 1.2 !important;
+  font-weight: 850 !important;
+  letter-spacing: -.01em !important;
+  box-shadow: none !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-group-info-panel .wa-role-badge.owner {
+  color: #4e2bc9 !important;
+  border-color: rgba(112, 74, 255, .20) !important;
+  background: linear-gradient(135deg, rgba(63, 134, 255, .16), rgba(127, 72, 255, .18)) !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-group-info-panel .wa-role-badge.admin {
+  color: #135dca !important;
+  border-color: rgba(40, 123, 255, .18) !important;
+  background: linear-gradient(135deg, rgba(17, 174, 255, .14), rgba(78, 103, 255, .15)) !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-group-info-panel .wa-member-menu-btn {
+  width: 30px !important;
+  height: 30px !important;
+  min-width: 30px !important;
+  opacity: 1 !important;
+  pointer-events: auto !important;
+  color: #60769d !important;
+  border-radius: 9px !important;
+  background: transparent !important;
+  font-size: .82rem !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-group-info-panel .wa-member-menu-btn:not(:disabled):hover,
+.wa-messenger-root.active-tab-chat .wa-group-info-panel .wa-member-item-wrap:has(.wa-member-context-menu) .wa-member-menu-btn {
+  color: #176fff !important;
+  background: rgba(33, 118, 255, .09) !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-group-info-panel .wa-member-menu-btn.is-disabled,
+.wa-messenger-root.active-tab-chat .wa-group-info-panel .wa-member-menu-btn:disabled {
+  opacity: .34 !important;
+  cursor: default !important;
+  pointer-events: none !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-group-info-panel .wa-member-context-menu,
+.wa-messenger-root.active-tab-chat .wa-group-info-panel .wa-avatar-image-menu {
+  color: var(--gi-text) !important;
+  background: rgba(255, 255, 255, .99) !important;
+  border: 1px solid var(--gi-border) !important;
+  border-radius: 13px !important;
+  box-shadow: 0 18px 42px rgba(31, 62, 112, .17) !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-group-info-panel .wa-member-context-menu button,
+.wa-messenger-root.active-tab-chat .wa-group-info-panel .wa-avatar-image-menu button {
+  color: #304364 !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-group-info-panel .wa-member-context-menu button:hover,
+.wa-messenger-root.active-tab-chat .wa-group-info-panel .wa-avatar-image-menu button:hover {
+  background: rgba(230, 240, 255, .78) !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-group-info-panel .wa-member-context-menu button.danger,
+.wa-messenger-root.active-tab-chat .wa-group-info-panel .wa-avatar-image-menu button.danger {
+  color: #d64c59 !important;
+}
+
+/* Eliminar/salir: único bloque rojo. */
+.wa-messenger-root.active-tab-chat .wa-group-info-panel .wa-danger-card {
+  padding: 0 !important;
+  border-color: rgba(226, 76, 92, .28) !important;
+  background: rgba(255, 247, 248, .88) !important;
+  overflow: hidden !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-group-info-panel .wa-danger-action {
+  min-height: 50px !important;
+  padding: 0 14px !important;
+  gap: 10px !important;
+  color: #d94858 !important;
+  font-size: .78rem !important;
+  font-weight: 800 !important;
+  background: transparent !important;
+  transition: background .16s ease !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-group-info-panel .wa-danger-action:hover {
+  background: rgba(223, 68, 86, .07) !important;
+}
+
+/* Edición in-place */
+.wa-messenger-root.active-tab-chat .wa-group-info-panel .wa-edit-field input,
+.wa-messenger-root.active-tab-chat .wa-group-info-panel .wa-edit-field textarea {
+  padding: 9px 10px !important;
+  color: var(--gi-text) !important;
+  background: rgba(247, 251, 255, .92) !important;
+  border: 1px solid var(--gi-border-strong) !important;
+  border-radius: 10px !important;
+  box-shadow: 0 0 0 3px rgba(37, 116, 255, .06) !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-group-info-panel .wa-edit-actions button.success {
+  color: #1f72ff !important;
+}
+
+/* Buscar mensajes dentro del mismo panel */
+.wa-messenger-root.active-tab-chat .wa-group-info-panel .wa-group-search-view {
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+  overflow-y: auto !important;
+  padding: 12px !important;
+  color: var(--gi-text) !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-group-info-panel .wa-group-search-input-row,
+.wa-messenger-root.active-tab-chat .wa-group-info-panel .wa-group-search-input-wrap,
+.wa-messenger-root.active-tab-chat .wa-group-info-panel .wa-search-result-item {
+  border-color: var(--gi-border) !important;
+}
+
+/* Archivos de un grupo: REEMPLAZA el contenido de Info. dentro del mismo panel. */
+.wa-messenger-root.active-tab-chat .wa-group-info-panel .wa-files-panel-inline {
+  height: 100% !important;
+  min-height: 0 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  color: var(--gi-text) !important;
+  background: transparent !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-group-info-panel .wa-files-tabs {
+  flex: 0 0 auto !important;
+  display: grid !important;
+  grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  gap: 7px !important;
+  padding: 10px 12px !important;
+  border-bottom: 1px solid var(--gi-border) !important;
+  background: rgba(248, 251, 255, .88) !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-group-info-panel .wa-files-tab {
+  min-width: 0 !important;
+  min-height: 36px !important;
+  padding: 7px 6px !important;
+  border: 1px solid var(--gi-border) !important;
+  border-radius: 10px !important;
+  color: var(--gi-muted) !important;
+  background: var(--gi-card-bg) !important;
+  font-size: .66rem !important;
+  font-weight: 800 !important;
+  line-height: 1.15 !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-group-info-panel .wa-files-tab.border-blue-500 {
+  color: #176fff !important;
+  border-color: rgba(42, 119, 255, .40) !important;
+  background: linear-gradient(135deg, rgba(22, 167, 255, .10), rgba(123, 70, 255, .10)) !important;
+  box-shadow: 0 6px 14px rgba(51, 100, 196, .08) !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-group-info-panel .wa-files-content {
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
+  padding: 12px !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-group-info-panel .wa-files-content img {
+  border-radius: 10px !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-group-info-panel .wa-files-content .border.rounded-lg {
+  border-color: var(--gi-border) !important;
+  background: var(--gi-card-bg) !important;
+}
+
+/* ===================== DARK ===================== */
+:root[data-theme="dark"] .wa-messenger-root.active-tab-chat .wa-group-info-panel {
+  --gi-panel-bg: linear-gradient(180deg, rgba(3, 14, 35, .99) 0%, rgba(2, 11, 28, .99) 100%);
+  --gi-card-bg: rgba(6, 24, 54, .90);
+  --gi-card-bg-hover: rgba(8, 30, 66, .96);
+  --gi-border: rgba(57, 126, 224, .28);
+  --gi-border-strong: rgba(59, 148, 255, .48);
+  --gi-text: #f5f8ff;
+  --gi-muted: #9caed0;
+  --gi-muted-2: #7085ab;
+  --gi-shadow: 0 16px 38px rgba(0, 0, 0, .22);
+}
+
+:root[data-theme="dark"] .wa-messenger-root.active-tab-chat .wa-group-info-panel .wa-group-info-inner {
+  background:
+    radial-gradient(circle at 78% 0%, rgba(124, 58, 237, .16), transparent 30%),
+    radial-gradient(circle at 14% 0%, rgba(14, 165, 255, .11), transparent 32%),
+    var(--gi-panel-bg) !important;
+  border-color: rgba(57, 126, 224, .32) !important;
+  box-shadow: 0 0 0 1px rgba(57, 126, 224, .06), 0 18px 42px rgba(0, 0, 0, .24) !important;
+}
+
+:root[data-theme="dark"] .wa-messenger-root.active-tab-chat .wa-group-info-panel .wa-group-info-topbar {
+  color: #f5f8ff !important;
+  background: rgba(3, 16, 40, .96) !important;
+  border-bottom-color: rgba(57, 126, 224, .26) !important;
+  box-shadow: none !important;
+}
+
+:root[data-theme="dark"] .wa-messenger-root.active-tab-chat .wa-group-info-panel .wa-info-icon-btn,
+:root[data-theme="dark"] .wa-messenger-root.active-tab-chat .wa-group-info-panel .wa-info-small-btn,
+:root[data-theme="dark"] .wa-messenger-root.active-tab-chat .wa-group-info-panel .wa-member-menu-btn {
+  color: #9eb6dd !important;
+}
+
+:root[data-theme="dark"] .wa-messenger-root.active-tab-chat .wa-group-info-panel .wa-info-icon-btn:hover,
+:root[data-theme="dark"] .wa-messenger-root.active-tab-chat .wa-group-info-panel .wa-info-small-btn:hover,
+:root[data-theme="dark"] .wa-messenger-root.active-tab-chat .wa-group-info-panel .wa-member-menu-btn:not(:disabled):hover,
+:root[data-theme="dark"] .wa-messenger-root.active-tab-chat .wa-group-info-panel .wa-member-item-wrap:has(.wa-member-context-menu) .wa-member-menu-btn {
+  color: #7cc7ff !important;
+  border-color: rgba(65, 145, 255, .22) !important;
+  background: rgba(25, 85, 170, .14) !important;
+}
+
+:root[data-theme="dark"] .wa-messenger-root.active-tab-chat .wa-group-info-panel .wa-info-card,
+:root[data-theme="dark"] .wa-messenger-root.active-tab-chat .wa-group-info-panel .wa-group-action-btn {
+  color: var(--gi-text) !important;
+  background: var(--gi-card-bg) !important;
+  border-color: var(--gi-border) !important;
+  box-shadow: 0 8px 22px rgba(0, 0, 0, .09) !important;
+}
+
+:root[data-theme="dark"] .wa-messenger-root.active-tab-chat .wa-group-info-panel .wa-group-profile-card,
+:root[data-theme="dark"] .wa-messenger-root.active-tab-chat .wa-group-info-panel .wa-group-actions-grid {
+  background: transparent !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+}
+
+:root[data-theme="dark"] .wa-messenger-root.active-tab-chat .wa-group-info-panel .wa-group-action-btn:not(:disabled):hover,
+:root[data-theme="dark"] .wa-messenger-root.active-tab-chat .wa-group-info-panel .wa-media-card:hover {
+  background: var(--gi-card-bg-hover) !important;
+  border-color: var(--gi-border-strong) !important;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, .14), 0 0 18px rgba(32, 105, 255, .045) !important;
+}
+
+:root[data-theme="dark"] .wa-messenger-root.active-tab-chat .wa-group-info-panel .wa-group-action-btn i,
+:root[data-theme="dark"] .wa-messenger-root.active-tab-chat .wa-group-info-panel .wa-info-section-title i,
+:root[data-theme="dark"] .wa-messenger-root.active-tab-chat .wa-group-info-panel .wa-info-card-icon {
+  color: #38b7ff !important;
+}
+
+:root[data-theme="dark"] .wa-messenger-root.active-tab-chat .wa-group-info-panel .wa-group-action-btn:nth-child(2) i {
+  color: #a76dff !important;
+}
+
+:root[data-theme="dark"] .wa-messenger-root.active-tab-chat .wa-group-info-panel .wa-group-action-btn:nth-child(3) i {
+  color: #27c2ff !important;
+}
+
+:root[data-theme="dark"] .wa-messenger-root.active-tab-chat .wa-group-info-panel .wa-group-action-btn:nth-child(4) i {
+  color: #55a8ff !important;
+}
+
+:root[data-theme="dark"] .wa-messenger-root.active-tab-chat .wa-group-info-panel .wa-group-title-row h2,
+:root[data-theme="dark"] .wa-messenger-root.active-tab-chat .wa-group-info-panel .wa-description-title-row h3,
+:root[data-theme="dark"] .wa-messenger-root.active-tab-chat .wa-group-info-panel .wa-description-text,
+:root[data-theme="dark"] .wa-messenger-root.active-tab-chat .wa-group-info-panel .wa-info-section-title,
+:root[data-theme="dark"] .wa-messenger-root.active-tab-chat .wa-group-info-panel .wa-privacy-card h3,
+:root[data-theme="dark"] .wa-messenger-root.active-tab-chat .wa-group-info-panel .wa-members-card h3,
+:root[data-theme="dark"] .wa-messenger-root.active-tab-chat .wa-group-info-panel .wa-member-name {
+  color: var(--gi-text) !important;
+}
+
+:root[data-theme="dark"] .wa-messenger-root.active-tab-chat .wa-group-info-panel .wa-group-subtitle,
+:root[data-theme="dark"] .wa-messenger-root.active-tab-chat .wa-group-info-panel .wa-created-text,
+:root[data-theme="dark"] .wa-messenger-root.active-tab-chat .wa-group-info-panel .wa-info-count,
+:root[data-theme="dark"] .wa-messenger-root.active-tab-chat .wa-group-info-panel .wa-privacy-card p,
+:root[data-theme="dark"] .wa-messenger-root.active-tab-chat .wa-group-info-panel .wa-member-subtitle,
+:root[data-theme="dark"] .wa-messenger-root.active-tab-chat .wa-group-info-panel .wa-info-section-meta {
+  color: var(--gi-muted) !important;
+}
+
+:root[data-theme="dark"] .wa-messenger-root.active-tab-chat .wa-group-info-panel .wa-member-item-wrap + .wa-member-item-wrap {
+  border-top-color: rgba(82, 126, 198, .16) !important;
+}
+
+:root[data-theme="dark"] .wa-messenger-root.active-tab-chat .wa-group-info-panel .wa-member-item.can-manage:hover,
+:root[data-theme="dark"] .wa-messenger-root.active-tab-chat .wa-group-info-panel .wa-member-item-wrap:has(.wa-member-context-menu) .wa-member-item {
+  background: rgba(18, 64, 130, .16) !important;
+}
+
+:root[data-theme="dark"] .wa-messenger-root.active-tab-chat .wa-group-info-panel .wa-role-badge.owner {
+  color: #ffffff !important;
+  border-color: rgba(143, 100, 255, .48) !important;
+  background: linear-gradient(135deg, #247fff 0%, #704dff 100%) !important;
+  box-shadow: 0 5px 12px rgba(76, 76, 255, .18) !important;
+}
+
+:root[data-theme="dark"] .wa-messenger-root.active-tab-chat .wa-group-info-panel .wa-role-badge.admin {
+  color: #f7fbff !important;
+  border-color: rgba(78, 171, 255, .42) !important;
+  background: linear-gradient(135deg, #1299ef 0%, #4869ff 100%) !important;
+  box-shadow: 0 5px 12px rgba(27, 116, 255, .16) !important;
+}
+
+:root[data-theme="dark"] .wa-messenger-root.active-tab-chat .wa-group-info-panel .wa-info-card-icon {
+  background: linear-gradient(135deg, rgba(12, 167, 255, .13), rgba(125, 69, 255, .13)) !important;
+  border-color: rgba(61, 139, 255, .22) !important;
+}
+
+:root[data-theme="dark"] .wa-messenger-root.active-tab-chat .wa-group-info-panel .wa-switch span {
+  background: #233754 !important;
+  box-shadow: inset 0 0 0 1px rgba(113, 146, 195, .13) !important;
+}
+
+:root[data-theme="dark"] .wa-messenger-root.active-tab-chat .wa-group-info-panel .wa-switch input:checked + span {
+  background: linear-gradient(135deg, #08a9ff 0%, #2d70ff 52%, #8048ff 100%) !important;
+  box-shadow: 0 0 16px rgba(45, 111, 255, .18) !important;
+}
+
+:root[data-theme="dark"] .wa-messenger-root.active-tab-chat .wa-group-info-panel .wa-member-context-menu,
+:root[data-theme="dark"] .wa-messenger-root.active-tab-chat .wa-group-info-panel .wa-avatar-image-menu {
+  color: #eef5ff !important;
+  background: rgba(5, 20, 48, .99) !important;
+  border-color: rgba(61, 129, 228, .30) !important;
+  box-shadow: 0 20px 44px rgba(0, 0, 0, .34) !important;
+}
+
+:root[data-theme="dark"] .wa-messenger-root.active-tab-chat .wa-group-info-panel .wa-member-context-menu button,
+:root[data-theme="dark"] .wa-messenger-root.active-tab-chat .wa-group-info-panel .wa-avatar-image-menu button {
+  color: #dbe8ff !important;
+}
+
+:root[data-theme="dark"] .wa-messenger-root.active-tab-chat .wa-group-info-panel .wa-member-context-menu button:hover,
+:root[data-theme="dark"] .wa-messenger-root.active-tab-chat .wa-group-info-panel .wa-avatar-image-menu button:hover {
+  background: rgba(20, 67, 135, .24) !important;
+}
+
+:root[data-theme="dark"] .wa-messenger-root.active-tab-chat .wa-group-info-panel .wa-danger-card {
+  border-color: rgba(225, 67, 85, .42) !important;
+  background: rgba(76, 15, 29, .14) !important;
+}
+
+:root[data-theme="dark"] .wa-messenger-root.active-tab-chat .wa-group-info-panel .wa-danger-action {
+  color: #ff596b !important;
+}
+
+:root[data-theme="dark"] .wa-messenger-root.active-tab-chat .wa-group-info-panel .wa-danger-action:hover {
+  background: rgba(225, 67, 85, .09) !important;
+}
+
+:root[data-theme="dark"] .wa-messenger-root.active-tab-chat .wa-group-info-panel .wa-edit-field input,
+:root[data-theme="dark"] .wa-messenger-root.active-tab-chat .wa-group-info-panel .wa-edit-field textarea {
+  color: #f5f8ff !important;
+  background: rgba(5, 24, 54, .96) !important;
+  border-color: rgba(67, 146, 255, .48) !important;
+  box-shadow: 0 0 0 3px rgba(38, 112, 255, .08) !important;
+}
+
+:root[data-theme="dark"] .wa-messenger-root.active-tab-chat .wa-group-info-panel .wa-files-tabs {
+  background: rgba(3, 16, 40, .86) !important;
+  border-bottom-color: rgba(57, 126, 224, .24) !important;
+}
+
+:root[data-theme="dark"] .wa-messenger-root.active-tab-chat .wa-group-info-panel .wa-files-tab {
+  color: var(--gi-muted) !important;
+  background: rgba(6, 24, 54, .92) !important;
+  border-color: var(--gi-border) !important;
+}
+
+:root[data-theme="dark"] .wa-messenger-root.active-tab-chat .wa-group-info-panel .wa-files-tab.border-blue-500 {
+  color: #9bd7ff !important;
+  border-color: rgba(67, 146, 255, .46) !important;
+  background: linear-gradient(135deg, rgba(13, 163, 255, .17), rgba(128, 85, 255, .18)) !important;
+}
+
+:root[data-theme="dark"] .wa-messenger-root.active-tab-chat .wa-group-info-panel .wa-files-content .text-gray-500,
+:root[data-theme="dark"] .wa-messenger-root.active-tab-chat .wa-group-info-panel .wa-files-content .text-gray-600 {
+  color: #93a8cc !important;
+}
+
+:root[data-theme="dark"] .wa-messenger-root.active-tab-chat .wa-group-info-panel .wa-files-content .text-gray-800 {
+  color: #eef5ff !important;
+}
+
+:root[data-theme="dark"] .wa-messenger-root.active-tab-chat .wa-group-info-panel .wa-files-content .border.rounded-lg {
+  border-color: var(--gi-border) !important;
+  background: rgba(6, 24, 54, .90) !important;
+}
+
+/* Desktop: misma proporción visual del boceto, sin robar demasiado ancho al chat. */
+@media (min-width: 1200px) {
+  .wa-messenger-root.active-tab-chat .wa-chat-shell.is-info-open {
+    grid-template-columns: minmax(0, 1fr) clamp(330px, 28vw, 410px) !important;
+    column-gap: 14px !important;
+    align-items: stretch !important;
+  }
+
+  .wa-messenger-root.active-tab-chat .wa-chat-shell.is-info-open > .wa-chat-conversation {
+    min-width: 0 !important;
+    max-width: 100% !important;
+  }
+
+  .wa-messenger-root.active-tab-chat .wa-chat-shell.is-info-open > .wa-group-info-panel.is-open {
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+    height: calc(100% - 16px) !important;
+    margin: 8px 8px 8px 0 !important;
+    border-radius: 18px !important;
+  }
+
+  .wa-messenger-root.active-tab-chat .wa-chat-shell.is-info-open > .wa-group-info-panel.is-open .wa-group-info-inner {
+    border-radius: 18px !important;
+  }
+}
+
+/* 1366/1280: cards compactas para conservar espacio útil del chat. */
+@media (min-width: 1200px) and (max-width: 1450px) {
+  .wa-messenger-root.active-tab-chat .wa-group-info-panel .wa-group-info-scroll {
+    padding: 10px !important;
+  }
+
+  .wa-messenger-root.active-tab-chat .wa-group-info-panel .wa-info-card {
+    margin-bottom: 8px !important;
+    padding: 11px !important;
+  }
+
+  .wa-messenger-root.active-tab-chat .wa-group-info-panel .wa-group-profile-card {
+    padding-top: 6px !important;
+  }
+
+  .wa-messenger-root.active-tab-chat .wa-group-info-panel .wa-group-action-btn {
+    min-height: 56px !important;
+  }
+
+  .wa-messenger-root.active-tab-chat .wa-group-info-panel .wa-member-item {
+    min-height: 54px !important;
+  }
+}
+
+/* En tamaños donde el código existente convierte el panel en drawer/pantalla,
+   conservar ese comportamiento sin scroll horizontal global. */
+@media (max-width: 1199px) {
+  .wa-messenger-root.active-tab-chat .wa-group-info-panel,
+  .wa-messenger-root.active-tab-chat .wa-group-info-panel.is-open {
+    margin: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    height: 100% !important;
+    max-height: 100% !important;
+    border-radius: 0 !important;
+  }
+
+  .wa-messenger-root.active-tab-chat .wa-group-info-panel .wa-group-info-inner {
+    width: 100% !important;
+    max-width: 100% !important;
+    height: 100% !important;
+    border-radius: 0 !important;
+    border-top: 0 !important;
+    border-right: 0 !important;
+    border-bottom: 0 !important;
+  }
+}
+
+@media (max-width: 520px) {
+  .wa-messenger-root.active-tab-chat .wa-group-info-panel .wa-group-actions-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+    gap: 5px !important;
+  }
+
+  .wa-messenger-root.active-tab-chat .wa-group-info-panel .wa-group-action-btn {
+    min-height: 54px !important;
+    padding-inline: 2px !important;
+    font-size: .66rem !important;
+  }
+
+  .wa-messenger-root.active-tab-chat .wa-group-info-panel .wa-role-badge {
+    max-width: 110px !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+  }
+}
+
+/* =========================================================
+   QUICKCHAT · INFO DE GRUPO PORTAL
+   El panel ya no pertenece al rectángulo de .wa-chat-stage.
+   ChatBox lo renderiza dentro de #wa-group-info-host, que es
+   hermano directo de .wa-chat-stage en Messenger.jsx.
+   ========================================================= */
+.wa-messenger-root.active-tab-chat > .wa-group-info-host > .wa-group-info-panel {
+  position: relative !important;
+  inset: auto !important;
+  top: auto !important;
+  right: auto !important;
+  bottom: auto !important;
+  left: auto !important;
+  transform: none !important;
+  flex: 1 1 auto !important;
+  width: 100% !important;
+  min-width: 0 !important;
+  max-width: 100% !important;
+  height: 100% !important;
+  max-height: 100% !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  overflow: hidden !important;
+  visibility: visible !important;
+  pointer-events: auto !important;
+  border: 0 !important;
+  border-radius: 24px !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  z-index: 1 !important;
+}
+
+.wa-messenger-root.active-tab-chat > .wa-group-info-host > .wa-group-info-panel:not(.is-open) {
+  visibility: hidden !important;
+  pointer-events: none !important;
+}
+
+.wa-messenger-root.active-tab-chat > .wa-group-info-host > .wa-group-info-panel .wa-group-info-inner {
+  width: 100% !important;
+  min-width: 0 !important;
+  max-width: 100% !important;
+  height: 100% !important;
+  max-height: 100% !important;
+  margin: 0 !important;
+  transform: none !important;
+  opacity: 1 !important;
+  border-radius: 24px !important;
+  box-sizing: border-box !important;
+}
+
+@media (max-width: 1199px) {
+  .wa-messenger-root.active-tab-chat > .wa-group-info-host > .wa-group-info-panel,
+  .wa-messenger-root.active-tab-chat > .wa-group-info-host > .wa-group-info-panel .wa-group-info-inner {
+    border-radius: 0 !important;
+  }
+}

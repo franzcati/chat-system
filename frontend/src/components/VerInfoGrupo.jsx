@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import toast from "react-hot-toast";
 import "../css/emoji.css";
 import GroupAvatar from "./GroupAvatar";
+import VerArchivos from "./VerArchivos";
 import { getAvatarUrl } from "../utils/url";
 import { getMessagePreview } from "../utils/messagePreview";
 import socket from "../socket";
@@ -18,10 +19,22 @@ const getInitial = (text) => {
 const getMemberName = (member = {}) =>
   `${member.nombre || ""} ${member.apellido || ""}`.trim() || member.correo || "Usuario";
 
+const formatGroupCreatedDate = (value) => {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return date.toLocaleDateString("es-PE", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  });
+};
+
 const VerInfoGrupo = ({
   chat,
   visible,
   onClose,
+  mostrarVerArchivos,
   setMostrarVerArchivos,
   setOffcanvasGrupo,
   user,
@@ -475,6 +488,15 @@ const VerInfoGrupo = ({
       />
 
       <div className="wa-group-info-inner">
+        {mostrarVerArchivos ? (
+          <VerArchivos
+            chat={chat}
+            visible
+            embedded
+            onClose={() => setMostrarVerArchivos(false)}
+          />
+        ) : (
+          <>
         <div className="wa-group-info-topbar">
           {modoBusqueda ? (
             <button type="button" className="wa-info-icon-btn" onClick={cerrarBusquedaGrupo} title="Volver">
@@ -506,7 +528,7 @@ const VerInfoGrupo = ({
                 <GroupAvatar
                   group={chat}
                   members={miembros}
-                  size={164}
+                  size={146}
                   editable
                   canEdit={puedeEditar}
                   onEditImage={() => setMostrarMenuImagen((prev) => !prev)}
@@ -613,11 +635,20 @@ const VerInfoGrupo = ({
             </button>
             <button type="button" className="wa-group-action-btn" onClick={abrirBusquedaGrupo}>
               <i className="fa-solid fa-magnifying-glass" aria-hidden="true" />
-              <span>Busca</span>
+              <span>Buscar</span>
             </button>
           </section>
 
           <section className="wa-info-card wa-description-card">
+            <div className="wa-description-title-row">
+              <h3>Descripción</h3>
+              {editandoCampo !== "descripcion" && puedeEditar && (
+                <button type="button" className="wa-info-small-btn" onClick={() => comenzarEdicion("descripcion")} title="Editar descripción">
+                  <i className="fa-solid fa-pen" aria-hidden="true" />
+                </button>
+              )}
+            </div>
+
             {editandoCampo === "descripcion" ? (
               <EditField
                 id="group-description"
@@ -636,15 +667,8 @@ const VerInfoGrupo = ({
               />
             ) : (
               <>
-                <div className="wa-description-header">
-                  <DescripcionConFormato texto={chat.descripcion || "Añade una descripción del grupo"} empty={!chat.descripcion} />
-                  {puedeEditar && (
-                    <button type="button" className="wa-info-small-btn" onClick={() => comenzarEdicion("descripcion")} title="Editar descripción">
-                      <i className="fa-solid fa-pen" aria-hidden="true" />
-                    </button>
-                  )}
-                </div>
-                <p className="wa-created-text">Grupo creado el {chat.fecha_creacion ? new Date(chat.fecha_creacion).toLocaleDateString() : ""}</p>
+                <DescripcionConFormato texto={chat.descripcion || "Añade una descripción del grupo"} empty={!chat.descripcion} />
+                <p className="wa-created-text">Grupo creado el {formatGroupCreatedDate(chat.fecha_creacion)}</p>
               </>
             )}
           </section>
@@ -652,10 +676,13 @@ const VerInfoGrupo = ({
           <section className="wa-info-card wa-media-card" onClick={() => setMostrarVerArchivos(true)}>
             <div className="wa-info-section-row">
               <div className="wa-info-section-title">
-                <i className="fa-regular fa-images" aria-hidden="true" />
+                <i className="fa-regular fa-file-lines" aria-hidden="true" />
                 <span>Archivos, enlaces y documentos</span>
               </div>
-              <span className="wa-info-count">{archivos.length}</span>
+              <div className="wa-info-section-meta">
+                <span className="wa-info-count">{archivos.length}</span>
+                <i className="fa-solid fa-chevron-right" aria-hidden="true" />
+              </div>
             </div>
             {ultimasImagenes.length > 0 && (
               <div className="wa-media-preview-strip">
@@ -672,10 +699,15 @@ const VerInfoGrupo = ({
           </section>
 
           <section className="wa-info-card wa-privacy-card">
-            <div className="wa-info-section-row">
-              <div>
-                <h3>Grupo {chat.privacidad === "privado" ? "privado" : "público"}</h3>
-                <p>{chat.privacidad === "privado" ? "Solo administradores y propietario pueden añadir personas" : "Todos los miembros pueden añadir personas"}</p>
+            <div className="wa-info-section-row wa-privacy-row">
+              <div className="wa-info-section-copy">
+                <span className="wa-info-card-icon" aria-hidden="true">
+                  <i className="fa-solid fa-lock" />
+                </span>
+                <div>
+                  <h3>Grupo {chat.privacidad === "privado" ? "privado" : "público"}</h3>
+                  <p>{chat.privacidad === "privado" ? "Solo administradores y propietario pueden añadir personas" : "Todos los miembros pueden añadir personas"}</p>
+                </div>
               </div>
               <label className="wa-switch">
                 <input
@@ -728,19 +760,19 @@ const VerInfoGrupo = ({
                         <span className="wa-member-subtitle">{getPresenceInfo(member.id).label} · {member.correo || member.estado || "Disponible"}</span>
                       </div>
 
-                      {canManage && (
-                        <button
-                          type="button"
-                          className="wa-member-menu-btn"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setMenuMiembroId((prev) => (prev === member.id ? null : member.id));
-                          }}
-                          title="Opciones del miembro"
-                        >
-                          <i className="fa-solid fa-chevron-down" aria-hidden="true" />
-                        </button>
-                      )}
+                      <button
+                        type="button"
+                        className={`wa-member-menu-btn ${canManage ? "" : "is-disabled"}`}
+                        disabled={!canManage}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (!canManage) return;
+                          setMenuMiembroId((prev) => (prev === member.id ? null : member.id));
+                        }}
+                        title={canManage ? "Opciones del miembro" : "Sin acciones disponibles"}
+                      >
+                        <i className="fa-solid fa-ellipsis-vertical" aria-hidden="true" />
+                      </button>
                     </div>
 
                     {canManage && isOpen && (
@@ -844,6 +876,8 @@ const VerInfoGrupo = ({
             )}
           </section>
         </div>
+        )}
+          </>
         )}
       </div>
 

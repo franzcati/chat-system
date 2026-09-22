@@ -2,7 +2,7 @@ import React, { useMemo, useState } from "react";
 import { toLocalDate } from "../utils/date"; // 👈 importa tu función
 import { getAvatarUrl } from "../utils/url";
 
-const VerArchivos = ({ chat, visible, onClose }) => {
+const VerArchivos = ({ chat, visible, onClose, embedded = false }) => {
   const [tabActiva, setTabActiva] = useState("multimedia");
   const [seleccionados, setSeleccionados] = useState([]);
 
@@ -143,62 +143,56 @@ const VerArchivos = ({ chat, visible, onClose }) => {
 
   return (
     <div
-      className={`fixed top-0 right-0 h-full bg-white shadow-lg border-l border-gray-200 transition-transform duration-300 ease-in-out z-50 ${
-        visible ? "translate-x-0" : "translate-x-full"
-      }`}
-      style={{ width: "400px" }}
+      className={
+        embedded
+          ? `wa-files-panel-inline ${visible ? "is-visible" : ""}`
+          : `fixed top-0 right-0 h-full bg-white shadow-lg border-l border-gray-200 transition-transform duration-300 ease-in-out z-50 ${
+              visible ? "translate-x-0" : "translate-x-full"
+            }`
+      }
+      style={embedded ? undefined : { width: "400px" }}
     >
-      {/* 🔹 Header */}
-      <div className="profile-img text-primary rounded-top">
-        
-        <svg
-          xmlns="http://www.w3.org/2000/svg"
-          fill="currentColor"
-          viewBox="0 0 400 140.74"
-        >
-          <defs>
-            <style>{".cls-2{fill:#fff;opacity:0.1;}"}</style>
-          </defs>
-                          
-          <g>
+      {embedded ? (
+        <div className="wa-group-info-topbar wa-files-inline-topbar">
+          <button type="button" className="wa-info-icon-btn" onClick={onClose} title="Volver a Info. del grupo">
+            <i className="fa-solid fa-arrow-left" aria-hidden="true" />
+          </button>
+          <span>Archivos</span>
+        </div>
+      ) : (
+        <div className="profile-img text-primary rounded-top">
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            fill="currentColor"
+            viewBox="0 0 400 140.74"
+          >
+            <defs>
+              <style>{".cls-2{fill:#fff;opacity:0.1;}"}</style>
+            </defs>
             <g>
-              <path d="M400,125A1278.49,1278.49,0,0,1,0,125V0H400Z"></path>
-                <path
-                  className="cls-2"
-                  d="M361.13,128c.07.83.15,1.65.27,2.46h0Q380.73,128,400,125V87l-1,0a38,38,0,0,0-38,38c0,.86,0,1.71.09,2.55C361.11,127.72,361.12,127.88,361.13,128Z"
-                ></path>
-                <path
-                  className="cls-2"
-                  d="M12.14,119.53c.07.79.15,1.57.26,2.34v0c.13.84.28,1.66.46,2.48l.07.3c.18.8.39,1.59.62,2.37h0q33.09,4.88,66.36,8,.58-1,1.09-2l.09-.18a36.35,36.35,0,0,0,1.81-4.24l.08-.24q.33-.94.6-1.9l.12-.41a36.26,36.26,0,0,0,.91-4.42c0-.19,0-.37.07-.56q.11-.86.18-1.73c0-.21,0-.42,0-.63,0-.75.08-1.51.08-2.28a36.5,36.5,0,0,0-73,0c0,.83,0,1.64.09,2.45C12.1,119.15,12.12,119.34,12.14,119.53Z"
-                ></path>
-                  <circle className="cls-2" cx="94.5" cy="57.5" r="22.5"></circle>
-                <path
-                  className="cls-2"
-                  d="M276,0a43,43,0,0,0,43,43A43,43,0,0,0,362,0Z"
-                ></path>
+              <g>
+                <path d="M400,125A1278.49,1278.49,0,0,1,0,125V0H400Z"></path>
+                <path className="cls-2" d="M361.13,128c.07.83.15,1.65.27,2.46h0Q380.73,128,400,125V87l-1,0a38,38,0,0,0-38,38c0,.86,0,1.71.09,2.55C361.11,127.72,361.12,127.88,361.13,128Z"></path>
+                <path className="cls-2" d="M12.14,119.53c.07.79.15,1.57.26,2.34v0c.13.84.28,1.66.46,2.48l.07.3c.18.8.39,1.59.62,2.37h0q33.09,4.88,66.36,8,.58-1,1.09-2l.09-.18a36.35,36.35,0,0,0,1.81-4.24l.08-.24q.33-.94.6-1.9l.12-.41a36.26,36.26,0,0,0,.91-4.42c0-.19,0-.37.07-.56q.11-.86.18-1.73c0-.21,0-.42,0-.63,0-.75.08-1.51.08-2.28a36.5,36.5,0,0,0-73,0c0,.83,0,1.64.09,2.45C12.1,119.15,12.12,119.34,12.14,119.53Z"></path>
+                <circle className="cls-2" cx="94.5" cy="57.5" r="22.5"></circle>
+                <path className="cls-2" d="M276,0a43,43,0,0,0,43,43A43,43,0,0,0,362,0Z"></path>
+              </g>
             </g>
-            
-          </g>
-        </svg>
-        <div className="absolute top-0 left-0 w-full flex items-center justify-between px-4 py-3 text-white">
-        
-          <div className="position-absolute top-0 start-0 py-6 px-5">
-            <button
-              onClick={onClose}
-              className="flex items-center gap-2 hover:text-gray-900 transition btn-close btn-close-white"
-            >
-              
-            </button>
-            <span className="position-absolute top-5 start-0 ml-20 text-white font-semibold text-base whitespace-nowrap">Archivos</span>
+          </svg>
+          <div className="absolute top-0 left-0 w-full flex items-center justify-between px-4 py-3 text-white">
+            <div className="position-absolute top-0 start-0 py-6 px-5">
+              <button onClick={onClose} className="flex items-center gap-2 hover:text-gray-900 transition btn-close btn-close-white" />
+              <span className="position-absolute top-5 start-0 ml-20 text-white font-semibold text-base whitespace-nowrap">Archivos</span>
+            </div>
           </div>
         </div>
-      </div>
+      )}
 
       {/* 🔹 Tabs */}
-      <div className="bg-white rounded-pill shadow-sm d-flex text-sm font-semibold">
+      <div className={embedded ? "wa-files-tabs" : "bg-white rounded-pill shadow-sm d-flex text-sm font-semibold"}>
         <button
           onClick={() => setTabActiva("multimedia")}
-          className={`flex-1 py-2 transition ${
+          className={`wa-files-tab flex-1 py-2 transition ${
             tabActiva === "multimedia"
               ? "border-b-2 border-blue-500 text-blue-600"
               : "text-gray-500 hover:text-blue-500"
@@ -209,7 +203,7 @@ const VerArchivos = ({ chat, visible, onClose }) => {
 
         <button
           onClick={() => setTabActiva("documentos")}
-          className={`flex- py-2 transition ${
+          className={`wa-files-tab flex- py-2 transition ${
             tabActiva === "documentos"
               ? "border-b-2 border-blue-500 text-blue-600"
               : "text-gray-500 hover:text-blue-500"
@@ -220,7 +214,7 @@ const VerArchivos = ({ chat, visible, onClose }) => {
 
         <button
           onClick={() => setTabActiva("enlaces")}
-          className={`flex-1 py-2 transition ${
+          className={`wa-files-tab flex-1 py-2 transition ${
             tabActiva === "enlaces"
               ? "border-b-2 border-blue-500 text-blue-600"
               : "text-gray-500 hover:text-blue-500"
@@ -231,7 +225,7 @@ const VerArchivos = ({ chat, visible, onClose }) => {
       </div>
 
       {/* 🔹 Contenido dinámico */}
-      <div className="p-4 overflow-y-auto h-[calc(100%-110px)]">
+      <div className={embedded ? "wa-files-content" : "p-4 overflow-y-auto h-[calc(100%-110px)]"}>
         {/* --- 🖼 Archivos multimedia --- */}
         {tabActiva === "multimedia" && (
           <>

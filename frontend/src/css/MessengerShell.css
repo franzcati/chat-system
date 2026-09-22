@@ -2670,3 +2670,89 @@ body.dark .wa-chat-header .wa-presence-badge,
     flex-shrink: 0 !important;
   }
 }
+
+/* =========================================================
+   QUICKCHAT · INFO DE GRUPO FUERA DE LA CONVERSACIÓN
+   ---------------------------------------------------------
+   El host es hijo DIRECTO de .wa-messenger-root, exactamente
+   igual que ChatList y .wa-chat-stage. Así el panel deja de
+   formar parte del rectángulo/borde de la conversación.
+   ========================================================= */
+.wa-messenger-root.active-tab-chat > .wa-group-info-host {
+  display: none;
+  min-width: 0;
+  min-height: 0;
+}
+
+@media (min-width: 1200px) {
+  .wa-messenger-root.active-tab-chat > .wa-chat-stage {
+    flex: 1 1 0 !important;
+    min-width: 0 !important;
+  }
+
+  .wa-messenger-root.active-tab-chat > .wa-group-info-host {
+    position: relative !important;
+    z-index: 2 !important;
+    display: none !important;
+    flex: 0 0 0 !important;
+    width: 0 !important;
+    min-width: 0 !important;
+    max-width: 0 !important;
+    height: calc(100vh - 24px) !important;
+    overflow: hidden !important;
+    opacity: 0 !important;
+    pointer-events: none !important;
+    transition: flex-basis .22s ease, width .22s ease, max-width .22s ease, opacity .15s ease !important;
+  }
+
+  .wa-messenger-root.active-tab-chat > .wa-group-info-host.is-open-host {
+    display: block !important;
+    flex: 0 0 clamp(320px, 25vw, 400px) !important;
+    width: clamp(320px, 25vw, 400px) !important;
+    min-width: 320px !important;
+    max-width: 400px !important;
+    opacity: 1 !important;
+    pointer-events: auto !important;
+    overflow: visible !important;
+  }
+
+  /* La tarjeta del panel tiene su propio marco. El gap del root crea
+     la separación real, igual que lista de chats ↔ conversación. */
+  .wa-messenger-root.active-tab-chat > .wa-group-info-host.is-open-host > .wa-group-info-panel.is-open {
+    height: 100% !important;
+    border: 0 !important;
+    border-radius: 24px !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    overflow: hidden !important;
+  }
+}
+
+@media (max-width: 1199px) {
+  .wa-messenger-root.active-tab-chat > .wa-group-info-host {
+    position: absolute !important;
+    inset: 0 !important;
+    z-index: 90 !important;
+    display: block !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: none !important;
+    height: 100% !important;
+    overflow: hidden !important;
+    visibility: hidden !important;
+    pointer-events: none !important;
+  }
+
+  .wa-messenger-root.active-tab-chat > .wa-group-info-host.is-open-host {
+    visibility: visible !important;
+    pointer-events: auto !important;
+  }
+
+  .wa-messenger-root.active-tab-chat > .wa-group-info-host > .wa-group-info-panel.is-open {
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: none !important;
+    height: 100% !important;
+    border-radius: 0 !important;
+  }
+}

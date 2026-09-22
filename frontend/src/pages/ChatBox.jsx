@@ -312,6 +312,20 @@ const ChatBox = ({ chat, user, setChat, onCloseChat, onVerPerfil, onAddToList, e
   const [offcanvasGrupo, setOffcanvasGrupo] = useState(null);
   const [mostrarInfoGrupo, setMostrarInfoGrupo] = useState(false);
   const [mostrarInfoContacto, setMostrarInfoContacto] = useState(false);
+
+  useEffect(() => {
+    if (typeof document === "undefined") return undefined;
+
+    const host = document.getElementById("wa-group-info-host");
+    if (!host) return undefined;
+
+    const shouldOpen = chat?.tipo === "grupo" && mostrarInfoGrupo;
+    host.classList.toggle("is-open-host", shouldOpen);
+
+    return () => {
+      host.classList.remove("is-open-host");
+    };
+  }, [chat?.tipo, mostrarInfoGrupo]);
   const [contactoInfoArchivos, setContactoInfoArchivos] = useState([]);
   const [mostrarVerArchivos, setMostrarVerArchivos] = useState(false);
   const [mostrarMenuLlamada, setMostrarMenuLlamada] = useState(false);
@@ -358,6 +372,7 @@ const ChatBox = ({ chat, user, setChat, onCloseChat, onVerPerfil, onAddToList, e
 
   useEffect(() => {
     setMostrarInfoGrupo(false);
+    setMostrarVerArchivos(false);
     setMostrarInfoContacto(false);
     setContactoInfoArchivos([]);
   }, [chat?.tipo, chat?.grupo_id, chat?.usuario_id]);
@@ -3473,6 +3488,7 @@ const ChatBox = ({ chat, user, setChat, onCloseChat, onVerPerfil, onAddToList, e
 
   const handleBuscarEnChat = () => {
     if (chat?.tipo !== "grupo") return;
+    setMostrarVerArchivos(false);
     setMostrarInfoGrupo(true);
     setSearchRequestToken(Date.now());
   };
@@ -4115,7 +4131,7 @@ const ChatBox = ({ chat, user, setChat, onCloseChat, onVerPerfil, onAddToList, e
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
     >
-      <div className={`container-fluid h-100 px-0 wa-chat-shell ${(mostrarInfoGrupo || mostrarInfoContacto) ? "is-info-open" : ""}`}>
+      <div className={`container-fluid h-100 px-0 wa-chat-shell ${mostrarInfoContacto ? "is-info-open" : ""}`}>
         <div className="wa-chat-conversation d-flex flex-column h-100 position-relative">
           {/* Header del chat */}
           <div className="chat-header wa-chat-header border-bottom">
@@ -4164,7 +4180,7 @@ const ChatBox = ({ chat, user, setChat, onCloseChat, onVerPerfil, onAddToList, e
                         <>
                           <div 
                             className="d-flex align-items-center cursor-pointer"
-                            onClick={() => { setMostrarInfoContacto(false); setMostrarInfoGrupo(true); }} // 👈 al hacer clic abrimos la info
+                            onClick={() => { setMostrarInfoContacto(false); setMostrarVerArchivos(false); setMostrarInfoGrupo(true); }} // 👈 al hacer clic abrimos la info
                           >
                             {/* Avatar o icono del grupo */}
                             <div className="avatar me-3">
@@ -5451,20 +5467,6 @@ const ChatBox = ({ chat, user, setChat, onCloseChat, onVerPerfil, onAddToList, e
 
           </div>
         </div>
-        {/* Panel de información del grupo: va dentro del shell para empujar el chat y deslizarse desde la derecha */}
-        {chat?.tipo === "grupo" && (
-          <VerInfoGrupo
-            chat={chat}
-            visible={mostrarInfoGrupo}
-            onClose={() => setMostrarInfoGrupo(false)}
-            setMostrarVerArchivos={setMostrarVerArchivos}
-            setOffcanvasGrupo={setOffcanvasGrupo}
-            user={user}
-            onActualizarChat={(campo, valor) => setChat(prev => ({ ...prev, [campo]: valor }))}
-            onJumpToMessage={handleJumpToGroupSearchMessage}
-            searchRequestToken={searchRequestToken}
-          />
-        )}
         {chat?.tipo !== "grupo" && (
           <VerInfoContacto
             chat={{ ...chat, archivos: contactoInfoArchivos.length ? contactoInfoArchivos : chat.archivos }}
@@ -5482,6 +5484,30 @@ const ChatBox = ({ chat, user, setChat, onCloseChat, onVerPerfil, onAddToList, e
           />
         )}
       </div>
+      {chat?.tipo === "grupo" && (() => {
+        const groupInfoPanel = (
+          <VerInfoGrupo
+            chat={chat}
+            visible={mostrarInfoGrupo}
+            onClose={() => {
+              setMostrarInfoGrupo(false);
+              setMostrarVerArchivos(false);
+            }}
+            mostrarVerArchivos={mostrarVerArchivos}
+            setMostrarVerArchivos={setMostrarVerArchivos}
+            setOffcanvasGrupo={setOffcanvasGrupo}
+            user={user}
+            onActualizarChat={(campo, valor) => setChat(prev => ({ ...prev, [campo]: valor }))}
+            onJumpToMessage={handleJumpToGroupSearchMessage}
+            searchRequestToken={searchRequestToken}
+          />
+        );
+
+        if (typeof document === "undefined") return null;
+
+        const host = document.getElementById("wa-group-info-host");
+        return host ? createPortal(groupInfoPanel, host) : null;
+      })()}
       {/* 👇 Offcanvas MiembrosGrupos controlado por estado */}
       {offcanvasGrupo && (
         <MiembrosGrupos
@@ -5491,12 +5517,14 @@ const ChatBox = ({ chat, user, setChat, onCloseChat, onVerPerfil, onAddToList, e
         />
       )}
 
-      {/* 🔹 Panel de archivos */}
-      <VerArchivos
-        chat={chat?.tipo === "grupo" ? chat : { ...chat, archivos: contactoInfoArchivos.length ? contactoInfoArchivos : chat?.archivos }}
-        visible={mostrarVerArchivos}
-        onClose={() => setMostrarVerArchivos(false)}
-      />
+      {/* 🔹 Panel de archivos de contactos. En grupos se reutiliza el MISMO panel lateral de Info. del grupo. */}
+      {chat?.tipo !== "grupo" && (
+        <VerArchivos
+          chat={{ ...chat, archivos: contactoInfoArchivos.length ? contactoInfoArchivos : chat?.archivos }}
+          visible={mostrarVerArchivos}
+          onClose={() => setMostrarVerArchivos(false)}
+        />
+      )}
       {isDragOver && (
         <div
           className="position-fixed top-0 start-0 w-100 h-100 d-flex align-items-center justify-content-center"

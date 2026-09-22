@@ -567,6 +567,10 @@ const Messenger = () => {
         </div>
       )}
 
+      {activeTab === "chat" && selectedChat && (
+        <div id="wa-group-info-host" className="wa-group-info-host" aria-live="polite" />
+      )}
+
       {/* 🔹 Modal de perfil */}
       {showModal && (
         <ProfileModal
