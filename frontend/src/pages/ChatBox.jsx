@@ -4818,7 +4818,7 @@ const ChatBox = ({ chat, user, setChat, onCloseChat, onVerPerfil, onAddToList, e
                       title="Adjuntar archivo"
                       onClick={() => document.getElementById("fileInput").click()}
                     >
-                      <i className="fa-solid fa-plus" aria-hidden="true" />
+                      <i className="fa-solid fa-paperclip" aria-hidden="true" />
                     </button>
                     <button
                       type="button"
@@ -4838,22 +4838,7 @@ const ChatBox = ({ chat, user, setChat, onCloseChat, onVerPerfil, onAddToList, e
                       }}
                     >
                       <span className="wa-media-trigger-icon" aria-hidden="true">
-                        <svg
-                          xmlns="http://www.w3.org/2000/svg"
-                          width="24"
-                          height="24"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="2"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                        >
-                          <path d="M6.75 3.75h8.9c2.52 0 4.6 2.04 4.6 4.56v5.39c0 2.52-2.08 4.56-4.6 4.56H13.2l-3.72 2.2a.75.75 0 0 1-1.13-.65v-1.55h-1.6c-2.52 0-4.6-2.04-4.6-4.56V8.31c0-2.52 2.08-4.56 4.6-4.56Z" />
-                          <path d="M8.15 13.15c.72.86 1.66 1.28 2.85 1.28s2.13-.42 2.85-1.28" />
-                          <path d="M8.05 9.5h.01" />
-                          <path d="M13.95 9.5h.01" />
-                        </svg>
+                        <i className="fa-regular fa-face-smile" />
                       </span>
                     </button>
 

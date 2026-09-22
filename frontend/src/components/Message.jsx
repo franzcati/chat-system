@@ -3454,14 +3454,14 @@ const Message = ({
                       };
 
                       return (
-                        <div className="flex items-center gap-2 mt-2">
+                        <div className="wa-file-message-row">
                           <a
                             onClick={(e) => {
                               e.preventDefault();
                               handleDescargar();
                             }}
                             href={urlArchivo}
-                            className="flex items-center justify-center bg-white text-gray-700 border border-gray-300 rounded-full shadow-sm hover:bg-gray-100 transition-all cursor-pointer"
+                            className="wa-file-download-btn"
                             style={{
                               width: "28px",
                               height: "28px",
@@ -3487,7 +3487,7 @@ const Message = ({
                           </a>
 
                           <span
-                            className="text-sm truncate"
+                            className="wa-file-name text-sm truncate"
                             style={{ maxWidth: "180px" }}
                           >
                             {nombreLimpio}

@@ -1960,3 +1960,713 @@ body.dark .wa-chat-header .wa-presence-badge,
     animation: none;
   }
 }
+
+/* =========================================================
+   QUICKCHAT 2026 · REDISEÑO PREMIUM DEL MÓDULO DE CHATS
+   ---------------------------------------------------------
+   Scope: únicamente /mensajes (active-tab-chat).
+   Mantiene la lógica existente de navegación, filtros, sockets y lista.
+   ========================================================= */
+.wa-messenger-root.active-tab-chat {
+  --qc-chat-page: #f3f7ff;
+  --qc-chat-surface: rgba(255, 255, 255, 0.96);
+  --qc-chat-surface-2: rgba(248, 251, 255, 0.96);
+  --qc-chat-border: rgba(116, 151, 207, 0.22);
+  --qc-chat-border-strong: rgba(69, 139, 255, 0.34);
+  --qc-chat-text: #0c1a3b;
+  --qc-chat-muted: #61749c;
+  --qc-chat-muted-2: #91a1bf;
+  --qc-chat-blue: #1498ff;
+  --qc-chat-violet: #7347ff;
+  --qc-chat-green: #11c98c;
+  --qc-chat-shadow: 0 22px 50px rgba(43, 78, 131, 0.10);
+  --qc-chat-soft-shadow: 0 12px 28px rgba(43, 78, 131, 0.08);
+  --qc-chat-gradient: linear-gradient(135deg, #16a7ff 0%, #2671ff 52%, #7b46ff 100%);
+  --qc-chat-gradient-soft: linear-gradient(135deg, rgba(22, 167, 255, 0.12), rgba(123, 70, 255, 0.12));
+
+  position: relative;
+  isolation: isolate;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--qc-chat-text);
+  background:
+    radial-gradient(circle at 76% -12%, rgba(124, 58, 237, 0.12), transparent 34%),
+    radial-gradient(circle at 24% 2%, rgba(14, 165, 255, 0.12), transparent 30%),
+    linear-gradient(135deg, #f9fbff 0%, #f5f8ff 45%, #eef5ff 100%) !important;
+}
+
+.wa-messenger-root.active-tab-chat::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  opacity: 0.55;
+  background-image:
+    radial-gradient(circle, rgba(37, 99, 235, 0.13) 1.2px, transparent 1.35px),
+    linear-gradient(116deg, transparent 0 65%, rgba(14, 165, 255, 0.10) 65.2%, transparent 65.8%),
+    linear-gradient(150deg, transparent 0 74%, rgba(124, 58, 237, 0.10) 74.2%, transparent 74.8%);
+  background-size: 92px 92px, 760px 760px, 860px 860px;
+  background-position: 0 0, right -160px top -300px, right 70px top -320px;
+}
+
+:root[data-theme="dark"] .wa-messenger-root.active-tab-chat {
+  --qc-chat-page: #020817;
+  --qc-chat-surface: rgba(4, 16, 39, 0.97);
+  --qc-chat-surface-2: rgba(5, 22, 49, 0.94);
+  --qc-chat-border: rgba(51, 124, 220, 0.26);
+  --qc-chat-border-strong: rgba(62, 154, 255, 0.46);
+  --qc-chat-text: #f7f9ff;
+  --qc-chat-muted: #9eb0d0;
+  --qc-chat-muted-2: #6f83a8;
+  --qc-chat-blue: #0da3ff;
+  --qc-chat-violet: #8055ff;
+  --qc-chat-green: #1bd59a;
+  --qc-chat-shadow: 0 26px 58px rgba(0, 0, 0, 0.30);
+  --qc-chat-soft-shadow: 0 16px 36px rgba(0, 0, 0, 0.22);
+
+  background:
+    radial-gradient(circle at 76% -12%, rgba(124, 58, 237, 0.25), transparent 34%),
+    radial-gradient(circle at 24% 0%, rgba(14, 165, 255, 0.17), transparent 31%),
+    linear-gradient(135deg, #020817 0%, #050b18 48%, #07111f 100%) !important;
+}
+
+:root[data-theme="dark"] .wa-messenger-root.active-tab-chat::before {
+  opacity: 0.80;
+  background-image:
+    radial-gradient(circle, rgba(125, 211, 252, 0.18) 1.1px, transparent 1.35px),
+    linear-gradient(116deg, transparent 0 65%, rgba(14, 165, 255, 0.15) 65.2%, transparent 65.8%),
+    linear-gradient(150deg, transparent 0 74%, rgba(139, 92, 246, 0.14) 74.2%, transparent 74.8%);
+}
+
+/* ----- Navegación principal: mismo lenguaje visual que gestión ----- */
+@media (min-width: 1200px) {
+  .wa-messenger-root.active-tab-chat {
+    gap: 12px;
+    padding: 12px;
+  }
+
+  .wa-messenger-root.active-tab-chat > .wa-app-rail {
+    position: relative !important;
+    z-index: 3 !important;
+    height: calc(100vh - 24px) !important;
+    min-height: 0 !important;
+    border: 1px solid var(--qc-chat-border) !important;
+    border-radius: 24px !important;
+    box-shadow: var(--qc-chat-shadow) !important;
+    overflow: visible !important;
+  }
+
+  .wa-messenger-root.active-tab-chat > .wa-app-rail.is-expanded {
+    --rail-expanded-width: 266px;
+    padding: 20px 16px 16px !important;
+  }
+
+  .wa-messenger-root.active-tab-chat > .sidebar {
+    position: relative !important;
+    z-index: 2 !important;
+    flex: 0 0 408px !important;
+    width: 408px !important;
+    min-width: 408px !important;
+    max-width: 408px !important;
+    height: calc(100vh - 24px) !important;
+    min-height: 0 !important;
+    border: 1px solid var(--qc-chat-border) !important;
+    border-radius: 24px !important;
+    overflow: hidden !important;
+    background: var(--qc-chat-surface) !important;
+    box-shadow: var(--qc-chat-shadow) !important;
+  }
+
+  .wa-messenger-root.active-tab-chat > .wa-chat-stage {
+    position: relative !important;
+    z-index: 1 !important;
+    height: calc(100vh - 24px) !important;
+    min-height: 0 !important;
+    overflow: hidden !important;
+    border: 1px solid var(--qc-chat-border) !important;
+    border-radius: 24px !important;
+    background: var(--qc-chat-surface) !important;
+    box-shadow: var(--qc-chat-shadow) !important;
+  }
+}
+
+.wa-messenger-root.active-tab-chat .wa-app-rail {
+  --rail-bg: rgba(255, 255, 255, 0.92);
+  --rail-border: rgba(102, 139, 196, 0.18);
+  --rail-text: var(--qc-chat-text);
+  --rail-muted: var(--qc-chat-muted);
+  --rail-icon: #6e84af;
+  --rail-hover-bg: rgba(30, 133, 255, 0.09);
+  --rail-active: var(--qc-chat-gradient);
+  --rail-active-shadow: 0 14px 32px rgba(37, 99, 255, 0.27), 0 0 26px rgba(124, 58, 237, 0.14);
+  background:
+    radial-gradient(circle at 20% 4%, rgba(14, 165, 255, 0.12), transparent 30%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(247, 250, 255, 0.92)) !important;
+}
+
+:root[data-theme="dark"] .wa-messenger-root.active-tab-chat .wa-app-rail {
+  --rail-bg: rgba(4, 14, 37, 0.96);
+  --rail-border: rgba(80, 118, 226, 0.22);
+  --rail-text: #f7f9ff;
+  --rail-muted: #a0afd0;
+  --rail-icon: #a8b9dd;
+  --rail-hover-bg: rgba(87, 109, 255, 0.13);
+  --rail-active: linear-gradient(135deg, #0ca8ff 0%, #2867ff 48%, #7d45ff 100%);
+  --rail-active-shadow: 0 0 28px rgba(43, 112, 255, 0.42), 0 16px 34px rgba(0, 0, 0, 0.32);
+  background:
+    radial-gradient(circle at 20% 4%, rgba(14, 165, 255, 0.15), transparent 30%),
+    linear-gradient(180deg, rgba(5, 17, 44, 0.98), rgba(4, 13, 34, 0.98)) !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-app-rail.is-expanded .wa-rail-item {
+  min-height: 52px !important;
+  border-radius: 15px !important;
+  font-family: "Inter", system-ui, sans-serif !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-app-rail.is-expanded .wa-rail-logo {
+  min-height: 58px !important;
+  border-radius: 17px !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-rail-support-card {
+  min-height: 162px !important;
+  border-radius: 18px !important;
+}
+
+:root[data-theme="dark"] .wa-messenger-root.active-tab-chat .wa-rail-support-card {
+  border-color: rgba(76, 111, 224, 0.26) !important;
+  background:
+    radial-gradient(circle at 50% 12%, rgba(14, 165, 255, 0.17), transparent 34%),
+    linear-gradient(150deg, rgba(10, 29, 69, 0.92), rgba(15, 25, 64, 0.90)) !important;
+  box-shadow: inset 0 0 0 1px rgba(119, 137, 255, 0.06), 0 18px 36px rgba(0,0,0,.20) !important;
+}
+
+/* ----- Panel de lista de chats ----- */
+.wa-messenger-root.active-tab-chat > .sidebar,
+.wa-messenger-root.active-tab-chat > .sidebar.bg-light {
+  color: var(--qc-chat-text) !important;
+  background: var(--qc-chat-surface) !important;
+}
+
+.wa-messenger-root.active-tab-chat > .sidebar .hide-scrollbar {
+  height: 100% !important;
+  overflow-y: auto !important;
+  overscroll-behavior: contain;
+  scrollbar-width: none;
+}
+
+.wa-messenger-root.active-tab-chat > .sidebar .hide-scrollbar::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+}
+
+.wa-messenger-root.active-tab-chat > .sidebar .container {
+  width: 100% !important;
+  max-width: none !important;
+  padding: 20px 20px 24px !important;
+}
+
+.wa-chat-list-heading {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 14px !important;
+  margin-bottom: 18px !important;
+}
+
+.wa-chat-list-heading h2 {
+  color: var(--qc-chat-text) !important;
+  font-family: "Sora", "Inter", system-ui, sans-serif !important;
+  font-size: 1.75rem !important;
+  line-height: 1 !important;
+  font-weight: 850 !important;
+  letter-spacing: -0.045em !important;
+}
+
+.wa-chat-compose-button {
+  width: 50px;
+  height: 50px;
+  flex: 0 0 50px;
+  display: inline-grid;
+  place-items: center;
+  border: 1px solid rgba(255,255,255,.28);
+  border-radius: 15px;
+  color: #fff;
+  background: var(--qc-chat-gradient);
+  box-shadow: 0 12px 28px rgba(39, 100, 247, 0.25), 0 0 22px rgba(124, 58, 237, 0.12);
+  font-size: 19px;
+  cursor: pointer;
+  transition: transform .16s ease, box-shadow .16s ease, filter .16s ease;
+}
+
+.wa-chat-compose-button:hover,
+.wa-chat-compose-button:focus-visible {
+  transform: translateY(-1px) scale(1.02);
+  box-shadow: 0 16px 32px rgba(39, 100, 247, 0.32), 0 0 26px rgba(124, 58, 237, 0.18);
+  filter: saturate(1.08);
+}
+
+.wa-messenger-root.active-tab-chat .wa-chat-search {
+  height: 48px !important;
+  border: 1px solid var(--qc-chat-border) !important;
+  border-radius: 15px !important;
+  overflow: hidden !important;
+  background: var(--qc-chat-surface-2) !important;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.54) !important;
+  transition: border-color .16s ease, box-shadow .16s ease, background .16s ease;
+}
+
+.wa-messenger-root.active-tab-chat .wa-chat-search:focus-within {
+  border-color: var(--qc-chat-border-strong) !important;
+  box-shadow: 0 0 0 3px rgba(43, 129, 255, .11) !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-chat-search .input-group-text,
+.wa-messenger-root.active-tab-chat .wa-chat-search input {
+  border: 0 !important;
+  color: var(--qc-chat-text) !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-chat-search .input-group-text {
+  padding-left: 15px !important;
+  padding-right: 9px !important;
+  color: #6e83aa !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-chat-search input {
+  padding-right: 14px !important;
+  font-size: 0.88rem !important;
+  font-weight: 550 !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-chat-search input::placeholder {
+  color: var(--qc-chat-muted-2) !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-filter-row {
+  display: flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  margin: 0 0 12px !important;
+  overflow: visible !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-filter-chip {
+  min-height: 36px !important;
+  padding: 0 14px !important;
+  border: 1px solid var(--qc-chat-border) !important;
+  border-radius: 999px !important;
+  color: var(--qc-chat-text) !important;
+  background: rgba(255,255,255,.58) !important;
+  font-size: .78rem !important;
+  font-weight: 750 !important;
+  white-space: nowrap !important;
+  box-shadow: none !important;
+  transition: color .16s ease, background .16s ease, border-color .16s ease, transform .16s ease, box-shadow .16s ease !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-filter-chip:hover {
+  color: #1b6dff !important;
+  border-color: rgba(43,129,255,.30) !important;
+  background: rgba(231, 243, 255, .80) !important;
+  transform: translateY(-1px);
+}
+
+.wa-messenger-root.active-tab-chat .wa-filter-chip.active {
+  color: #fff !important;
+  border-color: transparent !important;
+  background: var(--qc-chat-gradient) !important;
+  box-shadow: 0 9px 20px rgba(40, 103, 246, .22), 0 0 16px rgba(124, 58, 237, .10) !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-filter-favorite {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 7px !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-filter-favorite > i {
+  color: #526de8;
+  font-size: .78rem;
+}
+
+.wa-messenger-root.active-tab-chat .wa-filter-favorite.active > i {
+  color: #fff;
+}
+
+.wa-messenger-root.active-tab-chat .wa-filter-more-wrap {
+  margin-left: auto !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-filter-more {
+  width: 36px !important;
+  min-width: 36px !important;
+  padding: 0 !important;
+  display: grid !important;
+  place-items: center !important;
+  font-size: .95rem !important;
+}
+
+:root[data-theme="dark"] .wa-messenger-root.active-tab-chat .wa-filter-chip {
+  color: #dce6fb !important;
+  border-color: rgba(84, 123, 208, .28) !important;
+  background: rgba(8, 24, 53, .86) !important;
+}
+
+:root[data-theme="dark"] .wa-messenger-root.active-tab-chat .wa-filter-chip:hover {
+  color: #f5f8ff !important;
+  border-color: rgba(70, 149, 255, .42) !important;
+  background: rgba(19, 49, 91, .92) !important;
+}
+
+:root[data-theme="dark"] .wa-messenger-root.active-tab-chat .wa-filter-chip.active {
+  border-color: transparent !important;
+  background: var(--qc-chat-gradient) !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-custom-list-row {
+  gap: 6px !important;
+  padding: 0 0 10px !important;
+  margin: 0 !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-custom-list-chip-wrap {
+  border-color: var(--qc-chat-border) !important;
+  background: var(--qc-chat-surface-2) !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-custom-list-chip-wrap.active {
+  border-color: rgba(48, 127, 250, .38) !important;
+  background: var(--qc-chat-gradient-soft) !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-archived-shortcut {
+  width: 100% !important;
+  min-height: 44px !important;
+  margin: 2px 0 8px !important;
+  padding: 0 12px !important;
+  border: 1px solid transparent !important;
+  border-radius: 13px !important;
+  color: var(--qc-chat-muted) !important;
+  background: transparent !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-archived-shortcut:hover,
+.wa-messenger-root.active-tab-chat .wa-archived-shortcut.active {
+  color: var(--qc-chat-text) !important;
+  border-color: var(--qc-chat-border) !important;
+  background: var(--qc-chat-surface-2) !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-archived-shortcut-icon {
+  color: #64799f !important;
+  background: rgba(113, 135, 177, 0.10) !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-chat-list {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 4px !important;
+  margin-top: 2px !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-chat-list-card {
+  content-visibility: auto;
+  contain-intrinsic-size: 72px;
+  position: relative !important;
+  min-height: 70px !important;
+  margin: 0 !important;
+  overflow: hidden !important;
+  border: 1px solid transparent !important;
+  border-radius: 15px !important;
+  color: var(--qc-chat-text) !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  transition: transform .16s ease, background .16s ease, border-color .16s ease, box-shadow .16s ease !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-chat-list-card::before {
+  content: "";
+  position: absolute;
+  left: 10px;
+  right: 10px;
+  bottom: 0;
+  height: 1px;
+  background: rgba(109, 139, 188, .12);
+  pointer-events: none;
+}
+
+.wa-messenger-root.active-tab-chat .wa-chat-list-card:hover {
+  transform: translateY(-1px) !important;
+  border-color: rgba(70, 139, 248, .16) !important;
+  background: rgba(239, 246, 255, .68) !important;
+  box-shadow: 0 10px 22px rgba(43, 83, 139, .07) !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-chat-list-card.active {
+  border-color: rgba(50, 129, 255, .24) !important;
+  background:
+    radial-gradient(circle at 95% 50%, rgba(124, 58, 237, .10), transparent 34%),
+    linear-gradient(110deg, rgba(226, 242, 255, .92), rgba(239, 238, 255, .82)) !important;
+  box-shadow: 0 12px 26px rgba(45, 98, 186, .12), inset 3px 0 0 #2b83ff !important;
+}
+
+:root[data-theme="dark"] .wa-messenger-root.active-tab-chat .wa-chat-list-card::before {
+  background: rgba(83, 121, 192, .16);
+}
+
+:root[data-theme="dark"] .wa-messenger-root.active-tab-chat .wa-chat-list-card:hover {
+  border-color: rgba(66, 142, 255, .18) !important;
+  background: rgba(10, 29, 62, .78) !important;
+  box-shadow: 0 10px 24px rgba(0,0,0,.18) !important;
+}
+
+:root[data-theme="dark"] .wa-messenger-root.active-tab-chat .wa-chat-list-card.active {
+  border-color: rgba(61, 141, 255, .38) !important;
+  background:
+    radial-gradient(circle at 94% 50%, rgba(124, 58, 237, .24), transparent 38%),
+    linear-gradient(110deg, rgba(7, 43, 84, .96), rgba(16, 28, 76, .94)) !important;
+  box-shadow: 0 0 26px rgba(42, 110, 255, .16), inset 3px 0 0 #1ca5ff !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-chat-list-card-body {
+  padding: 9px 10px !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-chat-list-row {
+  min-height: 50px !important;
+  align-items: center !important;
+  gap: 10px !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-chat-list-avatar,
+.wa-messenger-root.active-tab-chat .wa-chat-list-avatar .avatar-img,
+.wa-messenger-root.active-tab-chat .wa-chat-list-avatar .wa-group-avatar-composite {
+  width: 48px !important;
+  height: 48px !important;
+  min-width: 48px !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-chat-list-title {
+  color: var(--qc-chat-text) !important;
+  font-size: .91rem !important;
+  font-weight: 800 !important;
+  letter-spacing: -.014em !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-chat-list-preview {
+  color: var(--qc-chat-muted) !important;
+  font-size: .79rem !important;
+  line-height: 1.25 !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-chat-list-time {
+  color: var(--qc-chat-muted) !important;
+  font-size: .69rem !important;
+  font-weight: 650 !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-chat-list-time.has-unread {
+  color: #0ebf83 !important;
+  font-weight: 850 !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-unread-badge {
+  min-width: 22px !important;
+  height: 22px !important;
+  padding: 0 6px !important;
+  border-radius: 999px !important;
+  color: #fff !important;
+  background: var(--qc-chat-gradient) !important;
+  box-shadow: 0 7px 16px rgba(43, 108, 255, .22) !important;
+}
+
+/* El avatar por defecto de grupo es idéntico en lista y cabecera. */
+.wa-messenger-root.active-tab-chat .wa-group-avatar-composite,
+.wa-messenger-root.active-tab-chat .wa-group-avatar-default {
+  overflow: hidden !important;
+  border: 1px solid rgba(57, 127, 247, .24) !important;
+  color: #fff !important;
+  background: linear-gradient(135deg, #19a4ff 0%, #3676ff 52%, #7851ff 100%) !important;
+  box-shadow: 0 9px 22px rgba(43, 103, 234, .20), inset 0 1px 0 rgba(255,255,255,.24) !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-group-avatar-default i {
+  color: #fff !important;
+  filter: drop-shadow(0 4px 8px rgba(14, 54, 144, .18));
+}
+
+:root[data-theme="dark"] .wa-messenger-root.active-tab-chat .wa-group-avatar-composite,
+:root[data-theme="dark"] .wa-messenger-root.active-tab-chat .wa-group-avatar-default {
+  border-color: rgba(78, 138, 255, .34) !important;
+  background: linear-gradient(135deg, #0ca7ff 0%, #285fff 50%, #7d45ff 100%) !important;
+  box-shadow: 0 0 22px rgba(42, 110, 255, .24), inset 0 1px 0 rgba(255,255,255,.16) !important;
+}
+
+/* ----- Menús flotantes de lista ----- */
+.wa-filter-dropdown,
+.wa-chat-options-menu,
+.wa-chat-options-submenu {
+  border: 1px solid var(--qc-chat-border) !important;
+  border-radius: 15px !important;
+  color: var(--qc-chat-text) !important;
+  background: rgba(255,255,255,.98) !important;
+  box-shadow: 0 18px 46px rgba(35, 65, 112, .18) !important;
+}
+
+:root[data-theme="dark"] .wa-filter-dropdown,
+:root[data-theme="dark"] .wa-chat-options-menu,
+:root[data-theme="dark"] .wa-chat-options-submenu {
+  color: #eff5ff !important;
+  border-color: rgba(75, 120, 212, .28) !important;
+  background: #07172f !important;
+  box-shadow: 0 24px 52px rgba(0,0,0,.34) !important;
+}
+
+/* ----- Estado sin conversación seleccionado ----- */
+.wa-messenger-root.active-tab-chat.no-selected-chat > .wa-chat-stage {
+  color: var(--qc-chat-muted) !important;
+  background:
+    radial-gradient(circle at 65% 30%, rgba(14, 165, 255, .07), transparent 30%),
+    radial-gradient(circle at 82% 64%, rgba(124, 58, 237, .06), transparent 28%),
+    var(--qc-chat-surface) !important;
+}
+
+.wa-messenger-root.active-tab-chat.no-selected-chat > .wa-chat-stage .icon {
+  color: #6f85ad !important;
+}
+
+@media (min-width: 768px) and (max-width: 1399px) {
+  .wa-messenger-root.active-tab-chat > .sidebar {
+    flex-basis: 370px !important;
+    width: 370px !important;
+    min-width: 370px !important;
+    max-width: 370px !important;
+  }
+}
+
+@media (max-width: 1199px) {
+  .wa-chat-list-heading {
+    margin-bottom: 14px !important;
+  }
+
+  .wa-chat-compose-button {
+    width: 44px;
+    height: 44px;
+    flex-basis: 44px;
+  }
+}
+
+/* =========================================================
+   QUICKCHAT · AJUSTES VISUALES V14
+   - Rail premium compacto en TODOS los módulos
+   - Selección de chat clara azul/lavanda en modo claro
+   ========================================================= */
+.wa-messenger-root .wa-app-rail {
+  --rail-bg: rgba(255, 255, 255, 0.92);
+  --rail-border: rgba(102, 139, 196, 0.18);
+  --rail-text: #0c1a3b;
+  --rail-muted: #61749c;
+  --rail-icon: #6e84af;
+  --rail-hover-bg: rgba(30, 133, 255, 0.09);
+  --rail-active: linear-gradient(135deg, #0ca8ff 0%, #2867ff 48%, #7d45ff 100%);
+  --rail-active-shadow: 0 14px 32px rgba(37, 99, 255, 0.27), 0 0 26px rgba(124, 58, 237, 0.14);
+  background:
+    radial-gradient(circle at 20% 4%, rgba(14, 165, 255, 0.12), transparent 30%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.97), rgba(247, 250, 255, 0.94)) !important;
+}
+
+:root[data-theme="dark"] .wa-messenger-root .wa-app-rail {
+  --rail-bg: rgba(4, 14, 37, 0.96);
+  --rail-border: rgba(80, 118, 226, 0.22);
+  --rail-text: #f7f9ff;
+  --rail-muted: #a0afd0;
+  --rail-icon: #a8b9dd;
+  --rail-hover-bg: rgba(87, 109, 255, 0.13);
+  --rail-active: linear-gradient(135deg, #0ca8ff 0%, #2867ff 48%, #7d45ff 100%);
+  --rail-active-shadow: 0 0 28px rgba(43, 112, 255, 0.42), 0 16px 34px rgba(0, 0, 0, 0.32);
+  background:
+    radial-gradient(circle at 20% 4%, rgba(14, 165, 255, 0.15), transparent 30%),
+    linear-gradient(180deg, rgba(5, 17, 44, 0.98), rgba(4, 13, 34, 0.98)) !important;
+}
+
+/* En pantallas administrativas conserva el mismo rail-tarjeta de Chats,
+   pero permanece compacto por defecto. */
+@media (min-width: 1200px) {
+  .wa-messenger-root:not(.active-tab-chat) > .wa-app-rail {
+    height: calc(100vh - 24px) !important;
+    min-height: 0 !important;
+    margin: 12px 0 12px 12px !important;
+    border: 1px solid var(--rail-border) !important;
+    border-radius: 24px !important;
+    box-shadow: 0 22px 50px rgba(43, 78, 131, 0.10) !important;
+    overflow: visible !important;
+  }
+
+  :root[data-theme="dark"] .wa-messenger-root:not(.active-tab-chat) > .wa-app-rail {
+    box-shadow: 0 26px 58px rgba(0, 0, 0, 0.30) !important;
+  }
+}
+
+/* Selección en modo claro: azul muy suave + lavanda, como la referencia. */
+:root[data-theme="light"] .wa-messenger-root.active-tab-chat .wa-chat-list-card.active {
+  border-color: rgba(83, 145, 255, 0.28) !important;
+  background:
+    radial-gradient(circle at 94% 50%, rgba(125, 86, 255, 0.12), transparent 38%),
+    linear-gradient(110deg, rgba(221, 240, 255, 0.98), rgba(238, 233, 255, 0.96)) !important;
+  box-shadow:
+    0 12px 26px rgba(45, 98, 186, 0.11),
+    inset 3px 0 0 #2b83ff !important;
+}
+
+:root[data-theme="light"] .wa-messenger-root.active-tab-chat .wa-chat-list-card.active .wa-chat-list-title,
+:root[data-theme="light"] .wa-messenger-root.active-tab-chat .wa-chat-list-card.active .wa-chat-list-time {
+  color: #11224c !important;
+}
+
+:root[data-theme="light"] .wa-messenger-root.active-tab-chat .wa-chat-list-card.active .wa-chat-list-preview,
+:root[data-theme="light"] .wa-messenger-root.active-tab-chat .wa-chat-list-card.active .wa-preview-line,
+:root[data-theme="light"] .wa-messenger-root.active-tab-chat .wa-chat-list-card.active .wa-preview-label {
+  color: #65759a !important;
+}
+
+/* =========================================================
+   QUICKCHAT · V16 · CONTINUIDAD DEL FONDO EN TODOS LOS MÓDULOS
+   ---------------------------------------------------------
+   El rail compacto deja un margen exterior intencional. Ese margen debe
+   mostrar el mismo ambiente visual de Gestión de usuarios/proyectos y no
+   el bg claro del contenedor React/Tailwind.
+   ========================================================= */
+.wa-messenger-root:not(.active-tab-chat) {
+  background:
+    radial-gradient(circle at 76% -10%, rgba(124, 58, 237, 0.10), transparent 34%),
+    radial-gradient(circle at 24% 0%, rgba(14, 165, 255, 0.10), transparent 30%),
+    linear-gradient(135deg, #f8fbff 0%, #f5f8ff 44%, #eef5ff 100%) !important;
+}
+
+:root[data-theme="dark"] .wa-messenger-root:not(.active-tab-chat) {
+  background:
+    radial-gradient(circle at 72% -8%, rgba(124, 58, 237, 0.24), transparent 34%),
+    radial-gradient(circle at 28% 0%, rgba(14, 165, 255, 0.16), transparent 30%),
+    linear-gradient(135deg, #020817 0%, #050b18 48%, #07111f 100%) !important;
+}
+
+/* Evita que el fondo fijo que trae Messenger.jsx aparezca en los huecos
+   alrededor del rail cuando se navega entre módulos administrativos. */
+.wa-messenger-root:not(.active-tab-chat) > .wa-admin-stage {
+  background: transparent !important;
+}
+
+@media (min-width: 1200px) {
+  .wa-messenger-root:not(.active-tab-chat) {
+    padding-left: 0 !important;
+  }
+
+  .wa-messenger-root:not(.active-tab-chat) > .wa-app-rail {
+    flex-shrink: 0 !important;
+  }
+}

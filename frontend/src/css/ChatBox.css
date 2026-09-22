@@ -12444,3 +12444,1014 @@ body.dark,
   --msg-in-shadow: 0 1px 3px rgba(0, 0, 0, .20);
   --msg-out-shadow: 0 2px 5px rgba(37, 136, 247, .12);
 }
+
+/* =========================================================
+   QUICKCHAT 2026 · CONVERSACIÓN PREMIUM
+   Referencia visual: módulo administrativo + objetivo claro/oscuro.
+   Scope restringido a active-tab-chat para no afectar otros paneles.
+   ========================================================= */
+.wa-messenger-root.active-tab-chat .wa-chat-stage > .main,
+.wa-messenger-root.active-tab-chat .wa-chat-shell,
+.wa-messenger-root.active-tab-chat .wa-chat-conversation {
+  min-width: 0 !important;
+  min-height: 0 !important;
+  background: transparent !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-chat-conversation {
+  overflow: hidden !important;
+}
+
+/* ----- Header ----- */
+.wa-messenger-root.active-tab-chat .wa-chat-header.chat-header {
+  --wa-chat-header-bg: rgba(255, 255, 255, 0.93);
+  position: relative !important;
+  min-height: 86px !important;
+  height: 86px !important;
+  padding: 0 22px !important;
+  overflow: visible !important;
+  border: 0 !important;
+  border-bottom: 1px solid var(--qc-chat-border) !important;
+  color: var(--qc-chat-text) !important;
+  background:
+    radial-gradient(circle at 78% 10%, rgba(14,165,255,.10), transparent 28%),
+    radial-gradient(circle at 55% 0%, rgba(124,58,237,.08), transparent 30%),
+    rgba(255, 255, 255, .94) !important;
+  box-shadow: 0 10px 28px rgba(48, 80, 126, .06) !important;
+  z-index: 20 !important;
+}
+
+:root[data-theme="dark"] .wa-messenger-root.active-tab-chat .wa-chat-header.chat-header {
+  --wa-chat-header-bg: rgba(4, 17, 41, .97);
+  border-bottom-color: rgba(58, 130, 224, .25) !important;
+  background:
+    radial-gradient(circle at 80% 5%, rgba(14,165,255,.14), transparent 28%),
+    radial-gradient(circle at 58% 0%, rgba(124,58,237,.20), transparent 30%),
+    linear-gradient(110deg, rgba(4, 17, 41, .98), rgba(7, 20, 51, .98), rgba(20, 15, 59, .95)) !important;
+  box-shadow: 0 12px 34px rgba(0,0,0,.20) !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-chat-header .row.align-items-center.text-center.text-xl-start {
+  min-height: 86px !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-chat-header-main .col-auto > .d-flex.align-items-center.cursor-pointer {
+  gap: 4px;
+}
+
+.wa-messenger-root.active-tab-chat .wa-chat-header .avatar.me-3,
+.wa-messenger-root.active-tab-chat .wa-chat-header .avatar.d-none.d-xl-inline-block.me-3 {
+  margin-right: 14px !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-chat-header .avatar.me-3 .wa-group-avatar-composite,
+.wa-messenger-root.active-tab-chat .wa-chat-header .avatar.d-none.d-xl-inline-block.me-3 .avatar-img,
+.wa-messenger-root.active-tab-chat .wa-chat-header .avatar.d-none.d-xl-inline-block.me-3 .wa-presence-wrapper,
+.wa-messenger-root.active-tab-chat .wa-chat-header .avatar.d-none.d-xl-inline-block.me-3 .wa-presence-wrapper > div:not(.wa-presence-badge) {
+  width: 54px !important;
+  height: 54px !important;
+  min-width: 54px !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-chat-title-block h5 {
+  margin: 0 !important;
+  color: var(--qc-chat-text) !important;
+  font-family: "Sora", "Inter", system-ui, sans-serif !important;
+  font-size: 1.12rem !important;
+  line-height: 1.15 !important;
+  font-weight: 850 !important;
+  letter-spacing: -.025em !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-chat-title-block small {
+  margin-top: 5px !important;
+  color: var(--qc-chat-muted) !important;
+  font-size: .78rem !important;
+  font-weight: 600 !important;
+  max-width: 520px !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-header-icon-btn,
+.wa-messenger-root.active-tab-chat .wa-chat-header a.icon.icon-lg.text-muted {
+  width: 46px !important;
+  height: 46px !important;
+  min-width: 46px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 3px !important;
+  border: 1px solid var(--qc-chat-border) !important;
+  border-radius: 14px !important;
+  color: #526994 !important;
+  background: rgba(255,255,255,.60) !important;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.62) !important;
+  text-decoration: none !important;
+  transition: transform .16s ease, color .16s ease, border-color .16s ease, background .16s ease, box-shadow .16s ease !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-header-icon-btn:hover,
+.wa-messenger-root.active-tab-chat .wa-chat-header a.icon.icon-lg.text-muted:hover {
+  color: #1b78ff !important;
+  border-color: rgba(48, 130, 255, .36) !important;
+  background: rgba(234, 244, 255, .90) !important;
+  box-shadow: 0 10px 22px rgba(49, 99, 180, .10) !important;
+  transform: translateY(-1px) !important;
+}
+
+:root[data-theme="dark"] .wa-messenger-root.active-tab-chat .wa-header-icon-btn,
+:root[data-theme="dark"] .wa-messenger-root.active-tab-chat .wa-chat-header a.icon.icon-lg.text-muted {
+  color: #b2c1df !important;
+  border-color: rgba(77, 118, 206, .30) !important;
+  background: rgba(7, 23, 52, .76) !important;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.035) !important;
+}
+
+:root[data-theme="dark"] .wa-messenger-root.active-tab-chat .wa-header-icon-btn:hover,
+:root[data-theme="dark"] .wa-messenger-root.active-tab-chat .wa-chat-header a.icon.icon-lg.text-muted:hover {
+  color: #ffffff !important;
+  border-color: rgba(59, 145, 255, .46) !important;
+  background: rgba(14, 43, 83, .92) !important;
+  box-shadow: 0 0 22px rgba(40, 101, 255, .14) !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-chat-header .avatar-group {
+  min-height: 46px !important;
+  padding: 5px 9px 5px 7px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  border: 1px solid var(--qc-chat-border) !important;
+  border-radius: 15px !important;
+  background: rgba(255,255,255,.58) !important;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.58) !important;
+}
+
+:root[data-theme="dark"] .wa-messenger-root.active-tab-chat .wa-chat-header .avatar-group {
+  border-color: rgba(76, 118, 207, .28) !important;
+  background: rgba(7, 23, 52, .76) !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-chat-header .avatar-group .avatar {
+  margin-left: -8px !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-chat-header .avatar-group .avatar:first-child {
+  margin-left: 0 !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-chat-header .avatar-group .avatar-img,
+.wa-messenger-root.active-tab-chat .wa-chat-header .avatar-group .wa-presence-wrapper,
+.wa-messenger-root.active-tab-chat .wa-chat-header .avatar-group .wa-presence-wrapper > div:not(.wa-presence-badge) {
+  width: 34px !important;
+  height: 34px !important;
+  min-width: 34px !important;
+  border: 2px solid var(--wa-chat-header-bg) !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-call-menu {
+  border: 1px solid var(--qc-chat-border) !important;
+  border-radius: 18px !important;
+  color: var(--qc-chat-text) !important;
+  background: rgba(255,255,255,.98) !important;
+  box-shadow: 0 24px 58px rgba(35, 65, 112, .20) !important;
+}
+
+:root[data-theme="dark"] .wa-messenger-root.active-tab-chat .wa-call-menu {
+  border-color: rgba(75, 120, 212, .30) !important;
+  color: #f4f7ff !important;
+  background: #07172f !important;
+  box-shadow: 0 28px 64px rgba(0,0,0,.38) !important;
+}
+
+/* ----- Pinned bar ----- */
+.wa-messenger-root.active-tab-chat .pinned-bar {
+  min-height: 46px !important;
+  border-bottom: 1px solid var(--qc-chat-border) !important;
+  background: rgba(250, 252, 255, .92) !important;
+}
+
+:root[data-theme="dark"] .wa-messenger-root.active-tab-chat .pinned-bar {
+  background: rgba(5, 18, 42, .94) !important;
+}
+
+.wa-messenger-root.active-tab-chat .pinned-content {
+  border: 1px solid var(--qc-chat-border) !important;
+  color: var(--qc-chat-text) !important;
+  background: var(--qc-chat-surface-2) !important;
+  box-shadow: none !important;
+}
+
+/* ----- Área de conversación ----- */
+.wa-messenger-root.active-tab-chat .chat-body {
+  position: relative !important;
+  min-height: 0 !important;
+  background:
+    radial-gradient(circle at 88% 18%, rgba(14, 165, 255, .10), transparent 24%),
+    radial-gradient(circle at 76% 80%, rgba(124, 58, 237, .09), transparent 27%),
+    radial-gradient(circle at 24% 28%, rgba(89, 153, 255, .07), transparent 22%),
+    linear-gradient(135deg, #f8fbff 0%, #f3f8ff 50%, #eef5ff 100%) !important;
+}
+
+.wa-messenger-root.active-tab-chat .chat-body::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: .55;
+  background-image:
+    radial-gradient(circle, rgba(52, 119, 226, .14) 1px, transparent 1.3px),
+    linear-gradient(125deg, transparent 0 63%, rgba(67, 134, 244, .09) 63.2%, transparent 63.8%);
+  background-size: 110px 110px, 760px 760px;
+  background-position: 18px 12px, right -180px top -240px;
+}
+
+:root[data-theme="dark"] .wa-messenger-root.active-tab-chat .chat-body {
+  background:
+    radial-gradient(circle at 88% 20%, rgba(58, 55, 255, .21), transparent 26%),
+    radial-gradient(circle at 66% 82%, rgba(0, 128, 255, .14), transparent 28%),
+    radial-gradient(circle at 20% 12%, rgba(10, 160, 255, .10), transparent 22%),
+    linear-gradient(135deg, #020b1e 0%, #03102a 50%, #061435 100%) !important;
+}
+
+:root[data-theme="dark"] .wa-messenger-root.active-tab-chat .chat-body::before {
+  opacity: .75;
+  background-image:
+    radial-gradient(circle, rgba(122, 176, 255, .34) .7px, transparent 1.1px),
+    linear-gradient(118deg, transparent 0 64%, rgba(40, 113, 255, .15) 64.2%, transparent 64.8%),
+    radial-gradient(ellipse at 90% 60%, transparent 0 46%, rgba(53, 93, 255, .16) 47%, transparent 48%);
+  background-size: 72px 72px, 820px 820px, 100% 100%;
+  background-position: 0 0, right -180px top -280px, center;
+}
+
+.wa-messenger-root.active-tab-chat .chat-body-inner {
+  position: relative !important;
+  z-index: 1 !important;
+  padding: 24px clamp(28px, 4.4vw, 72px) 30px !important;
+  scrollbar-width: none !important;
+}
+
+.wa-messenger-root.active-tab-chat .chat-body-inner::-webkit-scrollbar {
+  width: 0 !important;
+}
+
+.wa-messenger-root.active-tab-chat .date-sticky-wrapper {
+  margin: 4px 0 18px !important;
+}
+
+.wa-messenger-root.active-tab-chat .date-chip,
+.wa-messenger-root.active-tab-chat .chat-load-more-pill {
+  min-height: 32px !important;
+  padding: 6px 18px !important;
+  border: 1px solid rgba(70, 135, 244, .18) !important;
+  border-radius: 999px !important;
+  color: #4d6292 !important;
+  background: rgba(255,255,255,.80) !important;
+  box-shadow: 0 8px 18px rgba(50, 87, 143, .07) !important;
+  font-size: .76rem !important;
+  font-weight: 700 !important;
+}
+
+:root[data-theme="dark"] .wa-messenger-root.active-tab-chat .date-chip,
+:root[data-theme="dark"] .wa-messenger-root.active-tab-chat .chat-load-more-pill {
+  color: #c8d5f0 !important;
+  border-color: rgba(78, 123, 219, .26) !important;
+  background: rgba(7, 26, 58, .86) !important;
+  box-shadow: 0 8px 22px rgba(0,0,0,.18), 0 0 18px rgba(41, 107, 255, .06) !important;
+}
+
+/* ----- Mensajes ----- */
+.wa-messenger-root.active-tab-chat .message {
+  margin-bottom: 7px !important;
+}
+
+.wa-messenger-root.active-tab-chat .message-inner {
+  max-width: min(72%, 760px) !important;
+}
+
+.wa-messenger-root.active-tab-chat .message .avatar-responsive,
+.wa-messenger-root.active-tab-chat .message .avatar-responsive .avatar-img {
+  width: 42px !important;
+  height: 42px !important;
+  min-width: 42px !important;
+}
+
+.wa-messenger-root.active-tab-chat .message-text {
+  max-width: min(720px, 100%) !important;
+  padding: 11px 14px 9px !important;
+  border: 1px solid rgba(118, 147, 193, .14) !important;
+  border-radius: 17px !important;
+  color: #132046 !important;
+  background: rgba(255,255,255,.96) !important;
+  box-shadow: 0 8px 20px rgba(49, 80, 127, .08) !important;
+}
+
+.wa-messenger-root.active-tab-chat .message.message-out .message-text {
+  color: #ffffff !important;
+  border-color: rgba(255,255,255,.16) !important;
+  background: linear-gradient(135deg, #2497ff 0%, #2e70ff 58%, #7547ff 100%) !important;
+  box-shadow: 0 10px 24px rgba(42, 104, 241, .18) !important;
+}
+
+:root[data-theme="dark"] .wa-messenger-root.active-tab-chat .message-text {
+  color: #edf3ff !important;
+  border-color: rgba(75, 112, 178, .22) !important;
+  background: rgba(10, 28, 59, .96) !important;
+  box-shadow: 0 10px 24px rgba(0,0,0,.18) !important;
+}
+
+:root[data-theme="dark"] .wa-messenger-root.active-tab-chat .message.message-out .message-text {
+  color: #ffffff !important;
+  border-color: rgba(113, 120, 255, .25) !important;
+  background: linear-gradient(135deg, #057dff 0%, #1858ff 52%, #702cff 100%) !important;
+  box-shadow: 0 0 24px rgba(42, 91, 255, .18), 0 12px 28px rgba(0,0,0,.16) !important;
+}
+
+.wa-messenger-root.active-tab-chat .message-grouped-prev .message-text {
+  border-top-left-radius: 10px !important;
+}
+
+.wa-messenger-root.active-tab-chat .message-grouped-next .message-text {
+  border-bottom-left-radius: 10px !important;
+}
+
+.wa-messenger-root.active-tab-chat .message-out.message-grouped-prev .message-text {
+  border-top-left-radius: 17px !important;
+  border-top-right-radius: 10px !important;
+}
+
+.wa-messenger-root.active-tab-chat .message-out.message-grouped-next .message-text {
+  border-bottom-left-radius: 17px !important;
+  border-bottom-right-radius: 10px !important;
+}
+
+.wa-messenger-root.active-tab-chat .message-sender-name {
+  margin-bottom: 4px !important;
+  font-size: .77rem !important;
+  font-weight: 850 !important;
+}
+
+.wa-messenger-root.active-tab-chat .message-footer,
+.wa-messenger-root.active-tab-chat .message-footer .text-muted,
+.wa-messenger-root.active-tab-chat .message-footer .extra-small {
+  color: #788aa9 !important;
+  font-size: .68rem !important;
+  font-weight: 600 !important;
+}
+
+.wa-messenger-root.active-tab-chat .message.message-out .message-footer,
+.wa-messenger-root.active-tab-chat .message.message-out .message-footer .text-muted,
+.wa-messenger-root.active-tab-chat .message.message-out .message-footer .extra-small {
+  color: rgba(255,255,255,.78) !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-message-menu-btn {
+  border-radius: 8px !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-message-reactions-summary {
+  border-color: var(--qc-chat-border) !important;
+  background: var(--qc-chat-surface) !important;
+  box-shadow: 0 6px 14px rgba(45, 79, 128, .08) !important;
+}
+
+/* ----- Composer ----- */
+.wa-messenger-root.active-tab-chat .chat-footer {
+  position: relative !important;
+  z-index: 18 !important;
+  padding: 12px 16px 16px !important;
+  border-top: 1px solid var(--qc-chat-border) !important;
+  background: rgba(248, 251, 255, .90) !important;
+  box-shadow: 0 -8px 26px rgba(42, 76, 125, .05) !important;
+}
+
+:root[data-theme="dark"] .wa-messenger-root.active-tab-chat .chat-footer {
+  border-top-color: rgba(59, 124, 214, .22) !important;
+  background: rgba(3, 14, 34, .96) !important;
+  box-shadow: 0 -10px 28px rgba(0,0,0,.16) !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-chat-form.chat-form {
+  min-height: 64px !important;
+  padding: 7px 8px !important;
+  border: 1px solid var(--qc-chat-border) !important;
+  border-radius: 19px !important;
+  background: rgba(255,255,255,.96) !important;
+  box-shadow: 0 12px 28px rgba(42, 80, 133, .09), inset 0 1px 0 rgba(255,255,255,.72) !important;
+}
+
+:root[data-theme="dark"] .wa-messenger-root.active-tab-chat .wa-chat-form.chat-form {
+  border-color: rgba(71, 119, 205, .28) !important;
+  background: rgba(7, 23, 52, .96) !important;
+  box-shadow: 0 12px 30px rgba(0,0,0,.22), inset 0 1px 0 rgba(255,255,255,.03) !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-chat-form > .row,
+.wa-messenger-root.active-tab-chat .wa-chat-form .input-group {
+  min-height: 50px !important;
+  align-items: center !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-chat-form .wa-attach-trigger,
+.wa-messenger-root.active-tab-chat .wa-chat-form .wa-media-trigger,
+.wa-messenger-root.active-tab-chat .wa-chat-form .wa-audio-record-button {
+  width: 48px !important;
+  height: 48px !important;
+  min-width: 48px !important;
+  display: inline-grid !important;
+  place-items: center !important;
+  margin: 0 4px 0 0 !important;
+  padding: 0 !important;
+  border: 1px solid rgba(91, 132, 202, .20) !important;
+  border-radius: 14px !important;
+  color: #516a99 !important;
+  background: rgba(246, 250, 255, .94) !important;
+  box-shadow: none !important;
+  font-size: 1.05rem !important;
+  transition: color .16s ease, background .16s ease, border-color .16s ease, transform .16s ease !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-chat-form .wa-attach-trigger:hover,
+.wa-messenger-root.active-tab-chat .wa-chat-form .wa-media-trigger:hover,
+.wa-messenger-root.active-tab-chat .wa-chat-form .wa-audio-record-button:hover {
+  color: #1c79ff !important;
+  border-color: rgba(48, 130, 255, .30) !important;
+  background: rgba(231, 243, 255, .94) !important;
+  transform: translateY(-1px);
+}
+
+:root[data-theme="dark"] .wa-messenger-root.active-tab-chat .wa-chat-form .wa-attach-trigger,
+:root[data-theme="dark"] .wa-messenger-root.active-tab-chat .wa-chat-form .wa-media-trigger,
+:root[data-theme="dark"] .wa-messenger-root.active-tab-chat .wa-chat-form .wa-audio-record-button {
+  color: #b8c7e4 !important;
+  border-color: rgba(71, 118, 205, .27) !important;
+  background: rgba(11, 32, 67, .88) !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-media-trigger-icon {
+  width: 100% !important;
+  height: 100% !important;
+  display: grid !important;
+  place-items: center !important;
+  font-size: 1.12rem !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-input-grow {
+  min-width: 0 !important;
+  flex: 1 1 auto !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-rich-input-wrapper,
+.wa-messenger-root.active-tab-chat .wa-rich-editor.form-control {
+  min-height: 48px !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-rich-editor.form-control {
+  padding: 12px 14px !important;
+  border: 0 !important;
+  border-radius: 13px !important;
+  color: var(--qc-chat-text) !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  font-size: .92rem !important;
+  line-height: 1.45 !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-rich-editor.form-control:empty::before {
+  color: var(--qc-chat-muted-2) !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-chat-form .btn-primary.rounded-circle {
+  width: 54px !important;
+  height: 54px !important;
+  min-width: 54px !important;
+  margin: 0 0 0 8px !important;
+  border: 1px solid rgba(255,255,255,.22) !important;
+  border-radius: 16px !important;
+  color: #fff !important;
+  background: linear-gradient(135deg, #13a6ff 0%, #2868ff 50%, #7c3cff 100%) !important;
+  box-shadow: 0 12px 26px rgba(42, 102, 241, .28), 0 0 20px rgba(124, 58, 237, .13) !important;
+  transition: transform .16s ease, box-shadow .16s ease, filter .16s ease !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-chat-form .btn-primary.rounded-circle:hover {
+  transform: translateY(-1px) scale(1.02) !important;
+  filter: saturate(1.08) !important;
+  box-shadow: 0 15px 30px rgba(42, 102, 241, .34), 0 0 24px rgba(124, 58, 237, .18) !important;
+}
+
+.wa-messenger-root.active-tab-chat .reply-compose-bar {
+  margin: 0 0 7px !important;
+  border-radius: 13px !important;
+  border: 1px solid var(--qc-chat-border) !important;
+  background: var(--qc-chat-surface-2) !important;
+}
+
+/* ----- Estado desktop y responsivo ----- */
+@media (min-width: 1200px) {
+  .wa-messenger-root.active-tab-chat .wa-chat-shell,
+  .wa-messenger-root.active-tab-chat .wa-chat-conversation,
+  .wa-messenger-root.active-tab-chat .wa-chat-stage > .main {
+    height: 100% !important;
+    max-height: 100% !important;
+  }
+}
+
+@media (max-width: 1199px) {
+  .wa-messenger-root.active-tab-chat .wa-chat-header.chat-header {
+    min-height: 72px !important;
+    height: 72px !important;
+    padding: 0 14px !important;
+  }
+
+  .wa-messenger-root.active-tab-chat .chat-body-inner {
+    padding-left: 18px !important;
+    padding-right: 18px !important;
+  }
+}
+
+@media (max-width: 767px) {
+  .wa-messenger-root.active-tab-chat .wa-chat-header.chat-header {
+    min-height: 62px !important;
+    height: 62px !important;
+    border-radius: 0 !important;
+  }
+
+  .wa-messenger-root.active-tab-chat .chat-footer {
+    padding: 7px 8px max(8px, env(safe-area-inset-bottom)) !important;
+  }
+
+  .wa-messenger-root.active-tab-chat .wa-chat-form.chat-form {
+    min-height: 54px !important;
+    border-radius: 16px !important;
+    padding: 4px 5px !important;
+  }
+
+  .wa-messenger-root.active-tab-chat .wa-chat-form .wa-attach-trigger,
+  .wa-messenger-root.active-tab-chat .wa-chat-form .wa-media-trigger,
+  .wa-messenger-root.active-tab-chat .wa-chat-form .wa-audio-record-button {
+    width: 42px !important;
+    height: 42px !important;
+    min-width: 42px !important;
+    border-radius: 12px !important;
+  }
+
+  .wa-messenger-root.active-tab-chat .wa-chat-form .btn-primary.rounded-circle {
+    width: 46px !important;
+    height: 46px !important;
+    min-width: 46px !important;
+    border-radius: 13px !important;
+  }
+
+  .wa-messenger-root.active-tab-chat .message-inner {
+    max-width: calc(100% - 50px) !important;
+  }
+}
+
+/* =========================================================
+   QUICKCHAT · AJUSTES DE BURBUJAS / FONDO V14
+   - Claro: burbuja enviada pastel azul/lavanda
+   - Oscuro: fondo y burbuja un poco más claros para mejorar contraste
+   ========================================================= */
+:root[data-theme="light"] .wa-messenger-root.active-tab-chat .message.message-out .message-text {
+  color: #10214b !important;
+  border-color: rgba(92, 145, 232, 0.20) !important;
+  background:
+    radial-gradient(circle at 92% 24%, rgba(123, 87, 255, 0.10), transparent 34%),
+    linear-gradient(135deg, rgba(220, 239, 255, 0.98) 0%, rgba(229, 240, 255, 0.98) 48%, rgba(238, 232, 255, 0.98) 100%) !important;
+  box-shadow: 0 10px 24px rgba(58, 100, 170, 0.10) !important;
+}
+
+:root[data-theme="light"] .wa-messenger-root.active-tab-chat .message.message-out .message-footer,
+:root[data-theme="light"] .wa-messenger-root.active-tab-chat .message.message-out .message-footer .text-muted,
+:root[data-theme="light"] .wa-messenger-root.active-tab-chat .message.message-out .message-footer .extra-small {
+  color: #6a7da5 !important;
+}
+
+:root[data-theme="light"] .wa-messenger-root.active-tab-chat .message.message-out .message-footer .fa-check,
+:root[data-theme="light"] .wa-messenger-root.active-tab-chat .message.message-out .message-footer .fa-check-double {
+  color: #0b82ff !important;
+}
+
+:root[data-theme="dark"] .wa-messenger-root.active-tab-chat .message.message-out .message-text {
+  color: #ffffff !important;
+  border-color: rgba(136, 161, 255, 0.28) !important;
+  background:
+    linear-gradient(135deg, #188cff 0%, #356dff 52%, #7651ff 100%) !important;
+  box-shadow:
+    0 0 24px rgba(50, 111, 255, .18),
+    0 12px 28px rgba(0,0,0,.14) !important;
+}
+
+
+/* =========================================================
+   QUICKCHAT · AJUSTES FINALES V17
+   - Fondo chat oscuro/claro más cercano a la referencia.
+   - Header de grupo sin cuadros alrededor de avatares.
+   - Mejor contraste en horas, responder, audio, deshacer y archivos.
+   - Stickers sin fondo, solo chip para la hora.
+   ========================================================= */
+
+/* ---------- Header: avatares superiores como la referencia ---------- */
+.wa-messenger-root.active-tab-chat .wa-chat-header .avatar-group {
+  min-height: 40px !important;
+  padding: 0 !important;
+  gap: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-chat-header .avatar-group .avatar {
+  margin-left: -10px !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-chat-header .avatar-group .avatar:first-child {
+  margin-left: 0 !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-chat-header .avatar-group .avatar-img,
+.wa-messenger-root.active-tab-chat .wa-chat-header .avatar-group .wa-presence-wrapper,
+.wa-messenger-root.active-tab-chat .wa-chat-header .avatar-group .wa-presence-wrapper > div:not(.wa-presence-badge) {
+  width: 36px !important;
+  height: 36px !important;
+  min-width: 36px !important;
+  border-radius: 999px !important;
+  border: 2px solid var(--wa-chat-header-bg) !important;
+  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.12) !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-chat-header .avatar-group > a.avatar:last-child {
+  margin-left: 8px !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-chat-header .avatar-group > a.avatar:last-child .avatar-img,
+.wa-messenger-root.active-tab-chat .wa-chat-header .avatar-group > a.avatar:last-child > .avatar-img,
+.wa-messenger-root.active-tab-chat .wa-chat-header .avatar-group > a.avatar:last-child > div {
+  width: auto !important;
+  min-width: 42px !important;
+  padding: 0 12px !important;
+  border-radius: 999px !important;
+  background: linear-gradient(135deg, #42b2ff 0%, #4068ff 52%, #7346ff 100%) !important;
+  color: #ffffff !important;
+  font-weight: 800 !important;
+  box-shadow: 0 10px 22px rgba(60, 110, 255, 0.22) !important;
+}
+
+:root[data-theme="dark"] .wa-messenger-root.active-tab-chat .wa-chat-header .avatar-group .avatar-img,
+:root[data-theme="dark"] .wa-messenger-root.active-tab-chat .wa-chat-header .avatar-group .wa-presence-wrapper,
+:root[data-theme="dark"] .wa-messenger-root.active-tab-chat .wa-chat-header .avatar-group .wa-presence-wrapper > div:not(.wa-presence-badge) {
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.34) !important;
+}
+
+/* ---------- Burbujas salientes: dark más intensas / light suaves ---------- */
+:root:not([data-theme="dark"]) {
+  --sent-message-bg: linear-gradient(135deg, #dfeeff 0%, #d7e6ff 52%, #d9dcff 100%);
+  --sent-message-text: #13244a;
+  --sent-message-muted: rgba(36, 68, 125, 0.82);
+  --sent-message-border: rgba(111, 149, 236, 0.26);
+  --sent-message-shadow: 0 8px 24px rgba(109, 140, 196, 0.12);
+}
+
+:root[data-theme="dark"] {
+  --sent-message-bg: linear-gradient(135deg, #2c87ff 0%, #3c7bff 48%, #6c41ff 100%);
+  --sent-message-text: #f7fbff;
+  --sent-message-muted: rgba(237, 244, 255, 0.92);
+  --sent-message-border: rgba(120, 178, 255, 0.28);
+  --sent-message-shadow: 0 14px 32px rgba(12, 40, 112, 0.26);
+}
+
+.message.message-out .message-text:not(.message-sticker-bubble) {
+  background: var(--sent-message-bg) !important;
+  color: var(--sent-message-text) !important;
+  border-color: var(--sent-message-border) !important;
+  box-shadow: var(--sent-message-shadow) !important;
+}
+
+.message.message-out .message-text:not(.message-sticker-bubble) .wa-rich-message,
+.message.message-out .message-text:not(.message-sticker-bubble) .wa-rich-message *,
+.message.message-out .message-text:not(.message-sticker-bubble) .break-words,
+.message.message-out .message-text:not(.message-sticker-bubble) .break-words * {
+  color: inherit !important;
+  -webkit-text-fill-color: currentColor !important;
+}
+
+.message.message-out .message-text:not(.message-sticker-bubble) .message-footer .extra-small,
+.message.message-out .message-text:not(.message-sticker-bubble) .message-footer .extra-small.text-muted,
+.message.message-out .message-text:not(.message-sticker-bubble) .wa-audio-times,
+.message.message-out .message-text:not(.message-sticker-bubble) .wa-deleted-message,
+.message.message-out .message-text:not(.message-sticker-bubble) .wa-file-name {
+  color: var(--sent-message-muted) !important;
+  -webkit-text-fill-color: currentColor !important;
+  text-shadow: none !important;
+}
+
+.message.message-out .message-text:not(.message-sticker-bubble) .wa-message-menu-btn {
+  color: rgba(255, 255, 255, 0.74) !important;
+}
+
+.message.message-out .message-text:not(.message-sticker-bubble) .wa-message-menu-btn.visible,
+.message.message-out .message-text:not(.message-sticker-bubble) .wa-message-menu-btn:hover {
+  background: rgba(255, 255, 255, 0.16) !important;
+  color: #ffffff !important;
+}
+
+/* ---------- Respuestas dentro de mensajes salientes ---------- */
+.message.message-out .message-text:not(.message-sticker-bubble) .wa-quoted-message,
+.message.message-out .message-text:not(.message-sticker-bubble) .wa-quoted-message.out {
+  background: rgba(255, 255, 255, 0.14) !important;
+  border: 1px solid rgba(255, 255, 255, 0.10) !important;
+}
+
+.message.message-out .message-text:not(.message-sticker-bubble) .wa-quote-line,
+.message.message-out .message-text:not(.message-sticker-bubble) .wa-quoted-message.out .wa-quote-line {
+  background: #ff8d69 !important;
+  box-shadow: none !important;
+}
+
+.message.message-out .message-text:not(.message-sticker-bubble) .wa-quote-author,
+.message.message-out .message-text:not(.message-sticker-bubble) .wa-quoted-message.out .wa-quote-author {
+  color: #ffd2c5 !important;
+  -webkit-text-fill-color: #ffd2c5 !important;
+  text-shadow: none !important;
+}
+
+.message.message-out .message-text:not(.message-sticker-bubble) .wa-quote-text,
+.message.message-out .message-text:not(.message-sticker-bubble) .wa-quoted-message.out .wa-quote-text,
+.message.message-out .message-text:not(.message-sticker-bubble) .wa-quote-text *,
+.message.message-out .message-text:not(.message-sticker-bubble) .wa-quoted-message.out .wa-quote-text * {
+  color: rgba(249, 252, 255, 0.92) !important;
+  -webkit-text-fill-color: currentColor !important;
+}
+
+/* ---------- Mensaje eliminado / deshacer ---------- */
+.message.message-out .message-text:not(.message-sticker-bubble) .wa-undo-delete-btn,
+.message.message-out .message-text.message-sticker-bubble .message-footer .wa-undo-delete-btn {
+  color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff !important;
+  font-weight: 700 !important;
+  opacity: 0.96 !important;
+}
+
+.message.message-out .message-text:not(.message-sticker-bubble) .wa-undo-delete-btn:hover,
+.message.message-out .message-text.message-sticker-bubble .message-footer .wa-undo-delete-btn:hover {
+  color: #e8f4ff !important;
+}
+
+.message.message-out .wa-deleted-message svg {
+  color: rgba(255, 255, 255, 0.94) !important;
+}
+
+/* ---------- Audio más legible ---------- */
+.message.message-out .message-text.message-audio-bubble .wa-audio-player,
+.message.message-out .message-text.message-audio-bubble .wa-audio-main,
+.message.message-out .message-text.message-audio-bubble .wa-audio-times {
+  color: rgba(245, 249, 255, 0.96) !important;
+  -webkit-text-fill-color: currentColor !important;
+}
+
+.message.message-out .message-text.message-audio-bubble .wa-audio-play {
+  color: #ffffff !important;
+}
+
+.message.message-out .message-text.message-audio-bubble .wa-audio-wave-bar {
+  background: rgba(235, 242, 255, 0.48) !important;
+}
+
+.message.message-out .message-text.message-audio-bubble .wa-audio-wave-bar.played,
+.message.message-out .message-text.message-audio-bubble .wa-audio-playhead {
+  background: #f8fbff !important;
+}
+
+:root:not([data-theme="dark"]) .message.message-out .message-text.message-audio-bubble .wa-audio-wave-bar {
+  background: rgba(27, 66, 128, 0.20) !important;
+}
+
+:root:not([data-theme="dark"]) .message.message-out .message-text.message-audio-bubble .wa-audio-wave-bar.played,
+:root:not([data-theme="dark"]) .message.message-out .message-text.message-audio-bubble .wa-audio-playhead {
+  background: #2f6fff !important;
+}
+
+:root:not([data-theme="dark"]) .message.message-out .message-text.message-audio-bubble .wa-audio-play {
+  color: #1f4cff !important;
+}
+
+/* ---------- Archivos adjuntos ---------- */
+.wa-file-message-row {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  margin-top: 8px !important;
+  max-width: 100% !important;
+}
+
+.wa-file-download-btn {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  width: 30px !important;
+  min-width: 30px !important;
+  height: 30px !important;
+  border-radius: 999px !important;
+  text-decoration: none !important;
+  transition: transform 0.16s ease, box-shadow 0.16s ease, background 0.16s ease, color 0.16s ease !important;
+}
+
+.message:not(.message-out) .wa-file-download-btn {
+  background: rgba(255, 255, 255, 0.92) !important;
+  color: #334155 !important;
+  border: 1px solid rgba(148, 163, 184, 0.42) !important;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.06) !important;
+}
+
+.message.message-out .wa-file-download-btn {
+  background: rgba(255, 255, 255, 0.18) !important;
+  color: #ffffff !important;
+  border: 1px solid rgba(255, 255, 255, 0.24) !important;
+  box-shadow: 0 8px 20px rgba(12, 40, 112, 0.18) !important;
+}
+
+:root:not([data-theme="dark"]) .message.message-out .wa-file-download-btn {
+  background: rgba(255, 255, 255, 0.52) !important;
+  color: #2054d6 !important;
+  border-color: rgba(103, 141, 236, 0.32) !important;
+}
+
+.wa-file-download-btn:hover {
+  transform: translateY(-1px) !important;
+}
+
+.message.message-out .wa-file-name {
+  color: rgba(248, 251, 255, 0.96) !important;
+  -webkit-text-fill-color: currentColor !important;
+}
+
+:root:not([data-theme="dark"]) .message.message-out .wa-file-name {
+  color: #163462 !important;
+}
+
+/* ---------- Hora / checks más claros ---------- */
+.message.message-out .message-footer .extra-small,
+.message.message-out .message-footer .extra-small.text-muted,
+.message.message-out .message-footer .ms-2,
+.message.message-out .message-text.message-sticker-bubble .message-footer .extra-small,
+.message.message-out .message-text.message-sticker-bubble .message-footer .extra-small.text-muted,
+.message.message-out .message-text.message-sticker-bubble .message-footer .ms-2 {
+  color: rgba(245, 249, 255, 0.94) !important;
+  -webkit-text-fill-color: currentColor !important;
+}
+
+:root:not([data-theme="dark"]) .message.message-out .message-footer .extra-small,
+:root:not([data-theme="dark"]) .message.message-out .message-footer .extra-small.text-muted,
+:root:not([data-theme="dark"]) .message.message-out .message-footer .ms-2,
+:root:not([data-theme="dark"]) .message.message-out .message-text.message-sticker-bubble .message-footer .extra-small,
+:root:not([data-theme="dark"]) .message.message-out .message-text.message-sticker-bubble .message-footer .extra-small.text-muted,
+:root:not([data-theme="dark"]) .message.message-out .message-text.message-sticker-bubble .message-footer .ms-2 {
+  color: rgba(42, 74, 128, 0.86) !important;
+}
+
+.message.message-out .message-footer .double-check,
+.message.message-out .message-footer .double-check-blue,
+.message.message-out .message-text.message-sticker-bubble .message-footer .double-check,
+.message.message-out .message-text.message-sticker-bubble .message-footer .double-check-blue {
+  filter: none !important;
+  opacity: 0.98 !important;
+}
+
+/* ---------- Stickers sin fondo; solo chip inferior para hora ---------- */
+.message-text.message-sticker-bubble,
+.message.message-out .message-text.message-sticker-bubble,
+.message:not(.message-out) .message-text.message-sticker-bubble {
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+}
+
+.message-text.message-sticker-bubble .message-footer {
+  background: rgba(7, 15, 30, 0.30) !important;
+  backdrop-filter: blur(5px) !important;
+}
+
+:root:not([data-theme="dark"]) .message-text.message-sticker-bubble .message-footer {
+  background: rgba(255, 255, 255, 0.84) !important;
+  border: 1px solid rgba(164, 182, 225, 0.34) !important;
+  backdrop-filter: blur(8px) !important;
+}
+
+/* ---------- Mensaje entrante de audio en modo claro: más contraste ---------- */
+:root:not([data-theme="dark"]) .message:not(.message-out) .message-text.message-audio-bubble .wa-audio-play {
+  color: #1f2937 !important;
+}
+
+:root:not([data-theme="dark"]) .message:not(.message-out) .message-text.message-audio-bubble .wa-audio-wave-bar {
+  background: rgba(148, 163, 184, 0.34) !important;
+}
+
+:root:not([data-theme="dark"]) .message:not(.message-out) .message-text.message-audio-bubble .wa-audio-wave-bar.played,
+:root:not([data-theme="dark"]) .message:not(.message-out) .message-text.message-audio-bubble .wa-audio-playhead,
+:root:not([data-theme="dark"]) .message:not(.message-out) .message-text.message-audio-bubble .wa-audio-times {
+  color: #6b7280 !important;
+  background: #66b9ff !important;
+}
+
+/* restaura color de tiempo sin pintar el fondo del texto */
+:root:not([data-theme="dark"]) .message:not(.message-out) .message-text.message-audio-bubble .wa-audio-times {
+  background: transparent !important;
+  color: #6b7280 !important;
+  -webkit-text-fill-color: currentColor !important;
+}
+
+
+/* =========================================================
+   QUICKCHAT · WALLPAPER DOODLE V19
+   ---------------------------------------------------------
+   Opacidad SOLO para el wallpaper SVG.
+   No usa opacity sobre .chat-body y por eso NO afecta mensajes,
+   burbujas, avatares, fechas, header ni composer.
+
+   La opacidad se simula con una capa de color TRANSPARENTE
+   colocada encima del SVG y debajo de todo el contenido:
+   - LIGHT: SVG visible aprox. 26%
+   - DARK : SVG visible aprox. 46%
+   ========================================================= */
+.wa-messenger-root.active-tab-chat .wa-chat-conversation {
+  background: transparent !important;
+}
+
+.wa-messenger-root.active-tab-chat .chat-body {
+  position: relative !important;
+  isolation: isolate !important;
+  overflow-x: hidden !important;
+}
+
+/* El patrón pertenece únicamente al área scrolleable de mensajes. */
+.wa-messenger-root.active-tab-chat .wa-chat-conversation > .chat-body {
+  background-attachment: local !important;
+}
+
+/* Mantener desactivados los pseudo-elementos del wallpaper anterior.
+   IMPORTANTE: no usamos ::before/::after para evitar superponer mosaicos. */
+.wa-messenger-root.active-tab-chat .chat-body::before,
+.wa-messenger-root.active-tab-chat .chat-body::after {
+  content: none !important;
+  display: none !important;
+  background: none !important;
+  border: 0 !important;
+  box-shadow: none !important;
+}
+
+/* LIGHT
+   La primera capa blanca semitransparente atenúa SOLO el SVG.
+   0.74 de cobertura => el dibujo queda visible aprox. al 26%. */
+:root:not([data-theme="dark"]) .wa-messenger-root.active-tab-chat .chat-body {
+  background-color: #f5f9ff !important;
+  background-image:
+    linear-gradient(rgba(245,249,255,.74), rgba(245,249,255,.74)),
+    url("../assets/fondo_chat_claro.svg"),
+    linear-gradient(135deg, #fbfdff 0%, #f4f8ff 52%, #eff6ff 100%) !important;
+  background-repeat: no-repeat, repeat, no-repeat !important;
+  background-position: center, center top, center !important;
+  background-size: cover, 700px 700px, cover !important;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.82) !important;
+}
+
+/* DARK
+   La capa navy semitransparente atenúa SOLO el SVG.
+   0.54 de cobertura => el dibujo queda visible aprox. al 46%. */
+:root[data-theme="dark"] .wa-messenger-root.active-tab-chat .chat-body {
+  background-color: #020b20 !important;
+  background-image:
+    linear-gradient(rgba(2,11,32,.75), rgba(2,11,32,.75)),
+    url("../assets/fondo_chat_oscuro.svg"),
+    linear-gradient(135deg, #020818 0%, #03112b 52%, #041533 100%) !important;
+  background-repeat: no-repeat, repeat, no-repeat !important;
+  background-position: center, center top, center !important;
+  background-size: cover, 704px 704px, cover !important;
+  box-shadow: inset 0 1px 0 rgba(100,145,255,.08) !important;
+}
+
+/* Los mensajes quedan por encima del wallpaper, sin tocar su diseño. */
+.wa-messenger-root.active-tab-chat .chat-body > *,
+.wa-messenger-root.active-tab-chat .chat-body-inner {
+  position: relative !important;
+  z-index: 1 !important;
+}
+
+/* El footer/composer conserva su propio panel: no hereda el pattern. */
+.wa-messenger-root.active-tab-chat .chat-footer {
+  background-image: none !important;
+}
+
+@media (max-width: 1366px) {
+  :root:not([data-theme="dark"]) .wa-messenger-root.active-tab-chat .chat-body,
+  :root[data-theme="dark"] .wa-messenger-root.active-tab-chat .chat-body {
+    background-size: cover, 660px 660px, cover !important;
+  }
+}
+
+@media (max-width: 768px) {
+  :root:not([data-theme="dark"]) .wa-messenger-root.active-tab-chat .chat-body,
+  :root[data-theme="dark"] .wa-messenger-root.active-tab-chat .chat-body {
+    background-size: cover, 580px 580px, cover !important;
+  }
+}
+

@@ -9,6 +9,9 @@ import { clearAllChatListSnapshots } from "../utils/chatListSnapshot";
 
 const Sidebar = ({ usuario, active, setActive, onUsuarioUpdate, unreadTotal = 0, estadosUsuarios = {} }) => {
   const [showModal, setShowModal] = useState(false);
+  // El rail inicia siempre compacto. En escritorio no se expande
+  // automáticamente al entrar a Chats; así mantiene el mismo aspecto
+  // consistente en todos los módulos.
   const [sidebarExpanded, setSidebarExpanded] = useState(false);
   const { isDark, toggleTheme } = useTheme();
 

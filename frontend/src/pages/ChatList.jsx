@@ -166,6 +166,7 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat, addToLi
   const [isInitialLoading, setIsInitialLoading] = useState(true);
   const [initialLoadError, setInitialLoadError] = useState("");
   const [visibleChatCount, setVisibleChatCount] = useState(CHAT_RENDER_BATCH_SIZE);
+  const searchInputRef = useRef(null);
   const listScrollRef = useRef(null);
   const loadMoreSentinelRef = useRef(null);
   const typingPreviewTimersRef = useRef({});
@@ -2424,15 +2425,6 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat, addToLi
     );
   };
 
-  const filterLabel = activeCustomList?.nombre || {
-    todos: "Todos",
-    unread: "No leídos",
-    favoritos: "Favoritos",
-    grupos: "Grupos",
-    privados: "Individuales",
-    archivados: "Archivados",
-  }[activeFilter];
-
   const selectedCreateChats = uniqueChats.filter((chat) => selectedListItems.includes(getListItemKey(chat)));
 
   const closeFilterMenu = () => {
@@ -2770,8 +2762,23 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat, addToLi
         <div className="d-flex flex-column h-100 position-relative">
           <div className="hide-scrollbar" ref={listScrollRef}>
             <div className="container py-4">
-              <div className="mb-8">
-                <h2 className="fw-bold m-0">Chats</h2>
+              <div className="mb-8 wa-chat-list-heading">
+                <div className="wa-chat-list-heading-copy">
+                  <h2 className="fw-bold m-0">Chats</h2>
+                </div>
+                <button
+                  type="button"
+                  className="wa-chat-compose-button"
+                  onClick={() => {
+                    setActiveFilter("todos");
+                    setSearchTerm("");
+                    requestAnimationFrame(() => searchInputRef.current?.focus());
+                  }}
+                  title="Iniciar una conversación"
+                  aria-label="Iniciar una conversación"
+                >
+                  <i className="fa-solid fa-pen-to-square" aria-hidden="true" />
+                </button>
               </div>
 
               <div className="mb-3">
@@ -2796,9 +2803,10 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat, addToLi
                     </div>
                   </div>
                   <input
+                    ref={searchInputRef}
                     type="text"
                     className="form-control form-control-lg ps-0"
-                    placeholder="Buscar un chat o iniciar uno nuevo"
+                    placeholder="Buscar un chat o iniciar una conversación..."
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
                   />
@@ -2811,14 +2819,22 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat, addToLi
                   className={`wa-filter-chip ${activeFilter === "todos" ? "active" : ""}`}
                   onClick={() => setActiveFilter("todos")}
                 >
-                  Todos
+                  Todos ({filterCounts.todos})
                 </button>
                 <button
                   type="button"
                   className={`wa-filter-chip ${activeFilter === "unread" ? "active" : ""}`}
                   onClick={() => setActiveFilter("unread")}
                 >
-                  No leídos{filterCounts.unread > 0 ? ` ${filterCounts.unread}` : ""}
+                  No leídos ({filterCounts.unread})
+                </button>
+                <button
+                  type="button"
+                  className={`wa-filter-chip wa-filter-favorite ${activeFilter === "favoritos" ? "active" : ""}`}
+                  onClick={() => setActiveFilter("favoritos")}
+                >
+                  <i className="fa-solid fa-star" aria-hidden="true" />
+                  Favoritos
                 </button>
                 <div className="wa-filter-more-wrap">
                   <button
@@ -2840,8 +2856,7 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat, addToLi
                     }}
                     title="Más filtros"
                   >
-                    <span>{["favoritos", "grupos", "privados"].includes(activeFilter) ? filterLabel : ""}</span>
-                    <i className="fa-solid fa-chevron-down" aria-hidden="true" />
+                    <i className="fa-solid fa-ellipsis-vertical" aria-hidden="true" />
                   </button>
 
                 </div>
