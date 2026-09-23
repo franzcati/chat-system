@@ -3508,6 +3508,51 @@ const ChatBox = ({ chat, user, setChat, onCloseChat, onVerPerfil, onAddToList, e
     );
   };
 
+  const handleOpenCommonGroup = useCallback(async (grupo) => {
+    const groupId = Number(grupo?.grupo_id || grupo?.id);
+    if (!groupId || !user?.id || typeof setChat !== "function") return;
+
+    setMostrarInfoContacto(false);
+    setMostrarVerArchivos(false);
+
+    try {
+      const res = await fetch(`/api/grupos/usuario-resumen/${user.id}`);
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data?.error || "No se pudo abrir el grupo");
+      }
+
+      const grupos = Array.isArray(data) ? data : [];
+      const grupoCompleto = grupos.find((item) => Number(item?.grupo_id) === groupId);
+
+      if (grupoCompleto) {
+        setChat({
+          ...grupoCompleto,
+          tipo: "grupo",
+          usuario_nombre: grupoCompleto.usuario_nombre || grupoCompleto.nombre || grupo?.nombre || "Grupo",
+        });
+        return;
+      }
+    } catch (error) {
+      console.error("❌ Error abriendo grupo en común:", error);
+    }
+
+    setChat({
+      tipo: "grupo",
+      grupo_id: groupId,
+      id: groupId,
+      nombre: grupo?.nombre || "Grupo",
+      usuario_nombre: grupo?.nombre || "Grupo",
+      descripcion: grupo?.descripcion || "",
+      imagen_url: grupo?.imagen_url || null,
+      cantidad_miembros: Number(grupo?.total_miembros) || 0,
+      miembros: [],
+      archivos: [],
+      fijados: [],
+    });
+  }, [setChat, user?.id]);
+
   const getPrivatePresenceText = () => {
     if (!chat || chat.tipo === "grupo") return "";
     return getPresenceInfo(chat.usuario_id).label;
@@ -5558,6 +5603,9 @@ const ChatBox = ({ chat, user, setChat, onCloseChat, onVerPerfil, onAddToList, e
             setMostrarVerArchivos={setMostrarVerArchivos}
             onEnviarMensaje={() => setMostrarInfoContacto(false)}
             onAddToList={onAddToList}
+            onOpenCommonGroup={handleOpenCommonGroup}
+            presence={getPresenceInfo(chat.usuario_id)}
+            pinnedCount={pinnedMessages.length}
             onInfoLoaded={(data) => setContactoInfoArchivos(Array.isArray(data?.archivos) ? data.archivos : [])}
           />
         );
