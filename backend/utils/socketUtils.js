@@ -180,6 +180,10 @@ function getAllowedSocketOrigins() {
     "https://chatvista.click",
     "http://www.chatvista.click",
     "https://www.chatvista.click",
+    "http://chatquick.click",
+    "https://chatquick.click",
+    "http://www.chatquick.click",
+    "https://www.chatquick.click",
   ];
 
   const envOrigins = String(

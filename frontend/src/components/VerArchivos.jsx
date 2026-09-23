@@ -21,7 +21,7 @@ const MONTHS = [
   "DICIEMBRE",
 ];
 
-const VerArchivos = ({ chat, visible, onClose, embedded = false, loading = false, error = "" }) => {
+const VerArchivos = ({ chat, visible, onClose, embedded = false, loading = false, error = "", backLabel = "Volver" }) => {
   const [tabActiva, setTabActiva] = useState("multimedia");
   const [seleccionados, setSeleccionados] = useState([]);
 
@@ -241,8 +241,8 @@ const VerArchivos = ({ chat, visible, onClose, embedded = false, loading = false
             type="button"
             className="wa-files-back-btn"
             onClick={onClose}
-            title={embedded ? "Volver a Info. del grupo" : "Cerrar archivos"}
-            aria-label={embedded ? "Volver a Info. del grupo" : "Cerrar archivos"}
+            title={embedded ? backLabel : "Cerrar archivos"}
+            aria-label={embedded ? backLabel : "Cerrar archivos"}
           >
             <i className={`fa-solid ${embedded ? "fa-arrow-left" : "fa-xmark"}`} aria-hidden="true" />
           </button>

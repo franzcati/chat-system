@@ -3,11 +3,14 @@ const PORTAL_HOSTS = new Map([
   ["www.quickchat.click", "quickchat"],
   ["chatvista.click", "chatvista"],
   ["www.chatvista.click", "chatvista"],
+  ["chatquick.click", "chatquick"],
+  ["www.chatquick.click", "chatquick"],
 ]);
 
 const VALID_PORTAL_CODES = new Set([
   "quickchat",
   "chatvista",
+  "chatquick",
 ]);
 
 function normalizeHost(value) {

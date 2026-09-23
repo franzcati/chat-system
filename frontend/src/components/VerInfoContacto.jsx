@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import toast from "react-hot-toast";
 import { getAvatarUrl } from "../utils/url";
+import VerArchivos from "./VerArchivos";
 
 const BASE_URL = "";
 
@@ -59,7 +60,8 @@ const VerInfoContacto = ({
   visible,
   onClose,
   onBuscarEnChat,
-  onOpenFiles,
+  mostrarVerArchivos,
+  setMostrarVerArchivos,
   onEnviarMensaje,
   onAddToList,
   onInfoLoaded,
@@ -73,6 +75,7 @@ const VerInfoContacto = ({
     let cancelled = false;
 
     const cargarInfo = async () => {
+      setInfo(null);
       setLoading(true);
       try {
         const res = await fetch(`${BASE_URL}/api/chats/contacto-info/${user.id}/${chat.usuario_id}`);
@@ -120,6 +123,16 @@ const VerInfoContacto = ({
   return (
     <aside className={`wa-group-info-panel wa-contact-info-panel ${visible ? "is-open" : ""}`} aria-hidden={!visible}>
       <div className="wa-group-info-inner wa-contact-info-inner">
+        {mostrarVerArchivos ? (
+          <VerArchivos
+            chat={{ ...chat, archivos, enlaces: Array.isArray(chat?.enlaces) ? chat.enlaces : [] }}
+            visible
+            embedded
+            backLabel="Volver a Info. del contacto"
+            onClose={() => setMostrarVerArchivos?.(false)}
+          />
+        ) : (
+          <>
         <div className="wa-group-info-topbar wa-contact-info-topbar">
           <button type="button" className="wa-info-icon-btn" onClick={onClose} title="Cerrar">
             <i className="fa-solid fa-xmark" aria-hidden="true" />
@@ -165,7 +178,7 @@ const VerInfoContacto = ({
             <p className="wa-contact-bio">{estadoTexto}</p>
           </section>
 
-          <section className="wa-info-card wa-media-card" onClick={onOpenFiles}>
+          <section className="wa-info-card wa-media-card" onClick={() => setMostrarVerArchivos?.(true)}>
             <div className="wa-info-section-row">
               <div className="wa-info-section-title">
                 <i className="fa-regular fa-images" aria-hidden="true" />
@@ -265,6 +278,8 @@ const VerInfoContacto = ({
             </button>
           </section>
         </div>
+          </>
+        )}
       </div>
     </aside>
   );

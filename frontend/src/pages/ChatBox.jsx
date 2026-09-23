@@ -5,7 +5,6 @@ import ChatBody from "../components/ChatBody";
 import MiembrosGrupos from "../components/MiembrosGrupos";
 import VerInfoGrupo from "../components/VerInfoGrupo";
 import VerInfoContacto from "../components/VerInfoContacto";
-import VerArchivos from "../components/VerArchivos";
 import { useTheme } from "../context/ThemeContext";
 import socket from "../socket";
 import * as bootstrap from "bootstrap";
@@ -355,6 +354,8 @@ const ChatBox = ({ chat, user, setChat, onCloseChat, onVerPerfil, onAddToList, e
   const [offcanvasGrupo, setOffcanvasGrupo] = useState(null);
   const [mostrarInfoGrupo, setMostrarInfoGrupo] = useState(false);
   const [mostrarInfoContacto, setMostrarInfoContacto] = useState(false);
+  const [contactoInfoArchivos, setContactoInfoArchivos] = useState([]);
+  const [mostrarVerArchivos, setMostrarVerArchivos] = useState(false);
 
   useEffect(() => {
     if (typeof document === "undefined") return undefined;
@@ -364,15 +365,13 @@ const ChatBox = ({ chat, user, setChat, onCloseChat, onVerPerfil, onAddToList, e
 
     const shouldOpen =
       (chat?.tipo === "grupo" && mostrarInfoGrupo) ||
-      (chat?.tipo !== "grupo" && mostrarInfoContacto);
+      (chat?.tipo !== "grupo" && (mostrarInfoContacto || mostrarVerArchivos));
     host.classList.toggle("is-open-host", shouldOpen);
 
     return () => {
       host.classList.remove("is-open-host");
     };
-  }, [chat?.tipo, mostrarInfoGrupo, mostrarInfoContacto]);
-  const [contactoInfoArchivos, setContactoInfoArchivos] = useState([]);
-  const [mostrarVerArchivos, setMostrarVerArchivos] = useState(false);
+  }, [chat?.tipo, mostrarInfoGrupo, mostrarInfoContacto, mostrarVerArchivos]);
   const [mostrarMenuLlamada, setMostrarMenuLlamada] = useState(false);
   const [searchRequestToken, setSearchRequestToken] = useState(null);
   // 👇 referencia al último mensaje
@@ -4176,7 +4175,7 @@ const ChatBox = ({ chat, user, setChat, onCloseChat, onVerPerfil, onAddToList, e
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
     >
-      <div className={`container-fluid h-100 px-0 wa-chat-shell ${mostrarInfoContacto ? "is-info-open" : ""}`}>
+      <div className="container-fluid h-100 px-0 wa-chat-shell">
         <div className="wa-chat-conversation d-flex flex-column h-100 position-relative">
           {/* Header del chat */}
           <div className="chat-header wa-chat-header border-bottom">
@@ -5546,7 +5545,7 @@ const ChatBox = ({ chat, user, setChat, onCloseChat, onVerPerfil, onAddToList, e
               enlaces: sharedLinks,
             }}
             user={user}
-            visible={mostrarInfoContacto}
+            visible={mostrarInfoContacto || mostrarVerArchivos}
             onClose={() => {
               setMostrarInfoContacto(false);
               setMostrarVerArchivos(false);
@@ -5555,7 +5554,8 @@ const ChatBox = ({ chat, user, setChat, onCloseChat, onVerPerfil, onAddToList, e
               setMostrarInfoContacto(false);
               handleBuscarEnChat();
             }}
-            onOpenFiles={() => setMostrarVerArchivos(true)}
+            mostrarVerArchivos={mostrarVerArchivos}
+            setMostrarVerArchivos={setMostrarVerArchivos}
             onEnviarMensaje={() => setMostrarInfoContacto(false)}
             onAddToList={onAddToList}
             onInfoLoaded={(data) => setContactoInfoArchivos(Array.isArray(data?.archivos) ? data.archivos : [])}
@@ -5576,14 +5576,6 @@ const ChatBox = ({ chat, user, setChat, onCloseChat, onVerPerfil, onAddToList, e
         />
       )}
 
-      {/* 🔹 Panel de archivos de contactos. En grupos se reutiliza el MISMO panel lateral de Info. del grupo. */}
-      {chat?.tipo !== "grupo" && (
-        <VerArchivos
-          chat={{ ...chat, archivos: contactoInfoArchivos.length ? contactoInfoArchivos : chat?.archivos }}
-          visible={mostrarVerArchivos}
-          onClose={() => setMostrarVerArchivos(false)}
-        />
-      )}
       {isDragOver && (
         <div
           className="position-fixed top-0 start-0 w-100 h-100 d-flex align-items-center justify-content-center"

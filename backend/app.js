@@ -15,6 +15,10 @@ const defaultAllowedOrigins = [
   "https://chatvista.click",
   "http://www.chatvista.click",
   "https://www.chatvista.click",
+  "http://chatquick.click",
+  "https://chatquick.click",
+  "http://www.chatquick.click",
+  "https://www.chatquick.click",
   "http://localhost:5173",
   "http://127.0.0.1:5173",
 ];

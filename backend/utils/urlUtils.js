@@ -3,6 +3,8 @@ const OWN_UPLOAD_HOSTS = new Set([
   "www.quickchat.click",
   "chatvista.click",
   "www.chatvista.click",
+  "chatquick.click",
+  "www.chatquick.click",
 ]);
 
 const DEFAULT_PUBLIC_BASE_URL = "https://quickchat.click";
