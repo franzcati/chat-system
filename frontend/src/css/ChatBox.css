@@ -13426,7 +13426,7 @@ body.dark,
 :root[data-theme="dark"] .wa-messenger-root.active-tab-chat .chat-body {
   background-color: #020b20 !important;
   background-image:
-    linear-gradient(rgba(2,11,32,.75), rgba(2,11,32,.75)),
+    linear-gradient(rgba(2,11,32,.80), rgba(2,11,32,.80)),
     url("../assets/fondo_chat_oscuro.svg"),
     linear-gradient(135deg, #020818 0%, #03112b 52%, #041533 100%) !important;
   background-repeat: no-repeat, repeat, no-repeat !important;
