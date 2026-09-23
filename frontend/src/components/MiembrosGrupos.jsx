@@ -1,272 +1,329 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { getAvatarUrl } from "../utils/url";
 import { logDev } from "../utils/logger";
 
-const getInitials = (nombre = "", apellido = "") =>
-  (nombre?.charAt(0)?.toUpperCase() || "") +
-  (apellido?.charAt(0)?.toUpperCase() || "");
+const getInitials = (nombre = "", apellido = "") => {
+  const first = String(nombre || "").trim().charAt(0);
+  const last = String(apellido || "").trim().charAt(0);
+  return `${first}${last}`.trim().toUpperCase() || "U";
+};
 
 const MiembrosGrupos = ({ grupo, usuarioId, onClose }) => {
   const [usuarios, setUsuarios] = useState([]);
   const [grupoInfo, setGrupoInfo] = useState({ privacidad: "publico", rol: "miembro" });
+  const [miembrosActuales, setMiembrosActuales] = useState(new Set());
   const [seleccionados, setSeleccionados] = useState(new Set());
-  const [originalSeleccionados, setOriginalSeleccionados] = useState(new Set()); // 👈 Guarda el estado inicial
   const [searchTerm, setSearchTerm] = useState("");
-  const grupoId = grupo.id || grupo.grupo_id;
+  const [cargando, setCargando] = useState(false);
+  const [guardando, setGuardando] = useState(false);
+  const [errorCarga, setErrorCarga] = useState("");
+  const grupoId = grupo?.id || grupo?.grupo_id;
 
-  // 🔹 Cargar usuarios
   useEffect(() => {
-    if (!grupo || !usuarioId) return;
+    if (!grupoId || !usuarioId) return undefined;
+
+    const controller = new AbortController();
+    let cancelled = false;
+
     const fetchUsuarios = async () => {
+      setCargando(true);
+      setErrorCarga("");
+      setUsuarios([]);
+      setMiembrosActuales(new Set());
+      setSeleccionados(new Set());
+      setGrupoInfo({ privacidad: "publico", rol: "miembro" });
+
       try {
         const url = `/api/grupos/${grupoId}/usuarios-comunes/${usuarioId}`;
-        const res = await fetch(url);
+        const res = await fetch(url, { signal: controller.signal });
         const text = await res.text();
-        const data = JSON.parse(text);
+        const data = text ? JSON.parse(text) : {};
 
-        const seleccionInicial = new Set(
-          (data.usuarios || []).filter(u => u.en_grupo === 1).map(u => u.id)
+        if (!res.ok) {
+          throw new Error(data?.error || "No se pudieron cargar los contactos");
+        }
+
+        if (cancelled) return;
+
+        const listaUsuarios = Array.isArray(data?.usuarios) ? data.usuarios : [];
+        const idsMiembros = new Set(
+          listaUsuarios
+            .filter((usuario) => Number(usuario?.en_grupo) === 1)
+            .map((usuario) => Number(usuario.id))
         );
 
-        setUsuarios(data.usuarios || []);
-        setGrupoInfo(data.grupo || { privacidad: "publico", rol: "miembro" });
-        setSeleccionados(seleccionInicial);
-        setOriginalSeleccionados(new Set(seleccionInicial)); // 👈 Guarda copia original
+        setUsuarios(listaUsuarios);
+        setGrupoInfo(data?.grupo || { privacidad: "publico", rol: "miembro" });
+        setMiembrosActuales(idsMiembros);
       } catch (err) {
+        if (err?.name === "AbortError") return;
         console.error("❌ Error cargando usuarios:", err);
+        if (!cancelled) {
+          setUsuarios([]);
+          setMiembrosActuales(new Set());
+          setErrorCarga(err?.message || "No se pudieron cargar los contactos");
+        }
+      } finally {
+        if (!cancelled) setCargando(false);
       }
     };
+
     fetchUsuarios();
-  }, [grupo, usuarioId]);
+
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
+  }, [grupoId, usuarioId]);
+
+  useEffect(() => {
+    const handleKeyDown = (event) => {
+      if (event.key === "Escape" && !guardando) onClose?.();
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [guardando, onClose]);
+
+  const puedeAgregar = ["propietario", "admin"].includes(grupoInfo?.rol);
 
   const toggleSeleccion = (id) => {
+    const numericId = Number(id);
+    if (!puedeAgregar || miembrosActuales.has(numericId) || guardando) return;
+
     setSeleccionados((prev) => {
       const nuevo = new Set(prev);
-      if (nuevo.has(id)) nuevo.delete(id);
-      else nuevo.add(id);
+      if (nuevo.has(numericId)) nuevo.delete(numericId);
+      else nuevo.add(numericId);
       return nuevo;
     });
   };
 
   const handleAceptar = async () => {
+    if (!grupoId || !usuarioId || !puedeAgregar || seleccionados.size === 0 || guardando) return;
+
+    setGuardando(true);
+
     try {
-      const body = { miembros: Array.from(seleccionados), usuarioId };
+      // El endpoint actual reemplaza la lista de miembros. Para que este modal siga siendo
+      // exclusivamente de “Añadir miembro”, enviamos los miembros existentes + los nuevos.
+      const miembros = Array.from(new Set([
+        ...Array.from(miembrosActuales),
+        ...Array.from(seleccionados),
+      ]));
 
-      const res = await fetch(
-        `/api/grupos/${grupoId}/actualizar-miembros`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(body),
-        }
-      );
+      const res = await fetch(`/api/grupos/${grupoId}/actualizar-miembros`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ miembros, usuarioId }),
+      });
 
-      if (!res.ok) throw new Error("Error al actualizar miembros");
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data?.error || "Error al actualizar miembros");
 
-      const data = await res.json();
       logDev("✅ Miembros actualizados:", data);
-
-      // ✅ Mostrar una notificación suave (reemplaza alert)
-      // Puedes usar toastify, sweetalert2, o un pequeño aviso temporal si prefieres
       alert("✅ Miembros actualizados correctamente");
 
-      // 👇 Cierra el modal
       if (onClose) onClose();
-
     } catch (err) {
       console.error("❌ Error actualizando miembros:", err);
-      alert("❌ Ocurrió un error al actualizar los miembros");
+      alert(`❌ ${err?.message || "Ocurrió un error al actualizar los miembros"}`);
+    } finally {
+      setGuardando(false);
     }
   };
 
-   // 👇 Detecta si hubo cambios
-  const hayCambios = (() => {
-    if (seleccionados.size !== originalSeleccionados.size) return true;
-    for (let id of seleccionados) {
-      if (!originalSeleccionados.has(id)) return true;
-    }
-    return false;
-  })();
+  const usuariosFiltrados = useMemo(() => {
+    const needle = searchTerm.trim().toLowerCase();
+    if (!needle) return usuarios;
 
-  const usuariosFiltrados = usuarios.filter((m) =>
-    `${m.nombre} ${m.apellido}`.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+    return usuarios.filter((usuario) => {
+      const searchable = [
+        usuario?.nombre,
+        usuario?.apellido,
+        usuario?.correo,
+        usuario?.telefono,
+        usuario?.celular,
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+
+      return searchable.includes(needle);
+    });
+  }, [usuarios, searchTerm]);
+
+  const seleccionCount = seleccionados.size;
+  const seleccionLabel = `${seleccionCount} ${seleccionCount === 1 ? "seleccionado" : "seleccionados"}`;
 
   if (!grupo) return null;
 
   return (
-    <div
-      className="modal fade show d-block"
-      tabIndex="-1"
-      role="dialog"
-      style={{
-        backgroundColor: "rgba(0, 0, 0, 0.5)", // 👈 oscurece solo el fondo
-        zIndex: 1050, // asegura que quede encima del contenido
-      }}
-    >
-      <div 
-        className="modal-dialog modal-dialog-centered"
-        role="document"
-        style={{
-          width: "clamp(320px, 90%, 460px)", // 👈 se ajusta automáticamente
-        }}
+    <div className="wa-add-member-modal-backdrop" role="presentation" onMouseDown={(event) => {
+      if (event.target === event.currentTarget && !guardando) onClose?.();
+    }}>
+      <section
+        className="wa-add-member-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="wa-add-member-title"
+        onMouseDown={(event) => event.stopPropagation()}
       >
-        <div className="modal-content rounded-3 shadow-lg">
-          {/* Header */}
-          <div className="modal-header border-0 pb-0">
-            
-            <h5 className="modal-title fw-semibold">Añadir miembro</h5>
-            <button
-              type="button"
-              className="btn-close"
-              data-bs-dismiss="modal"
-              aria-label="Close"
-              onClick={onClose}
-            ></button>
+        <header className="wa-add-member-header">
+          <div className="wa-add-member-heading">
+            <span className="wa-add-member-heading-icon" aria-hidden="true">
+              <i className="fa-solid fa-user-plus" />
+            </span>
+            <div>
+              <h2 id="wa-add-member-title">Añadir miembro</h2>
+              <p>Busca y selecciona contactos para añadir al grupo</p>
+            </div>
           </div>
 
-          {/* Search */}
-          <div className="px-4 mt-6 mb-7">
+          <button
+            type="button"
+            className="wa-add-member-close"
+            aria-label="Cerrar"
+            title="Cerrar"
+            onClick={onClose}
+            disabled={guardando}
+          >
+            <i className="fa-solid fa-xmark" aria-hidden="true" />
+          </button>
+        </header>
+
+        <div className="wa-add-member-search-wrap">
+          <label className="wa-add-member-search" htmlFor="wa-add-member-search-input">
+            <i className="fa-solid fa-magnifying-glass" aria-hidden="true" />
             <input
-              type="text"
-              className="form-control form-control-lg rounded-pill border-2 border-success"
+              id="wa-add-member-search-input"
+              type="search"
               placeholder="Buscar un nombre o número"
               value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
+              onChange={(event) => setSearchTerm(event.target.value)}
+              autoComplete="off"
+              autoFocus
             />
-          </div>
+          </label>
+        </div>
 
-          {/* Body */}
-          <div
-            className="modal-body pt-0"
-            style={{ maxHeight: "60vh", overflowY: "auto" }}
-          >
-            <h6 className="text-muted small ms-2 mb-2">Contactos</h6>
-            <ul className="list-group list-group-flush">
-              {usuariosFiltrados.map((m) => {
-                const yaEnGrupo = seleccionados.has(m.id); // 👈 Saber si ya pertenece
+        <div className="wa-add-member-list-shell">
+          <div className="wa-add-member-list-label">Contactos</div>
+
+          <div className="wa-add-member-list" role="list">
+            {cargando ? (
+              <div className="wa-add-member-state" role="status">
+                <span className="wa-add-member-spinner" aria-hidden="true" />
+                <span>Cargando contactos…</span>
+              </div>
+            ) : errorCarga ? (
+              <div className="wa-add-member-state is-error" role="alert">
+                <i className="fa-solid fa-circle-exclamation" aria-hidden="true" />
+                <span>{errorCarga}</span>
+              </div>
+            ) : usuariosFiltrados.length === 0 ? (
+              <div className="wa-add-member-state">
+                <i className="fa-regular fa-user" aria-hidden="true" />
+                <span>No se encontraron contactos</span>
+              </div>
+            ) : (
+              usuariosFiltrados.map((usuario) => {
+                const id = Number(usuario.id);
+                const yaEnGrupo = Number(usuario?.en_grupo) === 1 || miembrosActuales.has(id);
+                const seleccionado = seleccionados.has(id);
+                const disabled = yaEnGrupo || !puedeAgregar || guardando;
+                const nombreCompleto = `${usuario?.nombre || ""} ${usuario?.apellido || ""}`.trim() || "Usuario";
 
                 return (
-                  <li key={m.id} className="list-group-item border-0 px-2 py-2">
-                    <div className="d-flex align-items-center">
-                      {/* ✅ Check primero */}
-                      <div className="me-3">
-                        <input
-                          type="checkbox"
-                          className="form-check-input border-success"
-                          style={{
-                            width: "18px",
-                            height: "18px",
-                            cursor: "pointer",
-                          }}
-                          checked={yaEnGrupo}
-                          onChange={() => toggleSeleccion(m.id)}
-                          disabled={
-                            grupoInfo.rol === "miembro" ||
-                            (grupoInfo.rol === "admin" && m.rol === "propietario")
-                          }
-                        />
-                      </div>
+                  <div
+                    key={usuario.id}
+                    className={`wa-add-member-row${seleccionado ? " is-selected" : ""}${yaEnGrupo ? " is-member" : ""}${disabled ? " is-disabled" : ""}`}
+                    role="listitem"
+                    onClick={() => !disabled && toggleSeleccion(id)}
+                  >
+                    <label className="wa-add-member-check-wrap" onClick={(event) => event.stopPropagation()}>
+                      <input
+                        type="checkbox"
+                        className="wa-add-member-check"
+                        checked={seleccionado}
+                        onChange={() => toggleSeleccion(id)}
+                        disabled={disabled}
+                        aria-label={yaEnGrupo ? `${nombreCompleto} ya forma parte del grupo` : `Seleccionar ${nombreCompleto}`}
+                      />
+                      <span className="wa-add-member-check-ui" aria-hidden="true">
+                        <i className="fa-solid fa-check" />
+                      </span>
+                    </label>
 
-                      {/* Avatar */}
-                      <div className="me-3 flex-shrink-0">
-                        {m.url_imagen ? (
-                          <img
-                            src={getAvatarUrl(m.url_imagen)}
-                            alt={m.nombre}
-                            className="rounded-circle"
-                            style={{ width: 40, height: 40, objectFit: "cover" }}
-                          />
-                        ) : (
-                          <div
-                            className="rounded-circle d-flex align-items-center justify-content-center text-white fw-bold"
-                            style={{
-                              width: "40px",
-                              height: "40px",
-                              background: m.background || "#6c757d",
-                              fontSize: "16px",
-                            }}
-                          >
-                            {getInitials(m.nombre)}
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Nombre y estado */}
-                      <div className="flex-grow-1 text-truncate">
-                        <strong
-                          className="d-block small"
-                          style={{ color: yaEnGrupo ? "" : "#000" }} // 👈 gris si ya está, negro si no
-                        >
-                          {m.nombre} {m.apellido}
-                        </strong>
-
-                        {yaEnGrupo ? (
-                          <em className="fst-italic text-muted small">Ya forma parte del grupo</em>
-                        ) : (
-                          <span className="small">
-                            {m.estado || "Disponible"}
-                          </span>
-                        )}
-                      </div>
+                    <div className="wa-add-member-avatar" aria-hidden="true">
+                      {usuario.url_imagen ? (
+                        <img src={getAvatarUrl(usuario.url_imagen)} alt="" />
+                      ) : (
+                        <span style={{ background: usuario.background || "#60758f" }}>
+                          {getInitials(usuario.nombre, usuario.apellido)}
+                        </span>
+                      )}
                     </div>
-                  </li>
+
+                    <div className="wa-add-member-user-copy">
+                      <strong>{nombreCompleto}</strong>
+                      {yaEnGrupo ? (
+                        <span className="wa-add-member-member-status">Ya forma parte del grupo</span>
+                      ) : (
+                        <span className="wa-add-member-available-status">
+                          <i aria-hidden="true" />
+                          {usuario.estado || "Disponible"}
+                        </span>
+                      )}
+                    </div>
+
+                    {yaEnGrupo && (
+                      <span className="wa-add-member-member-badge">En el grupo</span>
+                    )}
+                  </div>
                 );
-              })}
-            </ul>
-          </div>
-
-          
-          {/* Footer */}
-          <div className="modal-footer border-0 d-flex justify-content-end align-items-center gap-3">
-            <small className="text-muted">
-              {grupoInfo.privacidad === "publico"
-                ? "Todos los miembros pueden añadir a otras personas a este grupo."
-                : "Solo los administradores y el propietario pueden añadir a otras personas a este grupo."}
-            </small>
-
-            {/* 👇 Solo aparece si hay cambios */}
-            {hayCambios && (
-              <button
-                type="button"
-                className="rounded-circle d-flex align-items-center justify-content-center"
-                style={{
-                  width: "45px",
-                  height: "45px",
-                  padding: "0",
-                  borderRadius: "150%",
-                  backgroundColor: "#25D366",
-                  border: "none",
-                  transition: "background-color 0.2s ease-in-out, transform 0.15s",
-                  boxShadow: "0 2px 6px rgba(0,0,0,0.2)",
-                }}
-                onClick={handleAceptar}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.backgroundColor = "#20b955";
-                  e.currentTarget.style.transform = "scale(1.05)";
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.backgroundColor = "#25D366";
-                  e.currentTarget.style.transform = "scale(1)";
-                }}
-              >
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  viewBox="0 0 24 24"
-                  style={{ width: "50%", height: "50%" }}
-                  fill="none"
-                  stroke="white"
-                  strokeWidth="3"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
-                  <polyline points="20 6 9 17 4 12" />
-                </svg>
-              </button>
+              })
             )}
           </div>
         </div>
-      </div>
+
+        <div className="wa-add-member-helper-row">
+          <div className="wa-add-member-helper-copy">
+            <i className="fa-solid fa-circle-info" aria-hidden="true" />
+            <span>
+              {grupoInfo.privacidad === "publico"
+                ? "Todos los miembros pueden añadir a otras personas a este grupo."
+                : "Solo los administradores y el propietario pueden añadir a otras personas a este grupo."}
+            </span>
+          </div>
+          <strong>{seleccionLabel}</strong>
+        </div>
+
+        <footer className="wa-add-member-footer">
+          <button
+            type="button"
+            className="wa-add-member-cancel"
+            onClick={onClose}
+            disabled={guardando}
+          >
+            Cancelar
+          </button>
+
+          <button
+            type="button"
+            className="wa-add-member-submit"
+            onClick={handleAceptar}
+            disabled={!puedeAgregar || seleccionCount === 0 || cargando || guardando}
+          >
+            {guardando ? (
+              <span className="wa-add-member-submit-loading" aria-hidden="true" />
+            ) : (
+              <i className="fa-solid fa-user-plus" aria-hidden="true" />
+            )}
+            <span>{guardando ? "Añadiendo…" : "Añadir seleccionados"}</span>
+          </button>
+        </footer>
+      </section>
     </div>
   );
 };

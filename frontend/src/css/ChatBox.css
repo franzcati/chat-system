@@ -16592,3 +16592,739 @@ button.wa-contact-setting-row:hover {
     font-size: .66rem !important;
   }
 }
+
+/* =========================================================
+   QUICKCHAT 2026 · AÑADIR MIEMBRO PREMIUM V26
+   ---------------------------------------------------------
+   Scope exclusivo del modal de miembros de grupos.
+   Reutiliza la paleta azul/cyan/violeta del módulo Chat y
+   responde al mismo data-theme global, sin lógica paralela.
+   ========================================================= */
+.wa-messenger-root.active-tab-chat .wa-add-member-modal-backdrop {
+  --am-blue: var(--qc-chat-blue, #1498ff);
+  --am-violet: var(--qc-chat-violet, #7347ff);
+  --am-gradient: var(--qc-chat-gradient, linear-gradient(135deg, #16a7ff 0%, #2671ff 52%, #7b46ff 100%));
+  --am-panel: #f9fcff;
+  --am-panel-soft: #f3f8ff;
+  --am-row: rgba(255, 255, 255, .94);
+  --am-row-hover: #f6faff;
+  --am-row-selected: linear-gradient(90deg, rgba(28, 137, 255, .085), rgba(116, 71, 255, .055));
+  --am-border: rgba(91, 139, 205, .25);
+  --am-border-strong: rgba(45, 126, 255, .48);
+  --am-divider: rgba(100, 137, 188, .15);
+  --am-text: var(--qc-chat-text, #0c1a3b);
+  --am-muted: var(--qc-chat-muted, #66799d);
+  --am-muted-2: var(--qc-chat-muted-2, #93a2bc);
+  --am-shadow: 0 24px 70px rgba(25, 58, 107, .18);
+
+  position: fixed !important;
+  inset: 0 !important;
+  z-index: 2600 !important;
+  display: grid !important;
+  place-items: center !important;
+  padding: 18px !important;
+  background: rgba(7, 18, 38, .44) !important;
+  overflow: hidden !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-add-member-modal {
+  width: min(520px, calc(100vw - 28px)) !important;
+  height: min(830px, calc(100vh - 28px)) !important;
+  min-height: 0 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  overflow: hidden !important;
+  color: var(--am-text) !important;
+  background:
+    radial-gradient(circle at 12% 0%, rgba(25, 152, 255, .08), transparent 25%),
+    radial-gradient(circle at 88% 0%, rgba(116, 71, 255, .075), transparent 28%),
+    var(--am-panel) !important;
+  border: 1px solid var(--am-border-strong) !important;
+  border-radius: 24px !important;
+  box-shadow: var(--am-shadow) !important;
+  box-sizing: border-box !important;
+  font-family: "Sora", "Inter", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-add-member-header {
+  flex: 0 0 auto !important;
+  min-height: 86px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 14px !important;
+  padding: 17px 18px 10px !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-add-member-heading {
+  min-width: 0 !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 13px !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-add-member-heading-icon {
+  width: 48px !important;
+  height: 48px !important;
+  min-width: 48px !important;
+  display: grid !important;
+  place-items: center !important;
+  border-radius: 15px !important;
+  color: #fff !important;
+  background: var(--am-gradient) !important;
+  border: 1px solid rgba(74, 141, 255, .36) !important;
+  box-shadow: 0 9px 24px rgba(43, 108, 239, .18) !important;
+  font-size: 1.12rem !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-add-member-heading h2 {
+  margin: 0 !important;
+  color: var(--am-text) !important;
+  font-size: 1.10rem !important;
+  line-height: 1.2 !important;
+  font-weight: 850 !important;
+  letter-spacing: -.025em !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-add-member-heading p {
+  margin: 5px 0 0 !important;
+  color: var(--am-muted) !important;
+  font-size: .72rem !important;
+  line-height: 1.35 !important;
+  font-weight: 600 !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-add-member-close {
+  width: 38px !important;
+  height: 38px !important;
+  min-width: 38px !important;
+  display: grid !important;
+  place-items: center !important;
+  padding: 0 !important;
+  border-radius: 12px !important;
+  color: #58709a !important;
+  background: transparent !important;
+  border: 1px solid transparent !important;
+  font-size: 1rem !important;
+  transition: color .16s ease, background .16s ease, border-color .16s ease, transform .16s ease !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-add-member-close:hover:not(:disabled) {
+  color: #1b6dff !important;
+  background: rgba(36, 119, 255, .09) !important;
+  border-color: rgba(53, 125, 255, .19) !important;
+  transform: translateY(-1px) !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-add-member-close:disabled {
+  opacity: .55 !important;
+  cursor: wait !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-add-member-search-wrap {
+  flex: 0 0 auto !important;
+  padding: 4px 18px 14px !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-add-member-search {
+  height: 48px !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 11px !important;
+  padding: 0 15px !important;
+  color: #667a9e !important;
+  background: var(--am-panel-soft) !important;
+  border: 1px solid var(--am-border) !important;
+  border-radius: 15px !important;
+  transition: border-color .16s ease, box-shadow .16s ease, background .16s ease !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-add-member-search:focus-within {
+  color: var(--am-blue) !important;
+  background: var(--am-row) !important;
+  border-color: var(--am-border-strong) !important;
+  box-shadow: 0 0 0 3px rgba(38, 113, 255, .09) !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-add-member-search i {
+  flex: 0 0 auto !important;
+  font-size: .92rem !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-add-member-search input {
+  width: 100% !important;
+  min-width: 0 !important;
+  height: 100% !important;
+  padding: 0 !important;
+  color: var(--am-text) !important;
+  background: transparent !important;
+  border: 0 !important;
+  outline: 0 !important;
+  box-shadow: none !important;
+  font: inherit !important;
+  font-size: .78rem !important;
+  font-weight: 620 !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-add-member-search input::placeholder {
+  color: var(--am-muted-2) !important;
+  opacity: 1 !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-add-member-search input::-webkit-search-cancel-button {
+  cursor: pointer !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-add-member-list-shell {
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  margin: 0 18px !important;
+  overflow: hidden !important;
+  background: var(--am-row) !important;
+  border: 1px solid var(--am-border) !important;
+  border-radius: 16px !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-add-member-list-label {
+  flex: 0 0 auto !important;
+  padding: 11px 14px 8px !important;
+  color: var(--am-muted) !important;
+  font-size: .69rem !important;
+  font-weight: 760 !important;
+  letter-spacing: .01em !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-add-member-list {
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
+  overscroll-behavior: contain !important;
+  padding: 0 8px 8px !important;
+  scrollbar-width: thin !important;
+  scrollbar-color: rgba(80, 124, 181, .34) transparent !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-add-member-list::-webkit-scrollbar {
+  width: 7px !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-add-member-list::-webkit-scrollbar-track {
+  background: transparent !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-add-member-list::-webkit-scrollbar-thumb {
+  min-height: 44px !important;
+  border-radius: 999px !important;
+  background: rgba(80, 124, 181, .30) !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-add-member-row {
+  min-height: 57px !important;
+  display: grid !important;
+  grid-template-columns: 28px 42px minmax(0, 1fr) auto !important;
+  align-items: center !important;
+  gap: 10px !important;
+  padding: 5px 10px !important;
+  color: var(--am-text) !important;
+  background: transparent !important;
+  border-bottom: 1px solid var(--am-divider) !important;
+  border-radius: 11px !important;
+  cursor: pointer !important;
+  transition: background .14s ease, border-color .14s ease !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-add-member-row:last-child {
+  border-bottom-color: transparent !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-add-member-row:not(.is-disabled):hover {
+  background: var(--am-row-hover) !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-add-member-row.is-selected {
+  background: var(--am-row-selected) !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-add-member-row.is-member {
+  cursor: default !important;
+  background: transparent !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-add-member-check-wrap {
+  width: 26px !important;
+  height: 26px !important;
+  display: grid !important;
+  place-items: center !important;
+  margin: 0 !important;
+  cursor: inherit !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-add-member-check {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-add-member-check-ui {
+  width: 21px !important;
+  height: 21px !important;
+  display: grid !important;
+  place-items: center !important;
+  border-radius: 6px !important;
+  color: transparent !important;
+  background: transparent !important;
+  border: 1.5px solid rgba(75, 123, 184, .62) !important;
+  font-size: .66rem !important;
+  transition: background .14s ease, border-color .14s ease, color .14s ease, box-shadow .14s ease !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-add-member-check:focus-visible + .wa-add-member-check-ui {
+  box-shadow: 0 0 0 3px rgba(31, 116, 255, .16) !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-add-member-check:checked + .wa-add-member-check-ui {
+  color: #fff !important;
+  background: #1f79ff !important;
+  border-color: #1f79ff !important;
+  box-shadow: 0 5px 12px rgba(27, 105, 242, .20) !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-add-member-check:disabled + .wa-add-member-check-ui {
+  color: transparent !important;
+  background: rgba(127, 147, 177, .10) !important;
+  border-color: rgba(114, 138, 175, .22) !important;
+  box-shadow: none !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-add-member-avatar {
+  width: 40px !important;
+  height: 40px !important;
+  min-width: 40px !important;
+  overflow: hidden !important;
+  border-radius: 999px !important;
+  background: #6b7e99 !important;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .18) !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-add-member-avatar img,
+.wa-messenger-root.active-tab-chat .wa-add-member-avatar span {
+  width: 100% !important;
+  height: 100% !important;
+  display: grid !important;
+  place-items: center !important;
+  object-fit: cover !important;
+  color: #fff !important;
+  font-size: .76rem !important;
+  font-weight: 850 !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-add-member-user-copy {
+  min-width: 0 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  justify-content: center !important;
+  gap: 3px !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-add-member-user-copy strong {
+  min-width: 0 !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+  color: var(--am-text) !important;
+  font-size: .75rem !important;
+  line-height: 1.25 !important;
+  font-weight: 820 !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-add-member-available-status,
+.wa-messenger-root.active-tab-chat .wa-add-member-member-status {
+  min-width: 0 !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+  color: var(--am-muted) !important;
+  font-size: .67rem !important;
+  line-height: 1.25 !important;
+  font-weight: 610 !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-add-member-available-status {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 6px !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-add-member-available-status i {
+  width: 8px !important;
+  height: 8px !important;
+  min-width: 8px !important;
+  border-radius: 999px !important;
+  background: #17ca7d !important;
+  box-shadow: 0 0 0 2px rgba(23, 202, 125, .10) !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-add-member-member-status {
+  color: var(--am-muted-2) !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-add-member-member-badge {
+  max-width: 98px !important;
+  padding: 5px 9px !important;
+  border-radius: 999px !important;
+  color: #3e5884 !important;
+  background: rgba(83, 121, 184, .09) !important;
+  border: 1px solid rgba(83, 121, 184, .17) !important;
+  font-size: .61rem !important;
+  line-height: 1 !important;
+  font-weight: 760 !important;
+  white-space: nowrap !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-add-member-state {
+  min-height: 180px !important;
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 10px !important;
+  padding: 24px !important;
+  color: var(--am-muted) !important;
+  text-align: center !important;
+  font-size: .74rem !important;
+  font-weight: 650 !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-add-member-state > i {
+  color: var(--am-blue) !important;
+  font-size: 1.25rem !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-add-member-state.is-error > i {
+  color: #ea5b6b !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-add-member-spinner,
+.wa-messenger-root.active-tab-chat .wa-add-member-submit-loading {
+  display: inline-block !important;
+  border-radius: 999px !important;
+  border-style: solid !important;
+  animation: wa-add-member-spin .75s linear infinite !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-add-member-spinner {
+  width: 24px !important;
+  height: 24px !important;
+  border-width: 2px !important;
+  border-color: rgba(38, 113, 255, .16) !important;
+  border-top-color: var(--am-blue) !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-add-member-helper-row {
+  flex: 0 0 auto !important;
+  min-height: 58px !important;
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) auto !important;
+  align-items: center !important;
+  gap: 12px !important;
+  padding: 10px 18px 9px !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-add-member-helper-copy {
+  min-width: 0 !important;
+  display: flex !important;
+  align-items: flex-start !important;
+  gap: 8px !important;
+  color: var(--am-muted) !important;
+  font-size: .64rem !important;
+  line-height: 1.35 !important;
+  font-weight: 600 !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-add-member-helper-copy i {
+  flex: 0 0 auto !important;
+  margin-top: 1px !important;
+  color: var(--am-blue) !important;
+  font-size: .80rem !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-add-member-helper-row > strong {
+  color: var(--am-muted) !important;
+  font-size: .67rem !important;
+  font-weight: 750 !important;
+  white-space: nowrap !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-add-member-footer {
+  flex: 0 0 auto !important;
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.16fr) !important;
+  gap: 10px !important;
+  padding: 0 18px 17px !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-add-member-cancel,
+.wa-messenger-root.active-tab-chat .wa-add-member-submit {
+  min-width: 0 !important;
+  height: 46px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 8px !important;
+  padding: 0 14px !important;
+  border-radius: 13px !important;
+  font: inherit !important;
+  font-size: .75rem !important;
+  line-height: 1 !important;
+  font-weight: 800 !important;
+  transition: transform .16s ease, border-color .16s ease, background .16s ease, box-shadow .16s ease, opacity .16s ease !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-add-member-cancel {
+  color: var(--am-text) !important;
+  background: transparent !important;
+  border: 1px solid var(--am-border) !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-add-member-cancel:hover:not(:disabled) {
+  background: var(--am-row-hover) !important;
+  border-color: var(--am-border-strong) !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-add-member-submit {
+  color: #fff !important;
+  background: var(--am-gradient) !important;
+  border: 1px solid rgba(80, 122, 255, .55) !important;
+  box-shadow: 0 9px 22px rgba(44, 100, 235, .20) !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-add-member-submit:hover:not(:disabled) {
+  transform: translateY(-1px) !important;
+  box-shadow: 0 11px 25px rgba(51, 99, 238, .27) !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-add-member-submit:disabled,
+.wa-messenger-root.active-tab-chat .wa-add-member-cancel:disabled {
+  cursor: not-allowed !important;
+  opacity: .50 !important;
+  transform: none !important;
+  box-shadow: none !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-add-member-submit-loading {
+  width: 15px !important;
+  height: 15px !important;
+  border-width: 2px !important;
+  border-color: rgba(255,255,255,.34) !important;
+  border-top-color: #fff !important;
+}
+
+@keyframes wa-add-member-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* DARK: misma estructura, sin bloques blancos dentro de la lista. */
+:root[data-theme="dark"] .wa-messenger-root.active-tab-chat .wa-add-member-modal-backdrop {
+  --am-panel: #06162d;
+  --am-panel-soft: #081b36;
+  --am-row: #081b36;
+  --am-row-hover: #0b2343;
+  --am-row-selected: linear-gradient(90deg, rgba(20, 121, 255, .18), rgba(111, 65, 255, .11));
+  --am-border: rgba(36, 126, 238, .35);
+  --am-border-strong: rgba(46, 135, 255, .72);
+  --am-divider: rgba(64, 118, 183, .20);
+  --am-text: #f5f8ff;
+  --am-muted: #9eb1d0;
+  --am-muted-2: #6e84a8;
+  --am-shadow: 0 26px 78px rgba(0, 0, 0, .50);
+
+  background: rgba(0, 7, 19, .72) !important;
+}
+
+:root[data-theme="dark"] .wa-messenger-root.active-tab-chat .wa-add-member-modal {
+  background:
+    radial-gradient(circle at 12% 0%, rgba(15, 142, 255, .12), transparent 25%),
+    radial-gradient(circle at 88% 0%, rgba(116, 67, 255, .13), transparent 28%),
+    var(--am-panel) !important;
+  border-color: rgba(35, 125, 250, .62) !important;
+  box-shadow:
+    0 26px 78px rgba(0, 0, 0, .52),
+    0 0 0 1px rgba(91, 67, 255, .08),
+    0 0 28px rgba(19, 102, 240, .08) !important;
+}
+
+:root[data-theme="dark"] .wa-messenger-root.active-tab-chat .wa-add-member-heading-icon {
+  background: linear-gradient(135deg, rgba(8, 151, 255, .24), rgba(90, 54, 255, .26)) !important;
+  border-color: rgba(28, 126, 255, .38) !important;
+  box-shadow: 0 8px 20px rgba(12, 78, 188, .18) !important;
+}
+
+:root[data-theme="dark"] .wa-messenger-root.active-tab-chat .wa-add-member-heading-icon i {
+  color: #25b9ff !important;
+  filter: drop-shadow(0 0 8px rgba(30, 160, 255, .24)) !important;
+}
+
+:root[data-theme="dark"] .wa-messenger-root.active-tab-chat .wa-add-member-close {
+  color: #b8c7df !important;
+}
+
+:root[data-theme="dark"] .wa-messenger-root.active-tab-chat .wa-add-member-close:hover:not(:disabled) {
+  color: #fff !important;
+  background: rgba(34, 111, 235, .12) !important;
+  border-color: rgba(45, 124, 239, .25) !important;
+}
+
+:root[data-theme="dark"] .wa-messenger-root.active-tab-chat .wa-add-member-search {
+  color: #9bb2d3 !important;
+  background: #071a34 !important;
+  border-color: rgba(45, 124, 230, .43) !important;
+}
+
+:root[data-theme="dark"] .wa-messenger-root.active-tab-chat .wa-add-member-search:focus-within {
+  color: #35b9ff !important;
+  background: #081d39 !important;
+  border-color: rgba(35, 139, 255, .78) !important;
+  box-shadow: 0 0 0 3px rgba(23, 117, 255, .11) !important;
+}
+
+:root[data-theme="dark"] .wa-messenger-root.active-tab-chat .wa-add-member-list-shell {
+  background: rgba(7, 24, 48, .92) !important;
+  border-color: rgba(42, 117, 214, .38) !important;
+}
+
+:root[data-theme="dark"] .wa-messenger-root.active-tab-chat .wa-add-member-list::-webkit-scrollbar-thumb {
+  background: rgba(125, 145, 176, .50) !important;
+}
+
+:root[data-theme="dark"] .wa-messenger-root.active-tab-chat .wa-add-member-row:not(.is-disabled):hover {
+  background: rgba(20, 72, 127, .18) !important;
+}
+
+:root[data-theme="dark"] .wa-messenger-root.active-tab-chat .wa-add-member-check-ui {
+  border-color: rgba(129, 174, 230, .78) !important;
+}
+
+:root[data-theme="dark"] .wa-messenger-root.active-tab-chat .wa-add-member-check:checked + .wa-add-member-check-ui {
+  background: #1479ff !important;
+  border-color: #2c8cff !important;
+  box-shadow: 0 0 0 2px rgba(20, 121, 255, .12) !important;
+}
+
+:root[data-theme="dark"] .wa-messenger-root.active-tab-chat .wa-add-member-check:disabled + .wa-add-member-check-ui {
+  background: rgba(83, 112, 151, .10) !important;
+  border-color: rgba(92, 122, 160, .40) !important;
+}
+
+:root[data-theme="dark"] .wa-messenger-root.active-tab-chat .wa-add-member-member-badge {
+  color: #bfd0ee !important;
+  background: rgba(82, 112, 169, .18) !important;
+  border-color: rgba(92, 130, 199, .28) !important;
+}
+
+:root[data-theme="dark"] .wa-messenger-root.active-tab-chat .wa-add-member-cancel {
+  color: #f0f5ff !important;
+  background: rgba(6, 24, 47, .72) !important;
+  border-color: rgba(46, 126, 230, .48) !important;
+}
+
+:root[data-theme="dark"] .wa-messenger-root.active-tab-chat .wa-add-member-cancel:hover:not(:disabled) {
+  background: rgba(10, 43, 83, .82) !important;
+  border-color: rgba(48, 142, 255, .66) !important;
+}
+
+/* Responsive: el header y footer conservan tamaño; solo cede la lista. */
+@media (max-width: 768px) {
+  .wa-messenger-root.active-tab-chat .wa-add-member-modal-backdrop {
+    padding: 10px !important;
+  }
+
+  .wa-messenger-root.active-tab-chat .wa-add-member-modal {
+    width: min(500px, calc(100vw - 16px)) !important;
+    height: min(760px, calc(100vh - 16px)) !important;
+    border-radius: 20px !important;
+  }
+
+  .wa-messenger-root.active-tab-chat .wa-add-member-header {
+    min-height: 76px !important;
+    padding: 13px 14px 8px !important;
+  }
+
+  .wa-messenger-root.active-tab-chat .wa-add-member-heading-icon {
+    width: 43px !important;
+    height: 43px !important;
+    min-width: 43px !important;
+    border-radius: 13px !important;
+  }
+
+  .wa-messenger-root.active-tab-chat .wa-add-member-heading h2 {
+    font-size: 1rem !important;
+  }
+
+  .wa-messenger-root.active-tab-chat .wa-add-member-heading p {
+    font-size: .67rem !important;
+  }
+
+  .wa-messenger-root.active-tab-chat .wa-add-member-search-wrap {
+    padding: 4px 14px 11px !important;
+  }
+
+  .wa-messenger-root.active-tab-chat .wa-add-member-list-shell {
+    margin-inline: 14px !important;
+  }
+
+  .wa-messenger-root.active-tab-chat .wa-add-member-helper-row {
+    padding-inline: 14px !important;
+  }
+
+  .wa-messenger-root.active-tab-chat .wa-add-member-footer {
+    padding: 0 14px 14px !important;
+  }
+}
+
+@media (max-width: 460px) {
+  .wa-messenger-root.active-tab-chat .wa-add-member-row {
+    grid-template-columns: 26px 38px minmax(0, 1fr) !important;
+    gap: 8px !important;
+  }
+
+  .wa-messenger-root.active-tab-chat .wa-add-member-avatar {
+    width: 36px !important;
+    height: 36px !important;
+    min-width: 36px !important;
+  }
+
+  .wa-messenger-root.active-tab-chat .wa-add-member-member-badge {
+    grid-column: 3 !important;
+    justify-self: start !important;
+    margin-top: -2px !important;
+  }
+
+  .wa-messenger-root.active-tab-chat .wa-add-member-helper-row {
+    grid-template-columns: 1fr !important;
+    gap: 4px !important;
+  }
+
+  .wa-messenger-root.active-tab-chat .wa-add-member-helper-row > strong {
+    padding-left: 21px !important;
+  }
+
+  .wa-messenger-root.active-tab-chat .wa-add-member-footer {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wa-messenger-root.active-tab-chat .wa-add-member-modal-backdrop *,
+  .wa-messenger-root.active-tab-chat .wa-add-member-modal-backdrop *::before,
+  .wa-messenger-root.active-tab-chat .wa-add-member-modal-backdrop *::after {
+    scroll-behavior: auto !important;
+    transition-duration: .01ms !important;
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}
