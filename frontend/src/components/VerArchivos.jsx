@@ -1,345 +1,426 @@
-import React, { useMemo, useState } from "react";
-import { toLocalDate } from "../utils/date"; // 👈 importa tu función
+import React, { useEffect, useMemo, useState } from "react";
+import { toLocalDate } from "../utils/date";
 import { getAvatarUrl } from "../utils/url";
 
-const VerArchivos = ({ chat, visible, onClose, embedded = false }) => {
+const IMAGE_RE = /\.(avif|bmp|gif|jpe?g|png|webp)(?:$|[?#])/i;
+const VIDEO_RE = /\.(m4v|mov|mp4|mpeg|mpg|webm)(?:$|[?#])/i;
+const DOC_RE = /\.(docx?|pdf|pptx?|rar|rtf|txt|xlsx?|zip)(?:$|[?#])/i;
+
+const MONTHS = [
+  "ENERO",
+  "FEBRERO",
+  "MARZO",
+  "ABRIL",
+  "MAYO",
+  "JUNIO",
+  "JULIO",
+  "AGOSTO",
+  "SEPTIEMBRE",
+  "OCTUBRE",
+  "NOVIEMBRE",
+  "DICIEMBRE",
+];
+
+const VerArchivos = ({ chat, visible, onClose, embedded = false, loading = false, error = "" }) => {
   const [tabActiva, setTabActiva] = useState("multimedia");
   const [seleccionados, setSeleccionados] = useState([]);
 
-  // 🔹 Normalizar URL de archivos
+  const chatKey = chat?.grupo_id || chat?.usuario_id || chat?.id || "chat";
+
+  useEffect(() => {
+    setTabActiva("multimedia");
+    setSeleccionados([]);
+  }, [chatKey]);
+
   const fixUrl = (url = "") => {
     if (!url) return "";
 
-    // 1) URLs absolutas: si son del sistema, se ajustan al dominio actual.
     if (/^https?:\/\//i.test(url)) {
       return getAvatarUrl(url) || url.replace("http://", "https://");
     }
 
-    // 2) Viejas rutas con /api/uploads → quitar /api
     if (url.startsWith("/api/uploads/")) {
-      return getAvatarUrl(url.replace("/api", "")) || url.replace("/api", ""); // => /uploads/...
+      return getAvatarUrl(url.replace("/api", "")) || url.replace("/api", "");
     }
 
-    // 3) Ruta correcta /uploads/...
     if (url.startsWith("/uploads/")) {
       return getAvatarUrl(url) || url;
     }
 
-    // 4) Ruta sin slash inicial: "uploads/..."
     if (url.startsWith("uploads/")) {
       return getAvatarUrl(`/${url}`) || `/${url}`;
     }
 
-    // 5) Cualquier otro caso raro, la devolvemos tal cual
     return url;
   };
 
-  const imagenes =
-    chat.archivos?.filter((a) =>
-      /\.(jpg|jpeg|png|gif)$/i.test(a.archivo_url)
-    ) || [];
+  const allFiles = useMemo(
+    () => (Array.isArray(chat?.archivos) ? chat.archivos : []),
+    [chat?.archivos]
+  );
 
-  // 🔹 Filtrar solo archivos tipo documento (no imágenes ni videos)
-  const documentos =
-    chat.archivos?.filter((a) =>
-      /\.(pdf|docx?|xlsx?|zip|rar|txt)$/i.test(a.archivo_url)
-    ) || [];
-
-   // 🔹 Obtener nombre del mes (en español) o “ESTE MES”
-  const getMesNombre = (fechaEnvio) => {
-    const meses = [
-      "ENERO", "FEBRERO", "MARZO", "ABRIL", "MAYO", "JUNIO",
-      "JULIO", "AGOSTO", "SEPTIEMBRE", "OCTUBRE", "NOVIEMBRE", "DICIEMBRE"
-    ];
-
-    const fecha = toLocalDate(fechaEnvio);
-    if (!fecha || isNaN(fecha.getTime())) return "DESCONOCIDO";
-
-    const mes = fecha.getMonth();
-    const año = fecha.getFullYear();
-
-    const hoy = new Date();
-    const mesActual = hoy.getMonth();
-    const añoActual = hoy.getFullYear();
-
-    if (mes === mesActual && año === añoActual) return "ESTE MES";
-    return meses[mes];
+  const isImage = (file = {}) => {
+    const mime = String(file.tipo_archivo || file.mime || "").toLowerCase();
+    return mime.startsWith("image/") || IMAGE_RE.test(file.archivo_url || file.nombre_archivo || "");
   };
 
-  // 🔹 Agrupar imágenes por mes
-  const imagenesPorMes = useMemo(() => {
-    const grupos = {};
+  const isVideo = (file = {}) => {
+    const mime = String(file.tipo_archivo || file.mime || "").toLowerCase();
+    return mime.startsWith("video/") || VIDEO_RE.test(file.archivo_url || file.nombre_archivo || "");
+  };
 
-    imagenes.forEach((img) => {
-      const mes = getMesNombre(img.fecha_envio);
-      if (!grupos[mes]) grupos[mes] = [];
-      grupos[mes].push(img);
+  const isDocument = (file = {}) => {
+    if (isImage(file) || isVideo(file)) return false;
+    const mime = String(file.tipo_archivo || file.mime || "").toLowerCase();
+    if (mime && !mime.startsWith("image/") && !mime.startsWith("video/") && !mime.startsWith("audio/")) {
+      return true;
+    }
+    return DOC_RE.test(file.archivo_url || file.nombre_archivo || "");
+  };
+
+  const multimedia = useMemo(
+    () => allFiles.filter((file) => isImage(file) || isVideo(file)),
+    [allFiles]
+  );
+
+  const documentos = useMemo(
+    () => allFiles.filter(isDocument),
+    [allFiles]
+  );
+
+  const enlaces = useMemo(() => {
+    const raw = Array.isArray(chat?.enlaces) ? chat.enlaces : [];
+    return raw.filter(Boolean);
+  }, [chat?.enlaces]);
+
+  const getFileDate = (item = {}) =>
+    toLocalDate(item.fecha_envio || item.fecha || item.created_at || item.fecha_creacion);
+
+  const groupByMonth = (items) => {
+    const now = new Date();
+    const currentKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+    const groups = new Map();
+
+    items.forEach((item) => {
+      const date = getFileDate(item);
+      const valid = date && !Number.isNaN(date.getTime());
+      const year = valid ? date.getFullYear() : 0;
+      const month = valid ? date.getMonth() : -1;
+      const key = valid ? `${year}-${String(month + 1).padStart(2, "0")}` : "unknown";
+
+      if (!groups.has(key)) groups.set(key, { key, year, month, items: [] });
+      groups.get(key).items.push(item);
     });
 
-    // Ordenar meses (ESTE MES primero)
-    const mesesOrden = Object.keys(grupos).sort((a, b) => {
-      if (a === "ESTE MES") return -1;
-      if (b === "ESTE MES") return 1;
+    return [...groups.values()]
+      .sort((a, b) => {
+        if (a.key === "unknown") return 1;
+        if (b.key === "unknown") return -1;
+        return b.key.localeCompare(a.key);
+      })
+      .map((group) => {
+        let label = "SIN FECHA";
+        if (group.key === currentKey) {
+          label = "ESTE MES";
+        } else if (group.month >= 0) {
+          label = MONTHS[group.month];
+          if (group.year !== now.getFullYear()) label += ` ${group.year}`;
+        }
 
-      const meses = {
-        ENERO: 0, FEBRERO: 1, MARZO: 2, ABRIL: 3, MAYO: 4, JUNIO: 5,
-        JULIO: 6, AGOSTO: 7, SEPTIEMBRE: 8, OCTUBRE: 9, NOVIEMBRE: 10, DICIEMBRE: 11,
-      };
-      return meses[b] - meses[a]; // más reciente primero
-    });
+        return {
+          ...group,
+          label,
+          items: [...group.items].sort((a, b) => {
+            const aDate = getFileDate(a)?.getTime() || 0;
+            const bDate = getFileDate(b)?.getTime() || 0;
+            return bDate - aDate;
+          }),
+        };
+      });
+  };
 
-    return mesesOrden.map((mes) => ({
-      mes,
-      archivos: grupos[mes],
-    }));
-  }, [imagenes]);
+  const multimediaPorMes = useMemo(() => groupByMonth(multimedia), [multimedia]);
+  const documentosPorMes = useMemo(() => groupByMonth(documentos), [documentos]);
+  const enlacesPorMes = useMemo(() => groupByMonth(enlaces), [enlaces]);
 
-   // 🔹 Agrupar documentos por mes
-  const documentosPorMes = useMemo(() => {
-    const grupos = {};
-    documentos.forEach((doc) => {
-      const mes = getMesNombre(doc.fecha_envio);
-      if (!grupos[mes]) grupos[mes] = [];
-      grupos[mes].push(doc);
-    });
-
-    const mesesOrden = Object.keys(grupos).sort((a, b) => {
-      if (a === "ESTE MES") return -1;
-      if (b === "ESTE MES") return 1;
-      const orden = {
-        ENERO: 0, FEBRERO: 1, MARZO: 2, ABRIL: 3, MAYO: 4, JUNIO: 5,
-        JULIO: 6, AGOSTO: 7, SEPTIEMBRE: 8, OCTUBRE: 9, NOVIEMBRE: 10, DICIEMBRE: 11
-      };
-      return orden[b] - orden[a];
-    });
-
-    return mesesOrden.map((mes) => ({ mes, archivos: grupos[mes] }));
-  }, [documentos]);
-
-   // ✅ Manejo selección de documentos
   const toggleSeleccion = (id) => {
     setSeleccionados((prev) =>
-      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+      prev.includes(id) ? prev.filter((value) => value !== id) : [...prev, id]
     );
   };
 
   const handleDescargar = async (urlArchivo, nombreLimpio) => {
     try {
       const response = await fetch(urlArchivo);
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const blob = await response.blob();
       const url = window.URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = nombreLimpio;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = nombreLimpio || "archivo";
+      document.body.appendChild(anchor);
+      anchor.click();
+      document.body.removeChild(anchor);
       window.URL.revokeObjectURL(url);
     } catch (error) {
       console.error("❌ Error al descargar:", error);
-      alert("Error al intentar descargar el archivo.");
+      window.open(urlArchivo, "_blank", "noopener,noreferrer");
     }
   };
 
+  const openMedia = (file) => {
+    const url = fixUrl(file?.archivo_url);
+    if (!url) return;
+    window.open(url, "_blank", "noopener,noreferrer");
+  };
+
+  const cleanFileName = (file = {}) => {
+    const raw = file.nombre_archivo || String(file.archivo_url || "").split("/").pop() || "Archivo";
+    return String(raw).replace(/^\d+_/, "");
+  };
+
+  const formatDate = (value) => {
+    const date = toLocalDate(value);
+    if (!date || Number.isNaN(date.getTime())) return "";
+    return date.toLocaleDateString("es-PE", {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+    });
+  };
+
+  const formatBytes = (value) => {
+    const bytes = Number(value);
+    if (!Number.isFinite(bytes) || bytes <= 0) return "";
+    const units = ["B", "KB", "MB", "GB"];
+    const index = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
+    const amount = bytes / 1024 ** index;
+    return `${amount >= 10 || index === 0 ? amount.toFixed(0) : amount.toFixed(1)} ${units[index]}`;
+  };
+
+  const documentKind = (file = {}) => {
+    const name = cleanFileName(file).toLowerCase();
+    const mime = String(file.tipo_archivo || "").toLowerCase();
+    if (name.endsWith(".pdf") || mime.includes("pdf")) return { label: "PDF", className: "pdf", icon: "fa-file-pdf" };
+    if (/\.docx?$/.test(name) || mime.includes("word")) return { label: "DOC", className: "word", icon: "fa-file-word" };
+    if (/\.xlsx?$/.test(name) || mime.includes("sheet") || mime.includes("excel")) return { label: "XLS", className: "excel", icon: "fa-file-excel" };
+    if (/\.zip$|\.rar$/.test(name) || mime.includes("zip") || mime.includes("rar")) return { label: "ZIP", className: "archive", icon: "fa-file-zipper" };
+    if (/\.txt$/.test(name) || mime.includes("text")) return { label: "TXT", className: "text", icon: "fa-file-lines" };
+    return { label: "FILE", className: "generic", icon: "fa-file" };
+  };
+
+  const groupName = chat?.usuario_nombre || chat?.nombre || chat?.nombre_grupo || "Chat";
+  const memberCount = Array.isArray(chat?.miembros)
+    ? chat.miembros.length
+    : Number(chat?.cantidad_miembros || chat?.miembros_count || 0);
+
+  const renderEmpty = (type) => {
+    const data = {
+      multimedia: ["fa-images", "No hay archivos multimedia compartidos"],
+      documentos: ["fa-file-lines", "No hay documentos compartidos"],
+      enlaces: ["fa-link", "No hay enlaces compartidos"],
+    }[type];
+
+    return (
+      <div className="wa-files-empty">
+        <span className="wa-files-empty-icon"><i className={`fa-solid ${data[0]}`} aria-hidden="true" /></span>
+        <strong>{data[1]}</strong>
+        <span>Cuando se compartan elementos en este chat, aparecerán aquí.</span>
+      </div>
+    );
+  };
+
   return (
-    <div
-      className={
-        embedded
-          ? `wa-files-panel-inline ${visible ? "is-visible" : ""}`
-          : `fixed top-0 right-0 h-full bg-white shadow-lg border-l border-gray-200 transition-transform duration-300 ease-in-out z-50 ${
-              visible ? "translate-x-0" : "translate-x-full"
-            }`
-      }
-      style={embedded ? undefined : { width: "400px" }}
+    <section
+      className={`${embedded ? "wa-files-panel-inline" : "wa-group-info-panel wa-files-panel-standalone"} ${visible ? "is-visible is-open" : ""}`}
+      aria-hidden={!visible}
     >
-      {embedded ? (
-        <div className="wa-group-info-topbar wa-files-inline-topbar">
-          <button type="button" className="wa-info-icon-btn" onClick={onClose} title="Volver a Info. del grupo">
-            <i className="fa-solid fa-arrow-left" aria-hidden="true" />
-          </button>
-          <span>Archivos</span>
-        </div>
-      ) : (
-        <div className="profile-img text-primary rounded-top">
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            fill="currentColor"
-            viewBox="0 0 400 140.74"
+      <header className="wa-files-header">
+        <div className="wa-files-header-copy">
+          <button
+            type="button"
+            className="wa-files-back-btn"
+            onClick={onClose}
+            title={embedded ? "Volver a Info. del grupo" : "Cerrar archivos"}
+            aria-label={embedded ? "Volver a Info. del grupo" : "Cerrar archivos"}
           >
-            <defs>
-              <style>{".cls-2{fill:#fff;opacity:0.1;}"}</style>
-            </defs>
-            <g>
-              <g>
-                <path d="M400,125A1278.49,1278.49,0,0,1,0,125V0H400Z"></path>
-                <path className="cls-2" d="M361.13,128c.07.83.15,1.65.27,2.46h0Q380.73,128,400,125V87l-1,0a38,38,0,0,0-38,38c0,.86,0,1.71.09,2.55C361.11,127.72,361.12,127.88,361.13,128Z"></path>
-                <path className="cls-2" d="M12.14,119.53c.07.79.15,1.57.26,2.34v0c.13.84.28,1.66.46,2.48l.07.3c.18.8.39,1.59.62,2.37h0q33.09,4.88,66.36,8,.58-1,1.09-2l.09-.18a36.35,36.35,0,0,0,1.81-4.24l.08-.24q.33-.94.6-1.9l.12-.41a36.26,36.26,0,0,0,.91-4.42c0-.19,0-.37.07-.56q.11-.86.18-1.73c0-.21,0-.42,0-.63,0-.75.08-1.51.08-2.28a36.5,36.5,0,0,0-73,0c0,.83,0,1.64.09,2.45C12.1,119.15,12.12,119.34,12.14,119.53Z"></path>
-                <circle className="cls-2" cx="94.5" cy="57.5" r="22.5"></circle>
-                <path className="cls-2" d="M276,0a43,43,0,0,0,43,43A43,43,0,0,0,362,0Z"></path>
-              </g>
-            </g>
-          </svg>
-          <div className="absolute top-0 left-0 w-full flex items-center justify-between px-4 py-3 text-white">
-            <div className="position-absolute top-0 start-0 py-6 px-5">
-              <button onClick={onClose} className="flex items-center gap-2 hover:text-gray-900 transition btn-close btn-close-white" />
-              <span className="position-absolute top-5 start-0 ml-20 text-white font-semibold text-base whitespace-nowrap">Archivos</span>
-            </div>
+            <i className={`fa-solid ${embedded ? "fa-arrow-left" : "fa-xmark"}`} aria-hidden="true" />
+          </button>
+          <div className="wa-files-heading-text">
+            <h2>Archivos</h2>
+            <p>{groupName}</p>
+            {memberCount > 0 && <span>{memberCount} {memberCount === 1 ? "miembro" : "miembros"}</span>}
           </div>
         </div>
-      )}
 
-      {/* 🔹 Tabs */}
-      <div className={embedded ? "wa-files-tabs" : "bg-white rounded-pill shadow-sm d-flex text-sm font-semibold"}>
+        <div className="wa-files-folder-art" aria-hidden="true">
+          <i className="fa-solid fa-folder" />
+        </div>
+      </header>
+
+      <nav className="wa-files-tabs" aria-label="Categorías de archivos">
         <button
+          type="button"
           onClick={() => setTabActiva("multimedia")}
-          className={`wa-files-tab flex-1 py-2 transition ${
-            tabActiva === "multimedia"
-              ? "border-b-2 border-blue-500 text-blue-600"
-              : "text-gray-500 hover:text-blue-500"
-          } focus:outline-none`}
+          className={`wa-files-tab ${tabActiva === "multimedia" ? "is-active" : ""}`}
+          aria-pressed={tabActiva === "multimedia"}
         >
-          Archivos multimedia
+          <i className="fa-regular fa-image" aria-hidden="true" />
+          <span>Archivos<br />multimedia</span>
         </button>
-
         <button
+          type="button"
           onClick={() => setTabActiva("documentos")}
-          className={`wa-files-tab flex- py-2 transition ${
-            tabActiva === "documentos"
-              ? "border-b-2 border-blue-500 text-blue-600"
-              : "text-gray-500 hover:text-blue-500"
-          } focus:outline-none`}
+          className={`wa-files-tab ${tabActiva === "documentos" ? "is-active" : ""}`}
+          aria-pressed={tabActiva === "documentos"}
         >
-          Documentos
+          <i className="fa-regular fa-file-lines" aria-hidden="true" />
+          <span>Documentos</span>
         </button>
-
         <button
+          type="button"
           onClick={() => setTabActiva("enlaces")}
-          className={`wa-files-tab flex-1 py-2 transition ${
-            tabActiva === "enlaces"
-              ? "border-b-2 border-blue-500 text-blue-600"
-              : "text-gray-500 hover:text-blue-500"
-          } focus:outline-none`}
+          className={`wa-files-tab ${tabActiva === "enlaces" ? "is-active" : ""}`}
+          aria-pressed={tabActiva === "enlaces"}
         >
-          Enlaces
+          <i className="fa-solid fa-link" aria-hidden="true" />
+          <span>Enlaces</span>
         </button>
-      </div>
+      </nav>
 
-      {/* 🔹 Contenido dinámico */}
-      <div className={embedded ? "wa-files-content" : "p-4 overflow-y-auto h-[calc(100%-110px)]"}>
-        {/* --- 🖼 Archivos multimedia --- */}
+      <div className="wa-files-content">
+        {loading ? (
+          <div className="wa-files-empty">
+            <span className="wa-files-empty-icon"><i className="fa-solid fa-spinner fa-spin" aria-hidden="true" /></span>
+            <strong>Cargando archivos compartidos…</strong>
+            <span>Estamos sincronizando los recursos reales de este chat.</span>
+          </div>
+        ) : error ? (
+          <div className="wa-files-empty">
+            <span className="wa-files-empty-icon"><i className="fa-solid fa-triangle-exclamation" aria-hidden="true" /></span>
+            <strong>No se pudieron cargar los archivos</strong>
+            <span>{error}</span>
+          </div>
+        ) : (<>
         {tabActiva === "multimedia" && (
-          <>
-            {imagenesPorMes.map(({ mes, archivos }) => (
-              <div key={mes} className="mb-6">
-                <h2 className="text-[11px] text-gray-500 font-semibold mb-2">{mes}</h2>
-                <div className="grid grid-cols-3 gap-2">
-                  {archivos.map((a) => (
-                    <div
-                      key={a.id}
-                      className="relative rounded-lg cursor-pointer group"
-                    >
-                      <img
-                        src={fixUrl(a.archivo_url)}
-                        alt={a.nombre_archivo}
-                        className="w-full h-28 object-cover group-hover:opacity-90 transition"
-                      />
-                    </div>
-                  ))}
-                </div>
+          multimediaPorMes.length ? multimediaPorMes.map((group) => (
+            <section key={group.key} className="wa-files-month-section">
+              <div className="wa-files-month-heading">
+                <h3>{group.label}</h3>
+                <span>{group.items.length} {group.items.length === 1 ? "archivo" : "archivos"}</span>
               </div>
-            ))}
-          </>
-        )}
-
-        {/* --- 📄 Documentos --- */}
-        {tabActiva === "documentos" && 
-          documentosPorMes.map(({ mes, archivos }) => (
-            <div key={mes} className="mb-6">
-              <h2 className="text-[11px] text-gray-500 font-semibold mb-2">{mes}</h2>
-              <div className="space-y-3">
-                {archivos.map((doc) => {
-                  const urlArchivo = fixUrl(doc.archivo_url);
-                  const nombreLimpio = (doc.nombre_archivo || "").replace(/^\d+_/, "");
-                  const fecha = toLocalDate(doc.fecha_envio);
-                  const fechaTexto = fecha
-                    ? fecha.toLocaleDateString("es-ES", {
-                        day: "numeric",
-                        month: "short",
-                        year: "numeric",
-                      })
-                    : "";
-
+              <div className="wa-files-media-grid">
+                {group.items.map((file, index) => {
+                  const url = fixUrl(file.archivo_url);
+                  const video = isVideo(file);
                   return (
-                    <div
-                      key={doc.id}
-                      className={`flex items-center gap-3 p-3 border rounded-lg transition ${
-                        seleccionados.includes(doc.id)
-                          ? "border-blue-500 bg-blue-50"
-                          : "border-gray-200 hover:bg-gray-50"
-                      }`}
+                    <button
+                      type="button"
+                      key={file.id || `${file.archivo_url}-${index}`}
+                      className="wa-files-media-item"
+                      onClick={() => openMedia(file)}
+                      title={cleanFileName(file)}
                     >
-                      <input
-                        type="checkbox"
-                        checked={seleccionados.includes(doc.id)}
-                        onChange={() => toggleSeleccion(doc.id)}
-                        className="w-4 h-4 accent-blue-500 cursor-pointer"
-                      />
-                      <div className="flex-2">
-                        <div className="flex items-center gap-2">
-                          <svg
-                            xmlns="http://www.w3.org/2000/svg"
-                            width="24"
-                            height="24"
-                            fill="none"
-                            viewBox="0 0 24 24"
-                            stroke="currentColor"
-                            strokeWidth="2"
-                            className="text-gray-600"
-                          >
-                            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z" />
-                            <polyline points="14 2 14 8 20 8" />
-                          </svg>
-                          <div>
-                            <p className="text-sm font-medium text-gray-800 truncate max-w-[180px]">
-                              {nombreLimpio}
-                            </p>
-                            <p className="text-xs text-gray-500">{fechaTexto}</p>
-                          </div>
-                        </div>
-                      </div>
-                      <button
-                        onClick={() => handleDescargar(urlArchivo, nombreLimpio)}
-                        className="p-2 rounded-full hover:bg-gray-200 transition"
-                      >
-                        <svg
-                          xmlns="http://www.w3.org/2000/svg"
-                          width="18"
-                          height="18"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="2"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                        >
-                          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                          <polyline points="7 10 12 15 17 10" />
-                          <line x1="12" y1="15" x2="12" y2="3" />
-                        </svg>
-                      </button>
-                    </div>
+                      {video ? (
+                        <video src={url} muted preload="metadata" playsInline />
+                      ) : (
+                        <img src={url} alt={cleanFileName(file)} loading="lazy" />
+                      )}
+                      {video && <span className="wa-files-video-badge"><i className="fa-solid fa-play" /></span>}
+                    </button>
                   );
                 })}
               </div>
-            </div>
-        ))}
-
-        {/* --- 🔗 Enlaces (a futuro) --- */}
-        {tabActiva === "enlaces" && (
-          <p className="text-sm text-gray-500 text-center mt-5">No hay enlaces aún.</p>
+            </section>
+          )) : renderEmpty("multimedia")
         )}
+
+        {tabActiva === "documentos" && (
+          documentosPorMes.length ? documentosPorMes.map((group) => (
+            <section key={group.key} className="wa-files-month-section">
+              <div className="wa-files-month-heading">
+                <h3>{group.label}</h3>
+                <span>{group.items.length} {group.items.length === 1 ? "archivo" : "archivos"}</span>
+              </div>
+              <div className="wa-files-doc-list">
+                {group.items.map((doc, index) => {
+                  const url = fixUrl(doc.archivo_url);
+                  const name = cleanFileName(doc);
+                  const kind = documentKind(doc);
+                  const id = doc.id || `${doc.archivo_url}-${index}`;
+                  return (
+                    <article key={id} className={`wa-files-doc-row ${seleccionados.includes(id) ? "is-selected" : ""}`}>
+                      <button
+                        type="button"
+                        className={`wa-files-doc-icon ${kind.className}`}
+                        onClick={() => toggleSeleccion(id)}
+                        title={`Seleccionar ${name}`}
+                      >
+                        <i className={`fa-solid ${kind.icon}`} aria-hidden="true" />
+                      </button>
+                      <div className="wa-files-doc-copy">
+                        <strong title={name}>{name}</strong>
+                        <span>
+                          {formatDate(doc.fecha_envio)}
+                          {formatBytes(doc.tamano) && <> · {formatBytes(doc.tamano)}</>}
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        className="wa-files-download-btn"
+                        onClick={() => handleDescargar(url, name)}
+                        title="Descargar"
+                        aria-label={`Descargar ${name}`}
+                      >
+                        <i className="fa-solid fa-arrow-down-to-line" aria-hidden="true" />
+                      </button>
+                    </article>
+                  );
+                })}
+              </div>
+            </section>
+          )) : renderEmpty("documentos")
+        )}
+
+        {tabActiva === "enlaces" && (
+          enlacesPorMes.length ? enlacesPorMes.map((group) => (
+            <section key={group.key} className="wa-files-month-section">
+              <div className="wa-files-month-heading">
+                <h3>{group.label}</h3>
+                <span>{group.items.length} {group.items.length === 1 ? "enlace" : "enlaces"}</span>
+              </div>
+              <div className="wa-files-link-list">
+                {group.items.map((link, index) => {
+                  const href = link.url || link.enlace || link.href || "";
+                  let domain = link.dominio || "";
+                  try { if (!domain && href) domain = new URL(href).hostname; } catch { domain = ""; }
+                  return (
+                    <a
+                      key={link.id || `${href}-${index}`}
+                      className="wa-files-link-row"
+                      href={href}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      <span className="wa-files-link-icon"><i className="fa-solid fa-link" /></span>
+                      <span className="wa-files-link-copy">
+                        <strong>{link.titulo || domain || href || "Enlace"}</strong>
+                        <span>{domain || href}</span>
+                        {(link.fecha_envio || link.usuario_nombre) && (
+                          <small>{[link.usuario_nombre, formatDate(link.fecha_envio)].filter(Boolean).join(" · ")}</small>
+                        )}
+                      </span>
+                      <i className="fa-solid fa-arrow-up-right-from-square wa-files-link-open" aria-hidden="true" />
+                    </a>
+                  );
+                })}
+              </div>
+            </section>
+          )) : renderEmpty("enlaces")
+        )}
+        </>)}
       </div>
-    </div>
+    </section>
   );
 };
 

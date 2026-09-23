@@ -58,6 +58,13 @@ const VerInfoGrupo = ({
   const [buscandoMensajes, setBuscandoMensajes] = useState(false);
   const [errorBusqueda, setErrorBusqueda] = useState("");
   const [estadosUsuarios, setEstadosUsuarios] = useState({});
+  const [recursosGrupo, setRecursosGrupo] = useState({
+    grupoId: null,
+    archivos: null,
+    enlaces: null,
+  });
+  const [cargandoRecursos, setCargandoRecursos] = useState(false);
+  const [errorRecursos, setErrorRecursos] = useState("");
   const fileInputRef = useRef(null);
   const cameraInputRef = useRef(null);
   const imageMenuRef = useRef(null);
@@ -130,7 +137,76 @@ const VerInfoGrupo = ({
 
   const miembrosVisibles = mostrarTodos ? miembrosOrdenados : miembrosOrdenados.slice(0, 8);
 
-  const archivos = Array.isArray(chat?.archivos) ? chat.archivos : [];
+  useEffect(() => {
+    setRecursosGrupo({
+      grupoId: chat?.grupo_id ? Number(chat.grupo_id) : null,
+      archivos: null,
+      enlaces: null,
+    });
+    setCargandoRecursos(false);
+    setErrorRecursos("");
+  }, [chat?.grupo_id]);
+
+  useEffect(() => {
+    if (!visible || !mostrarVerArchivos || !chat?.grupo_id) return undefined;
+
+    const grupoId = Number(chat.grupo_id);
+    const controller = new AbortController();
+    let cancelled = false;
+
+    const cargarRecursos = async () => {
+      setCargandoRecursos(true);
+      setErrorRecursos("");
+
+      try {
+        const res = await fetch(`${BASE_URL}/api/grupos/${grupoId}/recursos`, {
+          signal: controller.signal,
+        });
+        const data = await res.json();
+
+        if (!res.ok) {
+          throw new Error(data?.error || "No se pudieron cargar los archivos del grupo");
+        }
+
+        if (cancelled) return;
+
+        setRecursosGrupo({
+          grupoId,
+          archivos: Array.isArray(data?.archivos) ? data.archivos : [],
+          enlaces: Array.isArray(data?.enlaces) ? data.enlaces : [],
+        });
+      } catch (error) {
+        if (error?.name === "AbortError") return;
+        console.error("❌ Error cargando recursos del grupo:", error);
+        if (!cancelled) {
+          setErrorRecursos(error?.message || "No se pudieron cargar los archivos del grupo");
+          setRecursosGrupo({ grupoId, archivos: [], enlaces: [] });
+        }
+      } finally {
+        if (!cancelled) setCargandoRecursos(false);
+      }
+    };
+
+    cargarRecursos();
+
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
+  }, [visible, mostrarVerArchivos, chat?.grupo_id]);
+
+  const recursosDelGrupoActual = Number(recursosGrupo.grupoId) === Number(chat?.grupo_id)
+    ? recursosGrupo
+    : { archivos: null, enlaces: null };
+
+  const archivos = Array.isArray(recursosDelGrupoActual.archivos)
+    ? recursosDelGrupoActual.archivos
+    : (Array.isArray(chat?.archivos) ? chat.archivos : []);
+
+  const enlaces = Array.isArray(recursosDelGrupoActual.enlaces)
+    ? recursosDelGrupoActual.enlaces
+    : (Array.isArray(chat?.enlaces) ? chat.enlaces : []);
+
   const ultimasImagenes = archivos
     .filter((a) => /image\//i.test(a.tipo_archivo || "") || /\.(jpg|jpeg|png|gif|webp)$/i.test(a.archivo_url || ""))
     .slice(-4)
@@ -348,6 +424,12 @@ const VerInfoGrupo = ({
     setErrorBusqueda("");
   };
 
+  const abrirArchivosGrupo = () => {
+    setErrorRecursos("");
+    setCargandoRecursos(true);
+    setMostrarVerArchivos(true);
+  };
+
   useEffect(() => {
     if (!visible || !searchRequestToken) return;
     abrirBusquedaGrupo();
@@ -490,10 +572,16 @@ const VerInfoGrupo = ({
       <div className="wa-group-info-inner">
         {mostrarVerArchivos ? (
           <VerArchivos
-            chat={chat}
+            chat={{ ...chat, archivos, enlaces }}
             visible
             embedded
-            onClose={() => setMostrarVerArchivos(false)}
+            loading={cargandoRecursos}
+            error={errorRecursos}
+            onClose={() => {
+              setMostrarVerArchivos(false);
+              setCargandoRecursos(false);
+              setErrorRecursos("");
+            }}
           />
         ) : (
           <>
@@ -673,7 +761,7 @@ const VerInfoGrupo = ({
             )}
           </section>
 
-          <section className="wa-info-card wa-media-card" onClick={() => setMostrarVerArchivos(true)}>
+          <section className="wa-info-card wa-media-card" onClick={abrirArchivosGrupo}>
             <div className="wa-info-section-row">
               <div className="wa-info-section-title">
                 <i className="fa-regular fa-file-lines" aria-hidden="true" />

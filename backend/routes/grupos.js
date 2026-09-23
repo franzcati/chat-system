@@ -579,6 +579,184 @@ router.get(
 });
 
 // =======================
+// Recursos compartidos de UN grupo.
+// Se consulta bajo demanda al abrir "Archivos" para no volver pesada la
+// carga inicial de la lista de chats (usuario-resumen mantiene archivos: []).
+// =======================
+router.get(
+  "/:grupoId/recursos",
+  requireGroupRoleParam("grupoId", []),
+  async (req, res) => {
+    const grupoId = Number(req.params.grupoId);
+
+    if (!Number.isInteger(grupoId) || grupoId <= 0) {
+      return res.status(400).json({ error: "Grupo inválido" });
+    }
+
+    try {
+      const [archivosRows] = await db.query(
+        `SELECT
+           mga.id,
+           mga.grupo_id,
+           mga.usuario_id,
+           mga.nombre_archivo,
+           mga.archivo_url,
+           mga.tipo_archivo,
+           mga.tamano,
+           mga.fecha_envio,
+           u.nombre,
+           u.apellido
+         FROM mensajes_grupo_archivos mga
+         LEFT JOIN usuario u ON u.id = mga.usuario_id
+         WHERE mga.grupo_id = ?
+         ORDER BY mga.fecha_envio DESC, mga.id DESC`,
+        [grupoId]
+      );
+
+      // También leemos los mensajes del grupo para dos cosas:
+      // 1) recuperar enlaces compartidos de todo el historial, no solo de la
+      //    página de mensajes actualmente cargada en el frontend;
+      // 2) cubrir archivos históricos que existan como /uploads/grupo_X/...
+      //    pero que, por datos antiguos, no tengan fila en mensajes_grupo_archivos.
+      const [mensajesRows] = await db.query(
+        `SELECT
+           mg.id,
+           mg.usuario_id,
+           mg.mensaje,
+           mg.fecha_envio,
+           mg.eliminado,
+           u.nombre,
+           u.apellido
+         FROM mensajes_grupo mg
+         LEFT JOIN usuario u ON u.id = mg.usuario_id
+         WHERE mg.grupo_id = ?
+           AND COALESCE(mg.eliminado, 0) = 0
+         ORDER BY mg.fecha_envio DESC, mg.id DESC`,
+        [grupoId]
+      );
+
+      const inferMime = (value = "") => {
+        const clean = String(value || "").split(/[?#]/)[0].toLowerCase();
+        if (/\.gif$/.test(clean)) return "image/gif";
+        if (/\.png$/.test(clean)) return "image/png";
+        if (/\.webp$/.test(clean)) return "image/webp";
+        if (/\.avif$/.test(clean)) return "image/avif";
+        if (/\.jpe?g$/.test(clean)) return "image/jpeg";
+        if (/\.mp4$/.test(clean)) return "video/mp4";
+        if (/\.webm$/.test(clean)) return "video/webm";
+        if (/\.mov$/.test(clean)) return "video/quicktime";
+        if (/\.pdf$/.test(clean)) return "application/pdf";
+        if (/\.docx?$/.test(clean)) return "application/msword";
+        if (/\.xlsx?$/.test(clean)) return "application/vnd.ms-excel";
+        if (/\.pptx?$/.test(clean)) return "application/vnd.ms-powerpoint";
+        if (/\.txt$/.test(clean)) return "text/plain";
+        if (/\.zip$/.test(clean)) return "application/zip";
+        if (/\.rar$/.test(clean)) return "application/vnd.rar";
+        if (/\.(?:mp3|m4a|wav|aac|ogg|opus)$/.test(clean)) return "audio/*";
+        return "application/octet-stream";
+      };
+
+      const rawUrlKey = (value = "") => {
+        const raw = String(value || "").trim();
+        if (!raw) return "";
+        try {
+          return new URL(raw).pathname || raw;
+        } catch {
+          return raw;
+        }
+      };
+
+      const archivos = archivosRows.map((archivo) => ({
+        ...archivo,
+        archivo_url: buildAbsoluteUrl(archivo.archivo_url, req),
+        usuario_nombre: [archivo.nombre, archivo.apellido].filter(Boolean).join(" ").trim(),
+      }));
+
+      const fileKeys = new Set(archivosRows.map((archivo) => rawUrlKey(archivo.archivo_url)).filter(Boolean));
+      const legacyUploadRe = new RegExp(`/uploads/grupo_${grupoId}/`, "i");
+      const legacyFileRe = /\.(?:avif|bmp|gif|jpe?g|png|webp|m4v|mov|mp4|mpeg|mpg|webm|pdf|docx?|xlsx?|pptx?|zip|rar|txt|mp3|m4a|wav|aac|ogg|opus)(?:$|[?#])/i;
+
+      mensajesRows.forEach((mensaje) => {
+        const raw = String(mensaje.mensaje || "").trim();
+        const key = rawUrlKey(raw);
+        if (!raw || !key || fileKeys.has(key)) return;
+        if (!legacyUploadRe.test(key) || !legacyFileRe.test(key)) return;
+
+        fileKeys.add(key);
+        archivos.push({
+          id: `legacy-${mensaje.id}`,
+          grupo_id: grupoId,
+          usuario_id: mensaje.usuario_id,
+          nombre_archivo: decodeURIComponent(key.split("/").pop() || "archivo").replace(/^\d+_/, ""),
+          archivo_url: buildAbsoluteUrl(raw, req),
+          tipo_archivo: inferMime(key),
+          tamano: null,
+          fecha_envio: mensaje.fecha_envio,
+          usuario_nombre: [mensaje.nombre, mensaje.apellido].filter(Boolean).join(" ").trim(),
+          legacy: true,
+        });
+      });
+
+      archivos.sort((a, b) => {
+        const da = a.fecha_envio ? new Date(a.fecha_envio).getTime() : 0;
+        const dbb = b.fecha_envio ? new Date(b.fecha_envio).getTime() : 0;
+        return dbb - da;
+      });
+
+      const hrefRegex = /href=["'](https?:\/\/[^"']+)["']/gi;
+      const plainRegex = /https?:\/\/[^\s<>'"\]]+/gi;
+      const fileLikeRegex = /\.(?:avif|bmp|gif|jpe?g|png|webp|m4v|mov|mp4|mpeg|mpg|webm|pdf|docx?|xlsx?|pptx?|zip|rar|txt|mp3|m4a|wav|aac|ogg|opus)(?:$|[?#])/i;
+      const enlaces = [];
+      const seenLinks = new Set();
+
+      mensajesRows.forEach((mensaje) => {
+        const raw = String(mensaje.mensaje || "");
+        if (!raw) return;
+
+        const urls = [];
+        let match;
+        hrefRegex.lastIndex = 0;
+        plainRegex.lastIndex = 0;
+        while ((match = hrefRegex.exec(raw))) urls.push(match[1]);
+        while ((match = plainRegex.exec(raw))) urls.push(match[0]);
+
+        urls.forEach((candidate) => {
+          const url = String(candidate || "").replace(/[),.;!?]+$/, "");
+          if (!url || seenLinks.has(url) || fileLikeRegex.test(url)) return;
+          seenLinks.add(url);
+
+          let dominio = "";
+          try {
+            dominio = new URL(url).hostname.replace(/^www\./i, "");
+          } catch {
+            dominio = "";
+          }
+
+          enlaces.push({
+            id: `link-${mensaje.id}-${enlaces.length}`,
+            url,
+            titulo: dominio || url,
+            dominio,
+            fecha_envio: mensaje.fecha_envio,
+            usuario_id: mensaje.usuario_id,
+            usuario_nombre: [mensaje.nombre, mensaje.apellido].filter(Boolean).join(" ").trim(),
+          });
+        });
+      });
+
+      res.json({
+        grupo_id: grupoId,
+        archivos,
+        enlaces,
+      });
+    } catch (err) {
+      console.error("❌ Error obteniendo recursos del grupo:", err);
+      res.status(500).json({ error: "Error obteniendo recursos del grupo" });
+    }
+  }
+);
+
+// =======================
 router.get(
   "/usuario/:userId",
   requireSelfParam("userId"),
@@ -710,6 +888,7 @@ router.get(
               'nombre_archivo', mga.nombre_archivo,
               'archivo_url', mga.archivo_url,
               'tipo_archivo', mga.tipo_archivo,
+              'tamano', mga.tamano,
               'fecha_envio', mga.fecha_envio,
               'tipo', 
                 CASE 

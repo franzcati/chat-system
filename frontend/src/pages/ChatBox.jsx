@@ -262,6 +262,48 @@ const clampRecorderLevel = (value) => Math.max(0, Math.min(1, value));
 const buildIdleRecorderWave = () =>
   Array.from({ length: RECORDER_WAVE_BAR_COUNT }, () => 0);
 
+const extractSharedLinks = (messages = []) => {
+  const seen = new Set();
+  const result = [];
+  const hrefRegex = /href=["'](https?:\/\/[^"']+)["']/gi;
+  const plainRegex = /https?:\/\/[^\s<>'"\]]+/gi;
+  const fileLikeRegex = /\.(?:avif|bmp|gif|jpe?g|png|webp|m4v|mov|mp4|mpeg|mpg|webm|pdf|docx?|xlsx?|pptx?|zip|rar|txt)(?:$|[?#])/i;
+
+  for (const message of Array.isArray(messages) ? messages : []) {
+    if (!message) continue;
+    const raw = String(message.mensaje || message.texto || message.contenido || "");
+    if (!raw) continue;
+
+    const urls = [];
+    let match;
+    hrefRegex.lastIndex = 0;
+    plainRegex.lastIndex = 0;
+    while ((match = hrefRegex.exec(raw))) urls.push(match[1]);
+    while ((match = plainRegex.exec(raw))) urls.push(match[0]);
+
+    for (let url of urls) {
+      url = String(url || "").replace(/[),.;!?]+$/, "");
+      if (!url || seen.has(url) || fileLikeRegex.test(url)) continue;
+      seen.add(url);
+
+      let dominio = "";
+      try { dominio = new URL(url).hostname.replace(/^www\./i, ""); } catch { dominio = ""; }
+
+      const nombre = [message.nombre, message.apellido].filter(Boolean).join(" ").trim();
+      result.push({
+        id: `link-${message.id || result.length}-${result.length}`,
+        url,
+        titulo: dominio || url,
+        dominio,
+        fecha_envio: message.fecha_envio || message.fecha || message.created_at || null,
+        usuario_nombre: nombre || message.usuario_nombre || message.sender_name || "",
+      });
+    }
+  }
+
+  return result;
+};
+
 
 const STICKER_EDITOR_FILTERS = {
   none: { label: "Ninguno", css: "none" },
@@ -287,6 +329,7 @@ const STICKER_EDITOR_COLORS = [
 const ChatBox = ({ chat, user, setChat, onCloseChat, onVerPerfil, onAddToList, estadosUsuarios = {} }) => {
 
   const [messages, setMessages] = useState([]);
+  const sharedLinks = useMemo(() => extractSharedLinks(messages), [messages]);
   const [socketReconnectToken, setSocketReconnectToken] = useState(0);
   const [hasMoreMessages, setHasMoreMessages] = useState(false);
   const [nextBeforeId, setNextBeforeId] = useState(null);
@@ -319,13 +362,15 @@ const ChatBox = ({ chat, user, setChat, onCloseChat, onVerPerfil, onAddToList, e
     const host = document.getElementById("wa-group-info-host");
     if (!host) return undefined;
 
-    const shouldOpen = chat?.tipo === "grupo" && mostrarInfoGrupo;
+    const shouldOpen =
+      (chat?.tipo === "grupo" && mostrarInfoGrupo) ||
+      (chat?.tipo !== "grupo" && mostrarInfoContacto);
     host.classList.toggle("is-open-host", shouldOpen);
 
     return () => {
       host.classList.remove("is-open-host");
     };
-  }, [chat?.tipo, mostrarInfoGrupo]);
+  }, [chat?.tipo, mostrarInfoGrupo, mostrarInfoContacto]);
   const [contactoInfoArchivos, setContactoInfoArchivos] = useState([]);
   const [mostrarVerArchivos, setMostrarVerArchivos] = useState(false);
   const [mostrarMenuLlamada, setMostrarMenuLlamada] = useState(false);
@@ -5467,27 +5512,11 @@ const ChatBox = ({ chat, user, setChat, onCloseChat, onVerPerfil, onAddToList, e
 
           </div>
         </div>
-        {chat?.tipo !== "grupo" && (
-          <VerInfoContacto
-            chat={{ ...chat, archivos: contactoInfoArchivos.length ? contactoInfoArchivos : chat.archivos }}
-            user={user}
-            visible={mostrarInfoContacto}
-            onClose={() => setMostrarInfoContacto(false)}
-            onBuscarEnChat={() => {
-              setMostrarInfoContacto(false);
-              handleBuscarEnChat();
-            }}
-            onOpenFiles={() => setMostrarVerArchivos(true)}
-            onEnviarMensaje={() => setMostrarInfoContacto(false)}
-            onAddToList={onAddToList}
-            onInfoLoaded={(data) => setContactoInfoArchivos(Array.isArray(data?.archivos) ? data.archivos : [])}
-          />
-        )}
       </div>
       {chat?.tipo === "grupo" && (() => {
         const groupInfoPanel = (
           <VerInfoGrupo
-            chat={chat}
+            chat={{ ...chat, enlaces: sharedLinks }}
             visible={mostrarInfoGrupo}
             onClose={() => {
               setMostrarInfoGrupo(false);
@@ -5507,6 +5536,36 @@ const ChatBox = ({ chat, user, setChat, onCloseChat, onVerPerfil, onAddToList, e
 
         const host = document.getElementById("wa-group-info-host");
         return host ? createPortal(groupInfoPanel, host) : null;
+      })()}
+      {chat?.tipo !== "grupo" && (() => {
+        const contactInfoPanel = (
+          <VerInfoContacto
+            chat={{
+              ...chat,
+              archivos: contactoInfoArchivos.length ? contactoInfoArchivos : chat?.archivos,
+              enlaces: sharedLinks,
+            }}
+            user={user}
+            visible={mostrarInfoContacto}
+            onClose={() => {
+              setMostrarInfoContacto(false);
+              setMostrarVerArchivos(false);
+            }}
+            onBuscarEnChat={() => {
+              setMostrarInfoContacto(false);
+              handleBuscarEnChat();
+            }}
+            onOpenFiles={() => setMostrarVerArchivos(true)}
+            onEnviarMensaje={() => setMostrarInfoContacto(false)}
+            onAddToList={onAddToList}
+            onInfoLoaded={(data) => setContactoInfoArchivos(Array.isArray(data?.archivos) ? data.archivos : [])}
+          />
+        );
+
+        if (typeof document === "undefined") return null;
+
+        const host = document.getElementById("wa-group-info-host");
+        return host ? createPortal(contactInfoPanel, host) : null;
       })()}
       {/* 👇 Offcanvas MiembrosGrupos controlado por estado */}
       {offcanvasGrupo && (
