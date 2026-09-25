@@ -266,13 +266,33 @@ router.get('/contacto-info/:miUsuarioId/:contactoId', async (req, res) => {
   const { miUsuarioId, contactoId } = req.params;
 
   try {
-    const [usuarios] = await db.query(
-      `SELECT id, nombre, apellido, correo, url_imagen, background
-       FROM usuario
-       WHERE id = ?
-       LIMIT 1`,
-      [contactoId]
-    );
+    let usuarios = [];
+
+    try {
+      const [rows] = await db.query(
+        `SELECT id, nombre, apellido, correo, url_imagen, background,
+                perfil_cartel, perfil_avatar_transform, perfil_cartel_transform
+         FROM usuario
+         WHERE id = ?
+         LIMIT 1`,
+        [contactoId]
+      );
+      usuarios = rows;
+    } catch (error) {
+      // Compatibilidad defensiva con instalaciones antiguas donde las columnas
+      // de perfil todavía no se hayan creado. La pantalla sigue funcionando y
+      // utilizará la portada predeterminada hasta que el perfil sea actualizado.
+      if (error?.code !== 'ER_BAD_FIELD_ERROR') throw error;
+
+      const [rows] = await db.query(
+        `SELECT id, nombre, apellido, correo, url_imagen, background
+         FROM usuario
+         WHERE id = ?
+         LIMIT 1`,
+        [contactoId]
+      );
+      usuarios = rows;
+    }
 
     if (!usuarios.length) {
       return res.status(404).json({ error: 'Contacto no encontrado' });

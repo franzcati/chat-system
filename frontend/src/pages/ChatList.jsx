@@ -2362,8 +2362,17 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat, addToLi
         }}
         href="#"
         className={`card border-0 text-reset chat-card-hover wa-chat-list-card ${isSelected ? "active" : ""} ${estaArchivado(chat) ? "is-archived" : ""}`}
+        onMouseDown={(e) => {
+          // Evita que el navegador coloque un caret de texto sobre el nombre
+          // del chat al hacer clic (p. ej. con navegación por cursor activa).
+          // Los controles internos conservan su interacción normal.
+          if (e.button !== 0) return;
+          if (e.target.closest("button, input, textarea, select, [contenteditable='true'], [role='menuitem']")) return;
+          e.preventDefault();
+        }}
         onClick={(e) => {
           e.preventDefault();
+          window.getSelection?.()?.removeAllRanges?.();
           handleSelectChat(chat);
         }}
       >

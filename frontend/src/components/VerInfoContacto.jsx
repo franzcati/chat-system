@@ -16,18 +16,65 @@ const getContactName = (chat = {}, contacto = {}) => {
   return fromContact || chat?.usuario_nombre || chat?.nombre || "Contacto";
 };
 
+const clamp = (value, min, max) => Math.min(Math.max(value, min), max);
+
+const normalizeProfileTransform = (value, { forceCover = false } = {}) => {
+  let parsed = value;
+
+  if (typeof value === "string") {
+    try {
+      parsed = JSON.parse(value);
+    } catch {
+      parsed = null;
+    }
+  }
+
+  const fit = forceCover
+    ? "cover"
+    : parsed?.fit === "contain"
+      ? "contain"
+      : "cover";
+
+  return {
+    fit,
+    zoom: clamp(Number(parsed?.zoom) || 1, 1, 6),
+    rotation: ((Number(parsed?.rotation) || 0) % 360 + 360) % 360,
+    offsetXRatio: clamp(Number(parsed?.offsetXRatio) || 0, -1, 1),
+    offsetYRatio: clamp(Number(parsed?.offsetYRatio) || 0, -1, 1),
+  };
+};
+
+const getTransformStyle = (value, options) => {
+  const transform = normalizeProfileTransform(value, options);
+  return {
+    "--contact-media-fit": transform.fit,
+    "--contact-media-zoom": transform.zoom,
+    "--contact-media-rotation": `${transform.rotation}deg`,
+    "--contact-media-offset-x": `${transform.offsetXRatio * 100}%`,
+    "--contact-media-offset-y": `${transform.offsetYRatio * 100}%`,
+  };
+};
+
 const ContactAvatar = ({ chat, contacto, size = 148 }) => {
   const name = getContactName(chat, contacto);
   const imageUrl = contacto?.url_imagen || chat?.url_imagen;
 
   if (imageUrl) {
     return (
-      <img
-        src={getAvatarUrl(imageUrl)}
-        alt={name}
-        className="wa-contact-info-avatar-img"
-        style={{ width: size, height: size }}
-      />
+      <span
+        className="wa-contact-avatar-media"
+        style={{
+          width: size,
+          height: size,
+          ...getTransformStyle(contacto?.perfil_avatar_transform),
+        }}
+      >
+        <img
+          src={getAvatarUrl(imageUrl)}
+          alt={name}
+          className="wa-contact-info-avatar-img"
+        />
+      </span>
     );
   }
 
@@ -42,6 +89,25 @@ const ContactAvatar = ({ chat, contacto, size = 148 }) => {
       aria-label={name}
     >
       {getInitial(name)}
+    </div>
+  );
+};
+
+const ContactCover = ({ contacto }) => {
+  const coverUrl = getAvatarUrl(contacto?.perfil_cartel);
+
+  return (
+    <div className={`wa-contact-profile-cover ${coverUrl ? "has-cover" : "is-default"}`}>
+      {coverUrl ? (
+        <span
+          className="wa-contact-cover-media"
+          style={getTransformStyle(contacto?.perfil_cartel_transform, { forceCover: true })}
+        >
+          <img src={coverUrl} alt="Portada del contacto" draggable="false" />
+        </span>
+      ) : (
+        <span className="wa-contact-default-cover-art" aria-hidden="true" />
+      )}
     </div>
   );
 };
@@ -165,6 +231,18 @@ const VerInfoContacto = ({
     else toast.error("No se pudo copiar el correo");
   };
 
+  const handleEditContact = () => {
+    const isOwnContact = String(contacto?.id || chat?.usuario_id || "") === String(user?.id || "");
+
+    if (isOwnContact && typeof window !== "undefined") {
+      onClose?.();
+      window.dispatchEvent(new CustomEvent("quickchat:open-own-profile"));
+      return;
+    }
+
+    toast("La portada la administra cada usuario desde su propio perfil");
+  };
+
   return (
     <aside className={`wa-group-info-panel wa-contact-info-panel ${visible ? "is-open" : ""}`} aria-hidden={!visible}>
       <div className="wa-group-info-inner wa-contact-info-inner">
@@ -186,7 +264,7 @@ const VerInfoContacto = ({
               <button
                 type="button"
                 className="wa-info-icon-btn ms-auto"
-                onClick={() => toast("Edición del contacto disponible próximamente")}
+                onClick={handleEditContact}
                 title="Editar contacto"
                 aria-label="Editar contacto"
               >
@@ -195,18 +273,25 @@ const VerInfoContacto = ({
             </div>
 
             <div className="wa-group-info-scroll wa-contact-info-scroll">
-              <section className="wa-contact-profile-card">
-                <div className="wa-contact-info-avatar">
-                  <ContactAvatar chat={chat} contacto={contacto} />
-                  <span className={`wa-contact-avatar-presence ${presenceClass}`} title={presenceLabel} aria-label={presenceLabel}>
-                    <i className={presenceClass === "online" ? "fa-solid fa-circle-check" : presence?.iconClass || "fa-solid fa-circle"} aria-hidden="true" />
-                  </span>
-                </div>
+              <section className={`wa-contact-profile-hero ${contacto?.perfil_cartel ? "has-cover" : "is-default-cover"}`}>
+                <ContactCover contacto={contacto} />
 
-                <h2>{nombreContacto}</h2>
-                <p className="wa-contact-profile-email">{correoContacto}</p>
-                <span className={`wa-contact-presence-pill ${presenceClass}`}>{presenceLabel}</span>
-                {loading && <span className="wa-contact-loading">Cargando información...</span>}
+                <div className="wa-contact-profile-identity">
+                  <div className="wa-contact-info-avatar">
+                    <ContactAvatar chat={chat} contacto={contacto} />
+                    <span className={`wa-contact-avatar-presence ${presenceClass}`} title={presenceLabel} aria-label={presenceLabel}>
+                      <i className={presenceClass === "online" ? "fa-solid fa-circle-check" : presence?.iconClass || "fa-solid fa-circle"} aria-hidden="true" />
+                    </span>
+                  </div>
+
+                  <h2>{nombreContacto}</h2>
+                  <p className="wa-contact-profile-email">{correoContacto}</p>
+                  <span className={`wa-contact-presence-pill ${presenceClass}`}>
+                    <i className="fa-solid fa-circle" aria-hidden="true" />
+                    {presenceLabel}
+                  </span>
+                  {loading && <span className="wa-contact-loading">Cargando información...</span>}
+                </div>
               </section>
 
               <section className="wa-contact-actions-grid" aria-label="Acciones del contacto">

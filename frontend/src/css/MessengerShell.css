@@ -2387,6 +2387,20 @@ body.dark .wa-chat-header .wa-presence-badge,
   background: transparent !important;
   box-shadow: none !important;
   transition: transform .16s ease, background .16s ease, border-color .16s ease, box-shadow .16s ease !important;
+  -webkit-user-select: none !important;
+  user-select: none !important;
+}
+
+/*
+ * La lista de chats es navegación, no una superficie de edición.
+ * Impide que aparezca el cursor de inserción sobre nombre/preview al seleccionar
+ * una conversación, sin afectar buscadores ni el composer del chat.
+ */
+.wa-messenger-root.active-tab-chat .wa-chat-list-card,
+.wa-messenger-root.active-tab-chat .wa-chat-list-card * {
+  -webkit-user-select: none !important;
+  user-select: none !important;
+  caret-color: transparent !important;
 }
 
 .wa-messenger-root.active-tab-chat .wa-chat-list-card::before {

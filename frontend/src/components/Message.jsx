@@ -1453,6 +1453,31 @@ const Message = ({
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
+
+  useEffect(() => {
+    if (!isEditing && !showHistorial) return undefined;
+
+    const handleModalEscape = (event) => {
+      if (event.key !== "Escape") return;
+
+      if (showEmojiPickerEdit) {
+        setShowEmojiPickerEdit(false);
+        return;
+      }
+
+      if (isEditing) {
+        setIsEditing(false);
+      }
+
+      if (showHistorial) {
+        setShowHistorial(false);
+      }
+    };
+
+    document.addEventListener("keydown", handleModalEscape);
+    return () => document.removeEventListener("keydown", handleModalEscape);
+  }, [isEditing, showHistorial, showEmojiPickerEdit]);
+
   // 🎹 Navegación de galería con teclado
   useEffect(() => {
     const handleKey = (e) => {
@@ -3975,25 +4000,33 @@ const Message = ({
                 >
                   <i className="fa-solid fa-xmark" aria-hidden="true" />
                 </button>
-                <div>
+                <div className="wa-modal-header-copy">
                   <h6>Edita el mensaje</h6>
                   <span>Actualiza el texto manteniendo estilos tipo WhatsApp</span>
+                </div>
+                <div className="wa-modal-header-decor" aria-hidden="true">
+                  <i className="fa-solid fa-user-group" />
                 </div>
               </div>
 
               <div className="wa-edit-modal-preview">
-                <div className="wa-edit-preview-bubble">
-                  <div className="wa-rich-message">
-                    {renderFormattedMessageBlocks(editText ?? editInitialText ?? mensajeData.mensaje ?? "")}
-                  </div>
-                  <div className="wa-edit-preview-time">
-                    {hora}
-                    <span className={mensajeData.visto === 0 ? "svg15 double-check" : "svg15 double-check-blue"}></span>
+                <div className="wa-edit-preview-chip">Vista previa</div>
+                <div className="wa-edit-preview-stage">
+                  <div className="wa-edit-preview-bubble">
+                    <div className="wa-rich-message">
+                      {renderFormattedMessageBlocks(editText ?? editInitialText ?? mensajeData.mensaje ?? "")}
+                    </div>
+                    <div className="wa-edit-preview-time">
+                      {hora}
+                      <span className={mensajeData.visto === 0 ? "svg15 double-check" : "svg15 double-check-blue"}></span>
+                    </div>
                   </div>
                 </div>
               </div>
 
-              <div className="wa-edit-input-row">
+              <div className="wa-edit-input-section">
+                <div className="wa-edit-input-label">Editar mensaje</div>
+                <div className="wa-edit-input-row">
                 <button
                   type="button"
                   className="wa-edit-emoji-btn"
@@ -4023,6 +4056,7 @@ const Message = ({
                 >
                   <i className="fa-solid fa-check" aria-hidden="true" />
                 </button>
+              </div>
               </div>
 
               {showEmojiPickerEdit && (
@@ -4066,15 +4100,19 @@ const Message = ({
                   onClick={() => setShowHistorial(false)}
                   aria-label="Cerrar historial de ediciones"
                 >
-                  ←
+                  <i className="fa-solid fa-arrow-left" aria-hidden="true" />
                 </button>
-                <div>
+                <div className="wa-modal-header-copy">
                   <h6>Historial de ediciones</h6>
                   <span>Versiones anteriores del mensaje</span>
+                </div>
+                <div className="wa-modal-header-decor" aria-hidden="true">
+                  <i className="fa-solid fa-user-group" />
                 </div>
               </div>
 
               <div className="wa-history-timeline">
+                <div className="wa-history-stage">
                 {historial.length === 0 ? (
                   <div className="wa-history-empty">
                     No hay ediciones registradas.
@@ -4121,6 +4159,7 @@ const Message = ({
                     })}
                   </div>
                 )}
+                </div>
               </div>
             </div>
           </div>,

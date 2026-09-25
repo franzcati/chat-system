@@ -48,6 +48,7 @@ const VerInfoGrupo = ({
   const [mostrarEmojisDesc, setMostrarEmojisDesc] = useState(false);
   const [mostrarTodos, setMostrarTodos] = useState(false);
   const [menuMiembroId, setMenuMiembroId] = useState(null);
+  const [menuMiembroDirection, setMenuMiembroDirection] = useState("down");
   const [accionMiembroId, setAccionMiembroId] = useState(null);
   const [subiendoImagen, setSubiendoImagen] = useState(false);
   const [mostrarMenuImagen, setMostrarMenuImagen] = useState(false);
@@ -68,6 +69,7 @@ const VerInfoGrupo = ({
   const fileInputRef = useRef(null);
   const cameraInputRef = useRef(null);
   const imageMenuRef = useRef(null);
+  const memberMenuRefs = useRef({});
 
   const miembros = Array.isArray(chat?.miembros) ? chat.miembros : [];
   const miRol = miembros.find((m) => Number(m.id) === Number(user?.id))?.rol;
@@ -363,6 +365,63 @@ const VerInfoGrupo = ({
     document.addEventListener("mousedown", cerrarMenu);
     return () => document.removeEventListener("mousedown", cerrarMenu);
   }, [mostrarMenuImagen]);
+
+
+  const resolveMemberMenuDirection = (memberId) => {
+    if (typeof window === "undefined") return "down";
+
+    const node = memberMenuRefs.current?.[memberId];
+    if (!node) return "down";
+
+    const rect = node.getBoundingClientRect();
+    const estimatedMenuHeight = 176;
+    const safeMargin = 20;
+    const spaceBelow = window.innerHeight - rect.bottom - safeMargin;
+    const spaceAbove = rect.top - safeMargin;
+
+    if (spaceBelow < estimatedMenuHeight && spaceAbove > spaceBelow) {
+      return "up";
+    }
+
+    return "down";
+  };
+
+  const toggleMemberMenu = (memberId) => {
+    setMenuMiembroId((prev) => {
+      if (prev === memberId) {
+        setMenuMiembroDirection("down");
+        return null;
+      }
+
+      setMenuMiembroDirection(resolveMemberMenuDirection(memberId));
+      return memberId;
+    });
+  };
+
+  useEffect(() => {
+    if (!menuMiembroId) return;
+
+    const handlePointerOutside = (event) => {
+      const node = memberMenuRefs.current?.[menuMiembroId];
+      if (node && !node.contains(event.target)) {
+        setMenuMiembroId(null);
+      }
+    };
+
+    const handleViewportChange = () => {
+      setMenuMiembroDirection(resolveMemberMenuDirection(menuMiembroId));
+    };
+
+    document.addEventListener("mousedown", handlePointerOutside);
+    window.addEventListener("resize", handleViewportChange);
+    window.addEventListener("scroll", handleViewportChange, true);
+
+    return () => {
+      document.removeEventListener("mousedown", handlePointerOutside);
+      window.removeEventListener("resize", handleViewportChange);
+      window.removeEventListener("scroll", handleViewportChange, true);
+    };
+  }, [menuMiembroId]);
 
   useEffect(() => {
     if (!modoBusqueda || !chat?.grupo_id) return;
@@ -828,7 +887,14 @@ const VerInfoGrupo = ({
                 const isOpen = menuMiembroId === member.id;
 
                 return (
-                  <li key={member.id} className="wa-member-item-wrap">
+                  <li
+                    key={member.id}
+                    className="wa-member-item-wrap"
+                    ref={(node) => {
+                      if (node) memberMenuRefs.current[member.id] = node;
+                      else delete memberMenuRefs.current[member.id];
+                    }}
+                  >
                     <div className={`wa-member-item ${canManage ? "can-manage" : ""}`}>
                       <div className="wa-member-avatar wa-presence-wrapper">
                         {member.url_imagen ? (
@@ -855,7 +921,7 @@ const VerInfoGrupo = ({
                         onClick={(e) => {
                           e.stopPropagation();
                           if (!canManage) return;
-                          setMenuMiembroId((prev) => (prev === member.id ? null : member.id));
+                          toggleMemberMenu(member.id);
                         }}
                         title={canManage ? "Opciones del miembro" : "Sin acciones disponibles"}
                       >
@@ -864,7 +930,7 @@ const VerInfoGrupo = ({
                     </div>
 
                     {canManage && isOpen && (
-                      <div className="wa-member-context-menu">
+                      <div className={`wa-member-context-menu ${menuMiembroDirection === "up" ? "open-up" : "open-down"}`}>
                         {member.rol === "admin" ? (
                           esPropietario && (
                             <button type="button" disabled={accionMiembroId === member.id} onClick={() => handleDescartarAdmin(member)}>

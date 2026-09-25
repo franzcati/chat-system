@@ -16,6 +16,18 @@ const Sidebar = ({ usuario, active, setActive, onUsuarioUpdate, unreadTotal = 0,
   const { isDark, toggleTheme } = useTheme();
 
   useEffect(() => {
+    if (typeof window === "undefined") return undefined;
+
+    const openOwnProfile = () => {
+      setSidebarExpanded(false);
+      setShowModal(true);
+    };
+
+    window.addEventListener("quickchat:open-own-profile", openOwnProfile);
+    return () => window.removeEventListener("quickchat:open-own-profile", openOwnProfile);
+  }, []);
+
+  useEffect(() => {
     if (typeof window === "undefined" || typeof document === "undefined") return undefined;
 
     let startX = null;
