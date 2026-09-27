@@ -712,6 +712,28 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat, addToLi
       }
     };
 
+    let retryTimer = null;
+    let retryAttempt = 0;
+
+    const clearRetryTimer = () => {
+      if (retryTimer) {
+        clearTimeout(retryTimer);
+        retryTimer = null;
+      }
+    };
+
+    const scheduleRetry = () => {
+      if (cancelled || retryTimer) return;
+
+      const delay = Math.min(15000, 2000 * (2 ** Math.min(retryAttempt, 3)));
+      retryAttempt += 1;
+
+      retryTimer = window.setTimeout(() => {
+        retryTimer = null;
+        fetchData({ force: true });
+      }, delay);
+    };
+
     const fetchData = async ({ showLoading = false, force = false } = {}) => {
       const now = Date.now();
       if (!force && now - lastRefreshAtRef.current < 1500) return;
@@ -750,6 +772,7 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat, addToLi
               setInitialLoadError("No se pudo sincronizar la lista completa de chats. Reintentando…");
               setIsInitialLoading(false);
             }
+            scheduleRetry();
             return;
           }
 
@@ -764,6 +787,7 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat, addToLi
           if (estadosResult.status !== "fulfilled" && !hasFreshCache) {
             setInitialLoadError("No se pudo sincronizar el estado completo de los chats. Reintentando…");
             setIsInitialLoading(false);
+            scheduleRetry();
             return;
           }
 
@@ -792,6 +816,8 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat, addToLi
 
           stableSnapshotReadyRef.current = true;
           lastRefreshAtRef.current = Date.now();
+          retryAttempt = 0;
+          clearRetryTimer();
           setInitialLoadError("");
           setIsInitialLoading(false);
 
@@ -820,6 +846,7 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat, addToLi
               setInitialLoadError("No se pudo cargar la lista de chats. Reintentando…");
               setIsInitialLoading(false);
             }
+            scheduleRetry();
           }
         }
       })();
@@ -835,11 +862,26 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat, addToLi
     fetchData({ showLoading: !hasFreshCache, force: true });
 
     const handleReconnect = () => fetchData({ force: true });
+    const handleOnline = () => fetchData({ force: true });
+    const handleFocus = () => fetchData({ force: true });
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        fetchData({ force: true });
+      }
+    };
+
     socket.on("connect", handleReconnect);
+    window.addEventListener("online", handleOnline);
+    window.addEventListener("focus", handleFocus);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
 
     return () => {
       cancelled = true;
+      clearRetryTimer();
       socket.off("connect", handleReconnect);
+      window.removeEventListener("online", handleOnline);
+      window.removeEventListener("focus", handleFocus);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
   }, [userId]);
 

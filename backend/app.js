@@ -45,6 +45,27 @@ app.use(cors({
 }));
 app.use(express.json());
 
+// Identificador del proceso desplegado. El frontend lo consulta periódicamente
+// para detectar una actualización/reinicio y recargarse sin cerrar la sesión.
+// APP_RELEASE permite fijar un ID de versión desde el despliegue; si no existe,
+// el arranque del backend funciona como versión automática en instalaciones de
+// un solo servidor.
+const APP_RUNTIME_VERSION =
+  String(process.env.APP_RELEASE || process.env.RELEASE_ID || "").trim() ||
+  `${Date.now()}-${process.pid}`;
+
+app.get('/api/system/version', (req, res) => {
+  res.set({
+    'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+    Pragma: 'no-cache',
+    Expires: '0',
+  });
+
+  return res.json({
+    version: APP_RUNTIME_VERSION,
+  });
+});
+
 // REGISTRO (SIGNUP)
 app.use('/api/registro', signupRoutes); // ⬅️ Ahora puedes acceder a /api/signup/messages
 

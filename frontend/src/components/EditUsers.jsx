@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import TablaUsuarios from "./TablaUsuarios";
 import FormEditarUsuario from "./FormEditarUsuario";
+import BatchEditUsers from "./BatchEditUsers";
 import "bootstrap-icons/font/bootstrap-icons.css";
 import "../css/UsersManagement.css";
 
@@ -69,6 +70,8 @@ const getCreationDate = (user) => {
 const EditUsers = ({ usuarioLogueado, proyectos = [] }) => {
   const [usuarios, setUsuarios] = useState([]);
   const [editando, setEditando] = useState(null);
+  const [selectedIds, setSelectedIds] = useState(() => new Set());
+  const [batchEditing, setBatchEditing] = useState(false);
   const [, setUsuariosOriginal] = useState([]);
 
   useEffect(() => {
@@ -123,11 +126,58 @@ const EditUsers = ({ usuarioLogueado, proyectos = [] }) => {
 
       setUsuarios(usuariosUnicos);
       setUsuariosOriginal(usuariosUnicos);
+      setSelectedIds((current) => {
+        const validIds = new Set(usuariosUnicos.map((usuario) => Number(usuario.id)));
+        return new Set([...current].filter((id) => validIds.has(Number(id))));
+      });
     } catch (err) {
       console.error("❌ Error cargando usuarios:", err);
       setUsuarios([]);
       setUsuariosOriginal([]);
     }
+  };
+
+  const toggleSelection = (id) => {
+    const numericId = Number(id);
+    if (!numericId) return;
+    setSelectedIds((current) => {
+      const next = new Set(current);
+      if (next.has(numericId)) next.delete(numericId);
+      else next.add(numericId);
+      return next;
+    });
+  };
+
+  const selectMany = (ids, shouldSelect) => {
+    setSelectedIds((current) => {
+      const next = new Set(current);
+      ids.map(Number).filter(Boolean).forEach((id) => {
+        if (shouldSelect) next.add(id);
+        else next.delete(id);
+      });
+      return next;
+    });
+  };
+
+  const clearSelection = () => setSelectedIds(new Set());
+
+  const selectedUsers = useMemo(
+    () => usuarios.filter((user) => selectedIds.has(Number(user.id))),
+    [usuarios, selectedIds]
+  );
+
+  const openBatchEditor = () => {
+    if (!selectedIds.size) return;
+    setEditando(null);
+    setBatchEditing(true);
+  };
+
+  const closeBatchEditor = () => setBatchEditing(false);
+
+  const handleBatchSaved = async () => {
+    await obtenerUsuarios();
+    setSelectedIds(new Set());
+    setBatchEditing(false);
   };
 
   const abrirNuevoUsuario = () => {
@@ -238,6 +288,16 @@ const EditUsers = ({ usuarioLogueado, proyectos = [] }) => {
     };
   }, [usuarios, proyectos]);
 
+  if (batchEditing) {
+    return (
+      <BatchEditUsers
+        selectedUsers={selectedUsers}
+        onBack={closeBatchEditor}
+        onSaved={handleBatchSaved}
+      />
+    );
+  }
+
   return (
     <main className="qc-users-page">
       <div className="qc-users-bg-decor" aria-hidden="true">
@@ -341,6 +401,11 @@ const EditUsers = ({ usuarioLogueado, proyectos = [] }) => {
               usuarios={usuarios}
               setEditando={abrirEditarUsuario}
               eliminarUsuario={desactivarUsuario}
+              selectedIds={selectedIds}
+              onToggleSelection={toggleSelection}
+              onSelectMany={selectMany}
+              onClearSelection={clearSelection}
+              onBatchEdit={openBatchEditor}
             />
           </>
         )}

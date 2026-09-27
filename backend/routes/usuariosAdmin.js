@@ -331,6 +331,7 @@ router.get("/", async (req, res) => {
          u.correo AS usuario,
          u.usuario_base,
          u.rol_id,
+         r.nombre AS rol_nombre,
          u.estado,
          u.url_imagen,
          u.background,
@@ -368,6 +369,9 @@ router.get("/", async (req, res) => {
          ) AS proyectos_detallados
 
        FROM usuario u
+
+       LEFT JOIN roles r
+         ON r.id = u.rol_id
 
        LEFT JOIN proyecto pp
          ON pp.id = u.proyecto_principal_id
@@ -492,6 +496,7 @@ router.get("/:id", async (req, res) => {
          u.correo AS usuario,
          u.usuario_base,
          u.rol_id,
+         r.nombre AS rol_nombre,
          u.estado,
          u.url_imagen,
          u.background,
@@ -504,6 +509,9 @@ router.get("/:id", async (req, res) => {
          pp.dominio AS proyecto_principal_dominio
 
        FROM usuario u
+
+       LEFT JOIN roles r
+         ON r.id = u.rol_id
 
        LEFT JOIN proyecto pp
          ON pp.id = u.proyecto_principal_id
@@ -1044,6 +1052,299 @@ router.post(
   }
 );
 
+
+
+
+// ============================================================
+// EDICIÓN MASIVA DE USUARIOS
+// PUT /api/usuarios/admin/batch
+//
+// IMPORTANTE: cada grupo de cambios incluye `enabled`. Los campos de
+// secciones deshabilitadas se ignoran por completo y nunca se escriben.
+// ============================================================
+router.put(
+  "/batch",
+  requirePermission("editar_usuarios"),
+  async (req, res) => {
+    const instanciaId = Number(req.instanciaActual.id);
+    const userIds = [
+      ...new Set(
+        (Array.isArray(req.body?.user_ids) ? req.body.user_ids : [])
+          .map((value) => parsePositiveInt(value))
+          .filter(Boolean)
+      ),
+    ];
+
+    if (!userIds.length) {
+      return res.status(400).json({
+        code: "BATCH_USERS_REQUIRED",
+        error: "Selecciona al menos un usuario para editar el lote",
+      });
+    }
+
+    if (userIds.length > 500) {
+      return res.status(400).json({
+        code: "BATCH_USERS_LIMIT",
+        error: "No se pueden editar más de 500 usuarios por lote",
+      });
+    }
+
+    const changes = req.body?.changes && typeof req.body.changes === "object"
+      ? req.body.changes
+      : {};
+
+    const projectEnabled = changes?.project?.enabled === true;
+    const passwordEnabled = changes?.password?.enabled === true;
+    const roleEnabled = changes?.role?.enabled === true;
+    const permissionsEnabled = changes?.chat_permissions?.enabled === true;
+
+    if (!projectEnabled && !passwordEnabled && !roleEnabled && !permissionsEnabled) {
+      return res.status(400).json({
+        code: "BATCH_NO_CHANGES",
+        error: "Activa al menos una sección para aplicar cambios",
+      });
+    }
+
+    const proyectoPrincipalId = projectEnabled
+      ? parsePositiveInt(changes?.project?.proyecto_principal_id)
+      : null;
+    const rolId = roleEnabled
+      ? parsePositiveInt(changes?.role?.rol_id)
+      : null;
+    const contrasena = passwordEnabled
+      ? String(changes?.password?.contrasena || "")
+      : "";
+    const permisosChat = permissionsEnabled
+      ? normalizarPermisosChatAdmin(changes?.chat_permissions?.permisos_chat)
+      : null;
+
+    if (projectEnabled && !proyectoPrincipalId) {
+      return res.status(400).json({
+        code: "BATCH_PROJECT_REQUIRED",
+        error: "Selecciona un proyecto principal válido",
+      });
+    }
+
+    if (passwordEnabled && !contrasena.trim()) {
+      return res.status(400).json({
+        code: "BATCH_PASSWORD_REQUIRED",
+        error: "La contraseña del lote no puede estar vacía",
+      });
+    }
+
+    if (roleEnabled && !rolId) {
+      return res.status(400).json({
+        code: "BATCH_ROLE_REQUIRED",
+        error: "Selecciona un rol válido",
+      });
+    }
+
+    const connection = await pool.getConnection();
+    let transactionStarted = false;
+
+    try {
+      await connection.beginTransaction();
+      transactionStarted = true;
+
+      let project = null;
+      if (projectEnabled) {
+        const [projectRows] = await connection.query(
+          `SELECT id, nombre, dominio, estado
+             FROM proyecto
+            WHERE id = ?
+              AND instancia_id = ?
+            LIMIT 1
+            FOR UPDATE`,
+          [proyectoPrincipalId, instanciaId]
+        );
+
+        if (!projectRows.length) {
+          await connection.rollback();
+          transactionStarted = false;
+          return res.status(400).json({
+            code: "BATCH_PROJECT_INVALID",
+            error: "El proyecto principal no existe en esta instancia",
+          });
+        }
+        project = projectRows[0];
+      }
+
+      if (roleEnabled) {
+        const [roleRows] = await connection.query(
+          "SELECT id FROM roles WHERE id = ? LIMIT 1",
+          [rolId]
+        );
+        if (!roleRows.length) {
+          await connection.rollback();
+          transactionStarted = false;
+          return res.status(400).json({
+            code: "BATCH_ROLE_INVALID",
+            error: "El rol seleccionado no existe",
+          });
+        }
+      }
+
+      const placeholders = userIds.map(() => "?").join(",");
+      const [users] = await connection.query(
+        `SELECT id, correo, usuario_base, correo_gestionado_proyecto,
+                proyecto_principal_id, rol_id, permisos_chat
+           FROM usuario
+          WHERE id IN (${placeholders})
+            AND instancia_id = ?
+            AND estado = 'aprobado'
+          FOR UPDATE`,
+        [...userIds, instanciaId]
+      );
+
+      if (users.length !== userIds.length) {
+        const found = new Set(users.map((user) => Number(user.id)));
+        const missing = userIds.filter((id) => !found.has(id));
+        await connection.rollback();
+        transactionStarted = false;
+        return res.status(404).json({
+          code: "BATCH_USERS_NOT_FOUND",
+          error: "Uno o más usuarios no existen o no pertenecen a esta instancia",
+          user_ids_no_encontrados: missing,
+        });
+      }
+
+      // Calculamos los correos gestionados antes de escribir para detectar
+      // colisiones sin dejar el lote aplicado a medias.
+      const managedEmails = new Map();
+      if (projectEnabled) {
+        const dominio = normalizarDominioCorreo(project?.dominio);
+        for (const user of users) {
+          if (Number(user.correo_gestionado_proyecto || 0) !== 1) continue;
+          const base = String(user.usuario_base || "").trim().toLowerCase();
+          if (!base || !dominio) {
+            await connection.rollback();
+            transactionStarted = false;
+            return res.status(400).json({
+              code: "BATCH_MANAGED_EMAIL_INVALID",
+              error: `No se puede calcular el correo gestionado del usuario ${user.id}`,
+              usuario_id: Number(user.id),
+            });
+          }
+          managedEmails.set(Number(user.id), `${base}@${dominio}`);
+        }
+
+        const generated = [...managedEmails.values()];
+        if (new Set(generated).size !== generated.length) {
+          await connection.rollback();
+          transactionStarted = false;
+          return res.status(409).json({
+            code: "BATCH_EMAIL_CONFLICT",
+            error: "El cambio de proyecto produciría correos duplicados dentro del lote",
+          });
+        }
+
+        if (generated.length) {
+          const emailPlaceholders = generated.map(() => "?").join(",");
+          const [conflicts] = await connection.query(
+            `SELECT id, correo
+               FROM usuario
+              WHERE correo IN (${emailPlaceholders})
+                AND id NOT IN (${placeholders})
+              LIMIT 1`,
+            [...generated, ...userIds]
+          );
+          if (conflicts.length) {
+            await connection.rollback();
+            transactionStarted = false;
+            return res.status(409).json({
+              code: "BATCH_EMAIL_CONFLICT",
+              error: `El correo ${conflicts[0].correo} ya está registrado por otro usuario`,
+              correo: conflicts[0].correo,
+            });
+          }
+        }
+      }
+
+      for (const user of users) {
+        const sets = [];
+        const params = [];
+
+        if (projectEnabled) {
+          sets.push("proyecto_principal_id = ?");
+          params.push(proyectoPrincipalId);
+
+          const nextEmail = managedEmails.get(Number(user.id));
+          if (nextEmail) {
+            sets.push("correo = ?");
+            params.push(nextEmail);
+          }
+        }
+
+        if (passwordEnabled) {
+          sets.push("contrasena = ?");
+          params.push(contrasena);
+        }
+
+        if (roleEnabled) {
+          sets.push("rol_id = ?");
+          params.push(rolId);
+        }
+
+        if (permissionsEnabled) {
+          sets.push("permisos_chat = ?");
+          params.push(JSON.stringify(permisosChat));
+        }
+
+        if (sets.length) {
+          await connection.query(
+            `UPDATE usuario SET ${sets.join(", ")}
+              WHERE id = ? AND instancia_id = ?`,
+            [...params, Number(user.id), instanciaId]
+          );
+        }
+
+        if (projectEnabled) {
+          const [relationRows] = await connection.query(
+            `SELECT 1 FROM usuario_proyecto
+              WHERE usuario_id = ? AND proyecto_id = ?
+              LIMIT 1`,
+            [Number(user.id), proyectoPrincipalId]
+          );
+          if (!relationRows.length) {
+            await connection.query(
+              `INSERT INTO usuario_proyecto (usuario_id, proyecto_id)
+               VALUES (?, ?)`,
+              [Number(user.id), proyectoPrincipalId]
+            );
+          }
+        }
+      }
+
+      await connection.commit();
+      transactionStarted = false;
+
+      return res.json({
+        code: "USER_ADMIN_BATCH_UPDATED",
+        mensaje: `${userIds.length} usuario${userIds.length === 1 ? "" : "s"} actualizado${userIds.length === 1 ? "" : "s"} correctamente`,
+        total_actualizados: userIds.length,
+        cambios_aplicados: {
+          proyecto_principal: projectEnabled ? proyectoPrincipalId : null,
+          contrasena: passwordEnabled,
+          rol: roleEnabled ? rolId : null,
+          permisos_chat: permissionsEnabled ? permisosChat : null,
+        },
+      });
+    } catch (error) {
+      if (transactionStarted) {
+        try { await connection.rollback(); } catch (rollbackError) {
+          console.error("Error revirtiendo edición masiva:", rollbackError);
+        }
+      }
+      console.error("Error en edición masiva de usuarios:", error);
+      return res.status(500).json({
+        code: "USER_ADMIN_BATCH_ERROR",
+        error: "No se pudieron aplicar los cambios del lote",
+      });
+    } finally {
+      connection.release();
+    }
+  }
+);
 
 
 // ============================================================
