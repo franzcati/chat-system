@@ -12,14 +12,40 @@ const {
   resolveInstance,
 } = require("../middleware/resolveInstance");
 
-router.use(
-  requireAuth,
-  resolveInstance,
-  requireAnyPermission([
-    "crear_usuarios",
-    "editar_usuarios",
-  ])
-);
+const {
+  getActorPolicy,
+  getActorProjectIds,
+  canAccessProject,
+  canAccessUser,
+  canManageUser,
+  canAssignRole,
+} = require("../utils/roleAccess");
+
+router.use(requireAuth, resolveInstance);
+
+const ensureUserScope = async (req, res, userId) => {
+  if (await canAccessUser(req, userId)) return true;
+  res.status(403).json({ code: "USER_SCOPE_DENIED", error: "No tienes acceso a este usuario" });
+  return false;
+};
+
+const ensureManageUser = async (req, res, userId) => {
+  if (await canManageUser(req, userId)) return true;
+  res.status(403).json({ code: "USER_MANAGE_DENIED", error: "No estás autorizado a modificar este usuario" });
+  return false;
+};
+
+const ensureProjectScope = async (req, res, projectId) => {
+  if (await canAccessProject(req, projectId)) return true;
+  res.status(403).json({ code: "PROJECT_SCOPE_DENIED", error: "No tienes acceso a este proyecto" });
+  return false;
+};
+
+const ensureAssignableRole = async (req, res, roleId) => {
+  if (await canAssignRole(req, roleId)) return true;
+  res.status(403).json({ code: "ROLE_ASSIGN_DENIED", error: "No estás autorizado a asignar ese rol" });
+  return false;
+};
 
 const parsePositiveInt = (value) => {
   const parsed = Number.parseInt(value, 10);
@@ -50,6 +76,8 @@ const DEFAULT_CHAT_PERMISSIONS = {
   editar_mensajes: 0,
   eliminar_mensajes: 0,
   enviar_audios: 0,
+  buscar_mensajes: 0,
+  eliminar_cualquier_mensaje: 0,
 };
 
 const USER_COLORS = [
@@ -192,9 +220,12 @@ const normalizarDominioCorreo = (value) =>
 // PROYECTOS DISPONIBLES PARA USUARIOS
 // GET /api/usuarios/admin/projects
 // ============================================================
-router.get("/projects", async (req, res) => {
+router.get("/projects", requireAnyPermission(["ver_usuarios","crear_usuarios","editar_usuarios","editar_usuarios_lote"]), async (req, res) => {
   try {
     const instanciaId = Number(req.instanciaActual.id);
+    const policy = await getActorPolicy(req);
+    const projectIds = policy?.scope === "proyectos" ? await getActorProjectIds(req) : [];
+    const projectScopeSql = policy?.scope === "proyectos" ? ` AND id IN (${projectIds.length ? projectIds.map(() => "?").join(",") : "0"})` : "";
 
     const [rows] = await pool.query(
       `SELECT
@@ -207,12 +238,12 @@ router.get("/projects", async (req, res) => {
          icono,
          estado
        FROM proyecto
-       WHERE instancia_id = ?
+       WHERE instancia_id = ?${projectScopeSql}
        ORDER BY
          CASE WHEN estado = 'activo' THEN 0 ELSE 1 END,
          nombre ASC,
          id ASC`,
-      [instanciaId]
+      [instanciaId, ...projectIds]
     );
 
     return res.json({
@@ -247,7 +278,7 @@ router.get("/projects", async (req, res) => {
 // LISTAR USUARIOS DE LA INSTANCIA ACTUAL
 // GET /api/usuarios/admin
 // ============================================================
-router.get("/", async (req, res) => {
+router.get("/", requireAnyPermission(["ver_usuarios","crear_usuarios","editar_usuarios","editar_usuarios_lote"]), async (req, res) => {
   try {
     const instanciaId = Number(req.instanciaActual.id);
 
@@ -273,6 +304,15 @@ router.get("/", async (req, res) => {
     ];
 
     const params = [instanciaId];
+    const policy = await getActorPolicy(req);
+    if (policy?.scope === "proyectos") {
+      where.push(`EXISTS (
+        SELECT 1 FROM usuario_proyecto target_up
+        JOIN usuario_proyecto actor_up ON actor_up.proyecto_id = target_up.proyecto_id
+        WHERE target_up.usuario_id = u.id AND actor_up.usuario_id = ?
+      )`);
+      params.push(Number(req.auth.userId));
+    }
 
     if (search) {
       const like = `%${search}%`;
@@ -471,7 +511,7 @@ router.get("/", async (req, res) => {
 // DETALLE DE USUARIO
 // GET /api/usuarios/admin/:id
 // ============================================================
-router.get("/:id", async (req, res) => {
+router.get("/:id", requireAnyPermission(["ver_usuarios","editar_usuarios"]), async (req, res) => {
   try {
     const usuarioId =
       parsePositiveInt(req.params.id);
@@ -483,6 +523,8 @@ router.get("/:id", async (req, res) => {
           "El identificador del usuario no es válido",
       });
     }
+
+    if (!(await ensureUserScope(req, res, usuarioId))) return;
 
     const instanciaId =
       Number(req.instanciaActual.id);
@@ -701,6 +743,9 @@ router.post(
       });
     }
 
+    if (!(await ensureProjectScope(req, res, proyectoPrincipalId))) return;
+    if (!(await ensureAssignableRole(req, res, rolId))) return;
+
     let usuarioBase = null;
 
     if (usuarioBaseResult.ok) {
@@ -749,7 +794,7 @@ router.post(
       // ------------------------------------------
       const [roleRows] =
         await connection.query(
-          `SELECT id
+          `SELECT id, nombre
            FROM roles
            WHERE id = ?
            LIMIT 1`,
@@ -766,6 +811,7 @@ router.post(
             "El rol indicado no existe",
         });
       }
+
 
       // ------------------------------------------
       // Validar TODOS los proyectos y su instancia.
@@ -1064,7 +1110,7 @@ router.post(
 // ============================================================
 router.put(
   "/batch",
-  requirePermission("editar_usuarios"),
+  requirePermission("editar_usuarios_lote"),
   async (req, res) => {
     const instanciaId = Number(req.instanciaActual.id);
     const userIds = [
@@ -1089,6 +1135,10 @@ router.put(
       });
     }
 
+    for (const userId of userIds) {
+      if (!(await ensureManageUser(req, res, userId))) return;
+    }
+
     const changes = req.body?.changes && typeof req.body.changes === "object"
       ? req.body.changes
       : {};
@@ -1097,6 +1147,11 @@ router.put(
     const passwordEnabled = changes?.password?.enabled === true;
     const roleEnabled = changes?.role?.enabled === true;
     const permissionsEnabled = changes?.chat_permissions?.enabled === true;
+
+    const actorPerms = new Set(req.auth?.permisos || []);
+    if (roleEnabled && !actorPerms.has("asignar_roles")) return res.status(403).json({ code: "PERMISSION_DENIED", error: "No tienes permiso para asignar roles" });
+    if (permissionsEnabled && !actorPerms.has("gestionar_permisos_chat")) return res.status(403).json({ code: "PERMISSION_DENIED", error: "No tienes permiso para gestionar permisos del chat" });
+    if (projectEnabled && !actorPerms.has("gestionar_proyectos_usuario")) return res.status(403).json({ code: "PERMISSION_DENIED", error: "No tienes permiso para cambiar proyectos de usuarios" });
 
     if (!projectEnabled && !passwordEnabled && !roleEnabled && !permissionsEnabled) {
       return res.status(400).json({
@@ -1124,6 +1179,8 @@ router.put(
         error: "Selecciona un proyecto principal válido",
       });
     }
+    if (projectEnabled && !(await ensureProjectScope(req, res, proyectoPrincipalId))) return;
+    if (roleEnabled && !(await ensureAssignableRole(req, res, rolId))) return;
 
     if (passwordEnabled && !contrasena.trim()) {
       return res.status(400).json({
@@ -1171,7 +1228,7 @@ router.put(
 
       if (roleEnabled) {
         const [roleRows] = await connection.query(
-          "SELECT id FROM roles WHERE id = ? LIMIT 1",
+          "SELECT id, nombre FROM roles WHERE id = ? LIMIT 1",
           [rolId]
         );
         if (!roleRows.length) {
@@ -1206,6 +1263,29 @@ router.put(
           error: "Uno o más usuarios no existen o no pertenecen a esta instancia",
           user_ids_no_encontrados: missing,
         });
+      }
+
+      if (roleEnabled) {
+        const [targetRoleRows] = await connection.query(`SELECT nombre FROM roles WHERE id=? LIMIT 1`, [rolId]);
+        const targetRoleName = String(targetRoleRows[0]?.nombre || "").toLowerCase();
+        if (targetRoleName !== "admin") {
+          const adminUserIds = [];
+          for (const user of users) {
+            const [currentRoleRows] = await connection.query(`SELECT nombre FROM roles WHERE id=? LIMIT 1`, [Number(user.rol_id)]);
+            if (String(currentRoleRows[0]?.nombre || "").toLowerCase() === "admin") adminUserIds.push(Number(user.id));
+          }
+          if (adminUserIds.length) {
+            const [adminCountRows] = await connection.query(
+              `SELECT COUNT(*) AS total FROM usuario u JOIN roles r ON r.id=u.rol_id WHERE u.instancia_id=? AND u.estado='aprobado' AND LOWER(r.nombre)='admin'`,
+              [instanciaId]
+            );
+            if (Number(adminCountRows[0]?.total || 0) - adminUserIds.length < 1) {
+              await connection.rollback();
+              transactionStarted = false;
+              return res.status(409).json({ code: "LAST_ADMIN_PROTECTED", error: "La edición por lote no puede dejar la instancia sin administradores" });
+            }
+          }
+        }
       }
 
       // Calculamos los correos gestionados antes de escribir para detectar
@@ -1371,6 +1451,25 @@ router.put(
       });
     }
 
+    if (!(await ensureManageUser(req, res, usuarioId))) return;
+
+    const actorPermissions = new Set(req.auth?.permisos || []);
+    const requestedRoleId = req.body?.rol_id !== undefined ? parsePositiveInt(req.body.rol_id) : null;
+    if (req.body?.rol_id !== undefined) {
+      if (!actorPermissions.has("asignar_roles")) return res.status(403).json({ code: "PERMISSION_DENIED", error: "No tienes permiso para asignar roles" });
+      if (!requestedRoleId || !(await ensureAssignableRole(req, res, requestedRoleId))) return;
+    }
+    if (req.body?.permisos_chat !== undefined && !actorPermissions.has("gestionar_permisos_chat")) {
+      return res.status(403).json({ code: "PERMISSION_DENIED", error: "No tienes permiso para gestionar permisos del chat" });
+    }
+    if (req.body?.proyecto_principal_id !== undefined || req.body?.proyectos !== undefined) {
+      if (!actorPermissions.has("gestionar_proyectos_usuario")) return res.status(403).json({ code: "PERMISSION_DENIED", error: "No tienes permiso para cambiar proyectos de usuarios" });
+      const requestedProjects = normalizarProjectIds(req.body?.proyectos);
+      const primary = parsePositiveInt(req.body?.proyecto_principal_id);
+      if (primary && !requestedProjects.includes(primary)) requestedProjects.push(primary);
+      for (const projectId of requestedProjects) { if (!(await ensureProjectScope(req, res, projectId))) return; }
+    }
+
     const instanciaId =
       Number(req.instanciaActual.id);
 
@@ -1477,7 +1576,7 @@ router.put(
 
       const [roleRows] =
         await connection.query(
-          `SELECT id
+          `SELECT id, nombre
            FROM roles
            WHERE id = ?
            LIMIT 1`,
@@ -1493,6 +1592,34 @@ router.put(
           error:
             "El rol indicado no existe",
         });
+      }
+
+      if (Number(rolId) !== Number(actual.rol_id)) {
+        const [currentRoleRows] = await connection.query(
+          `SELECT nombre FROM roles WHERE id = ? LIMIT 1`,
+          [Number(actual.rol_id)]
+        );
+        const currentRoleName = String(currentRoleRows[0]?.nombre || "").toLowerCase();
+        const targetRoleName = String(roleRows[0]?.nombre || "").toLowerCase();
+        if (currentRoleName === "admin" && targetRoleName !== "admin") {
+          const [adminCountRows] = await connection.query(
+            `SELECT COUNT(*) AS total
+             FROM usuario u
+             JOIN roles r ON r.id = u.rol_id
+             WHERE u.instancia_id = ?
+               AND u.estado = 'aprobado'
+               AND LOWER(r.nombre) = 'admin'`,
+            [instanciaId]
+          );
+          if (Number(adminCountRows[0]?.total || 0) <= 1) {
+            await connection.rollback();
+            transactionStarted = false;
+            return res.status(409).json({
+              code: "LAST_ADMIN_PROTECTED",
+              error: "No se puede quitar el rol al último administrador activo",
+            });
+          }
+        }
       }
 
       // ------------------------------------------------------
@@ -2057,7 +2184,7 @@ router.put(
 // ============================================================
 router.delete(
   "/:id",
-  requirePermission("editar_usuarios"),
+  requirePermission("eliminar_usuarios"),
   async (req, res) => {
     const usuarioId =
       parsePositiveInt(req.params.id);
@@ -2069,6 +2196,8 @@ router.delete(
           "El identificador del usuario no es válido",
       });
     }
+
+    if (!(await ensureManageUser(req, res, usuarioId))) return;
 
     const instanciaId =
       Number(req.instanciaActual.id);
@@ -2090,6 +2219,7 @@ router.delete(
              apellido,
              correo,
              estado,
+             rol_id,
              proyecto_principal_id,
              instancia_id
            FROM usuario
@@ -2115,6 +2245,19 @@ router.delete(
       }
 
       const usuario = userRows[0];
+
+      const [roleNameRows] = await connection.query(`SELECT nombre FROM roles WHERE id=? LIMIT 1`, [Number(usuario.rol_id)]);
+      if (String(roleNameRows[0]?.nombre || "").toLowerCase() === "admin") {
+        const [adminCountRows] = await connection.query(
+          `SELECT COUNT(*) AS total FROM usuario u JOIN roles r ON r.id=u.rol_id WHERE u.instancia_id=? AND u.estado='aprobado' AND LOWER(r.nombre)='admin'`,
+          [instanciaId]
+        );
+        if (Number(adminCountRows[0]?.total || 0) <= 1) {
+          await connection.rollback();
+          transactionStarted = false;
+          return res.status(409).json({ code: "LAST_ADMIN_PROTECTED", error: "No se puede desactivar al último administrador activo" });
+        }
+      }
 
       const [deleteResult] =
         await connection.query(
@@ -2262,6 +2405,8 @@ router.post(
     const rolId =
       parsePositiveInt(req.body?.rol_id) || 4;
 
+    if (!(await ensureAssignableRole(req, res, rolId))) return;
+
     let projectIds =
       normalizarProjectIds(
         req.body?.proyectos
@@ -2275,6 +2420,10 @@ router.post(
       projectIds.unshift(
         proyectoPrincipalId
       );
+    }
+
+    for (const projectId of projectIds) {
+      if (!(await ensureProjectScope(req, res, projectId))) return;
     }
 
     if (projectIds.length > 200) {

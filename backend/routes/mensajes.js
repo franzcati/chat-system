@@ -503,7 +503,12 @@ async function usuarioPuedeEditarMensajes(usuarioId) {
 
 async function usuarioPuedeEliminarMensajes(usuarioId) {
   const permisos = await obtenerPermisosChatUsuario(usuarioId);
-  return permisos.eliminar_mensajes === 1;
+  return [1, "1", true, "true"].includes(permisos.eliminar_mensajes);
+}
+
+async function usuarioPuedeEliminarCualquierMensaje(usuarioId) {
+  const permisos = await obtenerPermisosChatUsuario(usuarioId);
+  return [1, "1", true, "true"].includes(permisos.eliminar_cualquier_mensaje);
 }
 
 
@@ -556,6 +561,8 @@ router.get(
         m.reenviado,
         m.fecha_envio,
         m.eliminado,
+        m.eliminado_por_usuario_id,
+        m.eliminado_por_admin,
         m.editado,
         m.visto,
         m.fijado,
@@ -713,6 +720,8 @@ router.get(
           m.reenviado,
           m.fecha_envio,
           m.eliminado,
+          m.eliminado_por_usuario_id,
+          m.eliminado_por_admin,
           m.editado,
           m.visto,
           m.fijado,
@@ -786,6 +795,8 @@ router.get(
           m.reenviado,
           m.fecha_envio,
           m.eliminado,
+          m.eliminado_por_usuario_id,
+          m.eliminado_por_admin,
           m.editado,
           m.visto,
           m.fijado,
@@ -1177,13 +1188,24 @@ router.put(
   const usuarioId = Number(req.auth.userId);
 
   try {
-    if (!(await usuarioPuedeEliminarMensajes(usuarioId))) {
-      return res.status(403).json({ error: "No tienes permiso para eliminar mensajes" });
+    const [targetRows] = await db.query(`SELECT * FROM mensajes WHERE id = ? LIMIT 1`, [id]);
+    if (!targetRows.length) return res.status(404).json({ error: "Mensaje no encontrado" });
+    const target = targetRows[0];
+    const isOwner = Number(target.usuario_envia_id) === usuarioId;
+    const allowed = isOwner
+      ? await usuarioPuedeEliminarMensajes(usuarioId)
+      : await usuarioPuedeEliminarCualquierMensaje(usuarioId);
+    if (!allowed) {
+      return res.status(403).json({ error: isOwner ? "No tienes permiso para eliminar mensajes" : "No tienes permiso para eliminar mensajes de otros usuarios" });
     }
 
     await db.query(
-      `UPDATE mensajes SET eliminado = 1 WHERE id = ? AND usuario_envia_id = ?`,
-      [id, usuarioId]
+      `UPDATE mensajes
+       SET eliminado = 1,
+           eliminado_por_usuario_id = ?,
+           eliminado_por_admin = ?
+       WHERE id = ?`,
+      [usuarioId, isOwner ? 0 : 1, id]
     );
 
     const [rows] = await db.query(`SELECT * FROM mensajes WHERE id = ?`, [id]);
@@ -1221,11 +1243,38 @@ router.put(
   const usuarioId = Number(req.auth.userId);
 
   try {
-    // Restaurar/deshacer un mensaje propio NO depende del permiso
-    // eliminar_mensajes. El permiso solo controla la acción de eliminar.
+    const [targetRows] = await db.query(
+      `SELECT * FROM mensajes WHERE id = ? LIMIT 1`,
+      [id]
+    );
+    if (!targetRows.length) return res.status(404).json({ error: "Mensaje no encontrado" });
+
+    const target = targetRows[0];
+    const isOwner = Number(target.usuario_envia_id) === usuarioId;
+    const wasAdminDeleted = Number(target.eliminado_por_admin || 0) === 1;
+
+    // Si otro usuario con privilegio de moderación eliminó el mensaje,
+    // sólo quien tenga eliminar_cualquier_mensaje puede restaurarlo.
+    // Si fue una eliminación propia normal, únicamente el autor puede deshacerla.
+    const allowed = wasAdminDeleted
+      ? await usuarioPuedeEliminarCualquierMensaje(usuarioId)
+      : isOwner;
+
+    if (!allowed) {
+      return res.status(403).json({
+        error: wasAdminDeleted
+          ? "No tienes permiso para restaurar mensajes eliminados por un administrador"
+          : "Solo el autor puede deshacer la eliminación de este mensaje",
+      });
+    }
+
     await db.query(
-      `UPDATE mensajes SET eliminado = 0 WHERE id = ? AND usuario_envia_id = ?`,
-      [id, usuarioId]
+      `UPDATE mensajes
+       SET eliminado = 0,
+           eliminado_por_usuario_id = NULL,
+           eliminado_por_admin = 0
+       WHERE id = ?`,
+      [id]
     );
 
     const [rows] = await db.query(`SELECT * FROM mensajes WHERE id = ?`, [id]);

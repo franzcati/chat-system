@@ -7,13 +7,17 @@ const DEFAULT_PERMISSIONS = {
   editar_mensajes: 0,
   enviar_audios: 0,
   eliminar_mensajes: 0,
+  buscar_mensajes: 0,
+  eliminar_cualquier_mensaje: 0,
 };
 
 const PERMISSION_OPTIONS = [
   { key: "crear_grupos", label: "Crear grupos", icon: "bi bi-people" },
   { key: "editar_mensajes", label: "Editar mensajes", icon: "bi bi-pencil-square" },
   { key: "enviar_audios", label: "Grabar audios", icon: "bi bi-mic" },
-  { key: "eliminar_mensajes", label: "Eliminar mensajes", icon: "bi bi-trash" },
+  { key: "eliminar_mensajes", label: "Eliminar sus mensajes", icon: "bi bi-trash" },
+  { key: "buscar_mensajes", label: "Buscar mensajes", icon: "bi bi-search" },
+  { key: "eliminar_cualquier_mensaje", label: "Eliminar cualquier mensaje", icon: "bi bi-shield-exclamation" },
 ];
 
 const getProjectName = (project) => String(project?.nombre || project?.name || "").trim();
@@ -69,10 +73,10 @@ export default function BatchEditUsers({ selectedUsers, onBack, onSaved }) {
         if (!response.ok) throw new Error(data.error || "No se pudieron cargar los proyectos");
         return Array.isArray(data?.proyectos) ? data.proyectos : [];
       }),
-      fetch("/api/roles", { credentials: "include" }).then(async (response) => {
+      fetch("/api/roles/assignable", { credentials: "include" }).then(async (response) => {
         const data = await response.json().catch(() => []);
         if (!response.ok) throw new Error("No se pudieron cargar los roles");
-        return Array.isArray(data) ? data : [];
+        return Array.isArray(data?.roles) ? data.roles : [];
       }),
     ])
       .then(([projectRows, roleRows]) => {

@@ -68,6 +68,11 @@ const getCreationDate = (user) => {
 };
 
 const EditUsers = ({ usuarioLogueado, proyectos = [] }) => {
+  const rolePermissions = new Set(usuarioLogueado?.rol_permisos || []);
+  const canCreateUsers = rolePermissions.has("crear_usuarios");
+  const canEditUsers = rolePermissions.has("editar_usuarios");
+  const canBatchEditUsers = rolePermissions.has("editar_usuarios_lote");
+  const canDeleteUsers = rolePermissions.has("eliminar_usuarios");
   const [usuarios, setUsuarios] = useState([]);
   const [editando, setEditando] = useState(null);
   const [selectedIds, setSelectedIds] = useState(() => new Set());
@@ -167,7 +172,7 @@ const EditUsers = ({ usuarioLogueado, proyectos = [] }) => {
   );
 
   const openBatchEditor = () => {
-    if (!selectedIds.size) return;
+    if (!canBatchEditUsers || !selectedIds.size) return;
     setEditando(null);
     setBatchEditing(true);
   };
@@ -317,7 +322,7 @@ const EditUsers = ({ usuarioLogueado, proyectos = [] }) => {
           </p>
         </div>
 
-        <button
+        {canCreateUsers && <button
           type="button"
           className="qc-users-new-btn"
           onClick={abrirNuevoUsuario}
@@ -325,7 +330,7 @@ const EditUsers = ({ usuarioLogueado, proyectos = [] }) => {
         >
           <i className="bi bi-plus-lg" aria-hidden="true" />
           <span>Nuevo usuario</span>
-        </button>
+        </button>}
       </header>
 
       <section className="qc-users-panel">
@@ -406,11 +411,14 @@ const EditUsers = ({ usuarioLogueado, proyectos = [] }) => {
               onSelectMany={selectMany}
               onClearSelection={clearSelection}
               onBatchEdit={openBatchEditor}
+              canEdit={canEditUsers}
+              canDelete={canDeleteUsers}
+              canBatch={canBatchEditUsers}
             />
           </>
         )}
 
-        {editando && (
+        {editando && ((editando.id && canEditUsers) || (!editando.id && canCreateUsers)) && (
           <div className="qc-users-edit-card">
             <div className="qc-users-edit-head">
               <div>

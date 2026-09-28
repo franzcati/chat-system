@@ -1101,10 +1101,11 @@ const ChatBox = ({ chat, user, setChat, onCloseChat, onVerPerfil, onAddToList, e
         );
       };
 
-      const handleMensajeEliminadoGrupo = ({ id }) => {
+      const handleMensajeEliminadoGrupo = (msg) => {
+        const id = msg?.id;
         setMessages((prev) =>
           prev.map((m) =>
-            m.id === id ? { ...m, eliminado: 1 } : m
+            m.id === id ? { ...m, ...msg, eliminado: 1 } : m
           )
         );
       };
@@ -1332,10 +1333,11 @@ const ChatBox = ({ chat, user, setChat, onCloseChat, onVerPerfil, onAddToList, e
         });
       };
 
-      const handleMensajeEliminado = ({ id }) => {
+      const handleMensajeEliminado = (msg) => {
+        const id = msg?.id;
         setMessages((prev) =>
           prev.map((m) =>
-            m.id === id ? { ...m, eliminado: 1 } : m
+            m.id === id ? { ...m, ...msg, eliminado: 1 } : m
           )
         );
       };

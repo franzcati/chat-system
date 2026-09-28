@@ -15,6 +15,8 @@ const DEFAULT_CHAT_PERMISSIONS = {
   editar_mensajes: 0,
   eliminar_mensajes: 0,
   enviar_audios: 0,
+  buscar_mensajes: 0,
+  eliminar_cualquier_mensaje: 0,
 };
 
 function normalizarPermisosChat(value) {
@@ -129,6 +131,7 @@ router.get(
       rol_id: req.auth.usuario.rol_id,
       instancia_id: req.auth.usuario.instancia_id,
       rol_permisos: req.auth.permisos,
+      permisos_chat: req.auth.usuario.permisos_chat || {},
     },
     session: req.auth.session,
   });

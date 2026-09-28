@@ -17,6 +17,8 @@ const DEFAULT_PERMISSIONS = {
   editar_mensajes: 0,
   eliminar_mensajes: 0,
   enviar_audios: 0,
+  buscar_mensajes: 0,
+  eliminar_cualquier_mensaje: 0,
 };
 
 const normalizeCsvHeader = (value) =>
@@ -186,13 +188,13 @@ const AddUsers = ({ onCancel }) => {
           fetch("/api/usuarios/admin/projects", {
             credentials: "include",
           }),
-          fetch("/api/roles", {
+          fetch("/api/roles/assignable", {
             credentials: "include",
           }),
         ]);
 
         const projectsData = await projectsRes.json().catch(() => ({}));
-        const rolesData = await rolesRes.json().catch(() => []);
+        const rolesData = await rolesRes.json().catch(() => ({}));
 
         if (!projectsRes.ok) {
           throw new Error(
@@ -203,7 +205,7 @@ const AddUsers = ({ onCancel }) => {
         const nextProjects = Array.isArray(projectsData?.proyectos)
           ? projectsData.proyectos
           : [];
-        const nextRoles = Array.isArray(rolesData) ? rolesData : [];
+        const nextRoles = Array.isArray(rolesData?.roles) ? rolesData.roles : [];
 
         setProyectos(nextProjects);
         setRoles(nextRoles);
@@ -992,7 +994,9 @@ const AddUsers = ({ onCancel }) => {
               ["crear_grupos", "Crear grupos", "bi bi-people"],
               ["editar_mensajes", "Editar mensajes", "bi bi-pencil-square"],
               ["enviar_audios", "Grabar audios", "bi bi-mic"],
-              ["eliminar_mensajes", "Eliminar mensajes", "bi bi-trash"],
+              ["eliminar_mensajes", "Eliminar sus mensajes", "bi bi-trash"],
+              ["buscar_mensajes", "Buscar mensajes", "bi bi-search"],
+              ["eliminar_cualquier_mensaje", "Eliminar cualquier mensaje", "bi bi-shield-exclamation"],
             ].map(([field, label, icon]) => (
               <label className="qc-user-permission-option" key={field}>
                 <span className="qc-user-permission-icon">

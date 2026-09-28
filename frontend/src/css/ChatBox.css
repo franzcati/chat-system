@@ -18732,3 +18732,16 @@ body.dark .wa-history-message-row.in .wa-history-message-time,
     padding: 14px !important;
   }
 }
+
+/* Eliminación por moderación: diferencia visual sin alterar el layout del mensaje. */
+.wa-deleted-message.is-admin-deleted {
+  font-weight: 600;
+}
+
+.wa-deleted-message.is-admin-deleted > i {
+  flex: 0 0 auto;
+  font-size: 14px;
+  line-height: 1;
+  color: currentColor;
+  opacity: .9;
+}

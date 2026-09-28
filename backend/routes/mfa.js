@@ -58,6 +58,8 @@ const DEFAULT_CHAT_PERMISSIONS = {
   editar_mensajes: 0,
   eliminar_mensajes: 0,
   enviar_audios: 0,
+  buscar_mensajes: 0,
+  eliminar_cualquier_mensaje: 0,
 };
 
 function normalizarPermisosChat(value) {

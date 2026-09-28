@@ -353,7 +353,17 @@ async function usuarioPuedeEditarMensajes(usuarioId) {
 
 async function usuarioPuedeEliminarMensajes(usuarioId) {
   const permisos = await obtenerPermisosChatUsuario(usuarioId);
-  return permisos.eliminar_mensajes === 1;
+  return [1, "1", true, "true"].includes(permisos.eliminar_mensajes);
+}
+
+async function usuarioPuedeEliminarCualquierMensaje(usuarioId) {
+  const permisos = await obtenerPermisosChatUsuario(usuarioId);
+  return [1, "1", true, "true"].includes(permisos.eliminar_cualquier_mensaje);
+}
+
+async function usuarioPuedeBuscarMensajes(usuarioId) {
+  const permisos = await obtenerPermisosChatUsuario(usuarioId);
+  return [1, "1", true, "true"].includes(permisos.buscar_mensajes);
 }
 
 // =======================
@@ -392,6 +402,8 @@ router.get(
         mg.usuario_id,
         mg.mensaje,
         mg.eliminado,
+        mg.eliminado_por_usuario_id,
+        mg.eliminado_por_admin,
         mg.fecha_envio,
         mg.editado,
         mg.lote_id,
@@ -577,6 +589,11 @@ router.get(
   requireGroupMembershipParam("grupoId"),
   async (req, res) => {
   const { grupoId } = req.params;
+  const usuarioId = Number(req.auth?.userId);
+  if (!(await usuarioPuedeBuscarMensajes(usuarioId))) {
+    return res.status(403).json({ error: "No tienes permiso para buscar mensajes" });
+  }
+
   const query = String(req.query.q || "").trim();
   const parsedLimit = Number.parseInt(req.query.limit, 10);
   const limit = Number.isFinite(parsedLimit) ? Math.min(Math.max(parsedLimit, 1), 80) : 40;
@@ -594,6 +611,8 @@ router.get(
          mg.usuario_id,
          mg.mensaje,
          mg.eliminado,
+         mg.eliminado_por_usuario_id,
+         mg.eliminado_por_admin,
          mg.fecha_envio,
          mg.editado,
          mg.lote_id,
@@ -662,6 +681,8 @@ router.get(
         mg.usuario_id,
         mg.mensaje,
         mg.eliminado,
+        mg.eliminado_por_usuario_id,
+        mg.eliminado_por_admin,
         mg.fecha_envio,
         mg.editado,
         mg.lote_id,
@@ -1103,13 +1124,24 @@ router.put(
   const io = req.app.get("io");
 
   try {
-    if (!(await usuarioPuedeEliminarMensajes(usuarioId))) {
-      return res.status(403).json({ error: "No tienes permiso para eliminar mensajes" });
+    const [targetRows] = await db.query(`SELECT * FROM mensajes_grupo WHERE id = ? LIMIT 1`, [id]);
+    if (!targetRows.length) return res.status(404).json({ error: "Mensaje no encontrado" });
+    const target = targetRows[0];
+    const isOwner = Number(target.usuario_id) === usuarioId;
+    const allowed = isOwner
+      ? await usuarioPuedeEliminarMensajes(usuarioId)
+      : await usuarioPuedeEliminarCualquierMensaje(usuarioId);
+    if (!allowed) {
+      return res.status(403).json({ error: isOwner ? "No tienes permiso para eliminar mensajes" : "No tienes permiso para eliminar mensajes de otros usuarios" });
     }
 
     await db.query(
-      `UPDATE mensajes_grupo SET eliminado = 1 WHERE id = ? AND usuario_id = ?`,
-      [id, usuarioId]
+      `UPDATE mensajes_grupo
+       SET eliminado = 1,
+           eliminado_por_usuario_id = ?,
+           eliminado_por_admin = ?
+       WHERE id = ?`,
+      [usuarioId, isOwner ? 0 : 1, id]
     );
 
     const [rows] = await db.query(`SELECT * FROM mensajes_grupo WHERE id = ?`, [id]);
@@ -1145,11 +1177,35 @@ router.put(
   const io = req.app.get("io");
 
   try {
-    // Restaurar/deshacer un mensaje propio NO depende del permiso
-    // eliminar_mensajes. El permiso solo controla la acción de eliminar.
+    const [targetRows] = await db.query(
+      `SELECT * FROM mensajes_grupo WHERE id = ? LIMIT 1`,
+      [id]
+    );
+    if (!targetRows.length) return res.status(404).json({ error: "Mensaje no encontrado" });
+
+    const target = targetRows[0];
+    const isOwner = Number(target.usuario_id) === usuarioId;
+    const wasAdminDeleted = Number(target.eliminado_por_admin || 0) === 1;
+
+    const allowed = wasAdminDeleted
+      ? await usuarioPuedeEliminarCualquierMensaje(usuarioId)
+      : isOwner;
+
+    if (!allowed) {
+      return res.status(403).json({
+        error: wasAdminDeleted
+          ? "No tienes permiso para restaurar mensajes eliminados por un administrador"
+          : "Solo el autor puede deshacer la eliminación de este mensaje",
+      });
+    }
+
     await db.query(
-      `UPDATE mensajes_grupo SET eliminado = 0 WHERE id = ? AND usuario_id = ?`,
-      [id, usuarioId]
+      `UPDATE mensajes_grupo
+       SET eliminado = 0,
+           eliminado_por_usuario_id = NULL,
+           eliminado_por_admin = 0
+       WHERE id = ?`,
+      [id]
     );
 
     const [rows] = await db.query(`SELECT * FROM mensajes_grupo WHERE id = ?`, [id]);

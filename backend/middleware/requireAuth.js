@@ -13,7 +13,8 @@ async function cargarUsuarioAutenticado(userId) {
         correo,
         estado,
         rol_id,
-        instancia_id
+        instancia_id,
+        permisos_chat
      FROM usuario
      WHERE id = ?
      LIMIT 1`,
@@ -47,6 +48,15 @@ async function cargarUsuarioAutenticado(userId) {
     .map((row) => String(row.permiso || "").trim())
     .filter(Boolean);
 
+  let permisosChat = {};
+  try {
+    permisosChat = typeof usuario.permisos_chat === "string"
+      ? JSON.parse(usuario.permisos_chat || "{}")
+      : (usuario.permisos_chat || {});
+  } catch {
+    permisosChat = {};
+  }
+
   return {
     id: Number(usuario.id),
     nombre: usuario.nombre,
@@ -58,6 +68,7 @@ async function cargarUsuarioAutenticado(userId) {
         ? null
         : Number(usuario.instancia_id),
     permisos,
+    permisos_chat: permisosChat,
   };
 }
 

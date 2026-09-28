@@ -33,10 +33,9 @@ export default function PrivateRoute({ children }) {
 
         try {
           const previous = readStoredUser() || {};
-          localStorage.setItem(
-            "usuario",
-            JSON.stringify({ ...previous, ...response.data.usuario })
-          );
+          const nextUser = { ...previous, ...response.data.usuario };
+          localStorage.setItem("usuario", JSON.stringify(nextUser));
+          window.dispatchEvent(new CustomEvent("quickchat:session-user-updated", { detail: nextUser }));
         } catch {}
       })
       .catch((error) => {

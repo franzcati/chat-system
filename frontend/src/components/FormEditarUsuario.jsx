@@ -7,6 +7,8 @@ const DEFAULT_PERMISSIONS = {
   editar_mensajes: 0,
   eliminar_mensajes: 0,
   enviar_audios: 0,
+  buscar_mensajes: 0,
+  eliminar_cualquier_mensaje: 0,
 };
 
 const parsePermissions = (value) => {
@@ -29,6 +31,8 @@ const parsePermissions = (value) => {
     editar_mensajes: Number(parsed.editar_mensajes || 0),
     eliminar_mensajes: Number(parsed.eliminar_mensajes || 0),
     enviar_audios: Number(parsed.enviar_audios || 0),
+    buscar_mensajes: Number(parsed.buscar_mensajes || 0),
+    eliminar_cualquier_mensaje: Number(parsed.eliminar_cualquier_mensaje || 0),
   };
 };
 
@@ -286,9 +290,16 @@ export default function FormEditarUsuario({
   useEffect(() => {
     cargarProyectos();
 
-    fetch("/api/roles")
-      .then((r) => r.json())
-      .then((data) => setRoles(Array.isArray(data) ? data : []))
+    Promise.all([
+      fetch("/api/roles/assignable", { credentials: "include" }).then((r) => r.json()),
+      fetch("/api/roles", { credentials: "include" }).then((r) => r.json()),
+    ])
+      .then(([allowedData, allData]) => {
+        const allowed = Array.isArray(allowedData?.roles) ? allowedData.roles : [];
+        const current = Array.isArray(allData) ? allData.find((role) => Number(role.id) === Number(editando?.rol_id)) : null;
+        const merged = current && !allowed.some((role) => Number(role.id) === Number(current.id)) ? [...allowed, current] : allowed;
+        setRoles(merged);
+      })
       .catch(() => setRoles([]));
 
     fetch("/api/roles_permisos")
@@ -1025,8 +1036,20 @@ const PERMISOS_UI = [
   },
   {
     campo: "eliminar_mensajes",
-    titulo: "Eliminar mensajes",
-    descripcion: "Permite borrar mensajes enviados",
+    titulo: "Eliminar sus mensajes",
+    descripcion: "Permite borrar sus propios mensajes",
     icono: "bi bi-trash",
+  },
+  {
+    campo: "buscar_mensajes",
+    titulo: "Buscar mensajes",
+    descripcion: "Permite buscar en el historial de mensajes",
+    icono: "bi bi-search",
+  },
+  {
+    campo: "eliminar_cualquier_mensaje",
+    titulo: "Eliminar cualquier mensaje",
+    descripcion: "Permite borrar mensajes enviados por otros usuarios",
+    icono: "bi bi-shield-exclamation",
   },
 ];

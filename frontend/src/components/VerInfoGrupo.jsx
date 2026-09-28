@@ -75,6 +75,7 @@ const VerInfoGrupo = ({
   const miRol = miembros.find((m) => Number(m.id) === Number(user?.id))?.rol;
   const puedeEditar = ["propietario", "admin"].includes(miRol);
   const esPropietario = miRol === "propietario";
+  const puedeBuscarMensajes = [1, true, "1", "true"].includes(user?.permisos_chat?.buscar_mensajes);
 
   useEffect(() => {
     const cargarEstados = async () => {
@@ -470,6 +471,10 @@ const VerInfoGrupo = ({
   }, [modoBusqueda, textoBusqueda, chat?.grupo_id]);
 
   const abrirBusquedaGrupo = () => {
+    if (!puedeBuscarMensajes) {
+      toast.error("No tienes permiso para buscar mensajes");
+      return;
+    }
     setModoBusqueda(true);
     setTextoBusqueda("");
     setResultadosBusqueda([]);

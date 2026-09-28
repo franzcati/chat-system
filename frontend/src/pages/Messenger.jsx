@@ -14,6 +14,7 @@ const CreateChat = lazy(() => import('../components/CreateChat'));
 const ProjectManagement = lazy(() => import('../components/ProjectManagement'));
 const AddUsers = lazy(() => import("../components/AddUsers"));
 const EditUsers = lazy(() => import("../components/EditUsers"));
+const RoleManagement = lazy(() => import("../components/RoleManagement"));
 
 const LazyPanelFallback = () => (
   <div className="flex-1 d-flex align-items-center justify-content-center">
@@ -267,6 +268,16 @@ const Messenger = () => {
     }
   }, []);
 
+  useEffect(() => {
+    const syncSessionUser = (event) => {
+      const next = event?.detail;
+      if (!next?.id) return;
+      setUsuario((prev) => ({ ...(prev || {}), ...next }));
+    };
+    window.addEventListener("quickchat:session-user-updated", syncSessionUser);
+    return () => window.removeEventListener("quickchat:session-user-updated", syncSessionUser);
+  }, []);
+
   // Los proyectos sólo son necesarios al abrir las pantallas administrativas.
   // No bloqueamos la carga inicial del chat con estas consultas.
   useEffect(() => {
@@ -478,6 +489,17 @@ const Messenger = () => {
         <div className="flex-1 wa-admin-stage">
           <Suspense fallback={<LazyPanelFallback />}>
             <ProjectManagement />
+          </Suspense>
+        </div>
+      )}
+
+      {activeTab === "roles" && (
+        <div className="flex-1 wa-admin-stage">
+          <Suspense fallback={<LazyPanelFallback />}>
+            <RoleManagement
+              usuarioLogueado={usuario}
+              onBackToChat={() => setActiveTab("chat")}
+            />
           </Suspense>
         </div>
       )}

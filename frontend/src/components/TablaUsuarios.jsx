@@ -77,6 +77,9 @@ const UserRow = memo(function UserRow({
   onToggle,
   onEdit,
   onDelete,
+  canEdit,
+  canDelete,
+  canSelect,
 }) {
   const initial = user?.nombre?.charAt(0)?.toUpperCase() || user?.usuario?.charAt(0)?.toUpperCase() || "?";
   const fullName = `${user?.nombre || ""} ${user?.apellido || ""}`.trim();
@@ -90,7 +93,7 @@ const UserRow = memo(function UserRow({
     <tr className={selected ? "is-selected" : ""}>
       <td className="qc-users-col-check">
         <label className="qc-users-check" title={selected ? "Quitar de la selección" : "Seleccionar usuario"}>
-          <input type="checkbox" checked={selected} onChange={() => onToggle(user.id)} aria-label={`Seleccionar ${fullName || user?.usuario || "usuario"}`} />
+          <input type="checkbox" checked={selected} onChange={() => onToggle(user.id)} disabled={!canSelect} aria-label={`Seleccionar ${fullName || user?.usuario || "usuario"}`} />
           <span aria-hidden="true"><i className="bi bi-check-lg" /></span>
         </label>
       </td>
@@ -123,8 +126,8 @@ const UserRow = memo(function UserRow({
       <td><span className={`qc-status-pill qc-status-pill-${statusInfo.tone}`}><span aria-hidden="true" />{statusInfo.label}</span></td>
       <td>
         <div className="qc-users-actions">
-          <button type="button" className="qc-action-btn qc-action-btn-edit" onClick={() => onEdit(user)} title="Editar usuario"><i className="bi bi-pencil-square" aria-hidden="true" /></button>
-          <button type="button" className="qc-action-btn qc-action-btn-delete" onClick={() => onDelete(user.id)} title="Eliminar usuario"><i className="bi bi-trash" aria-hidden="true" /></button>
+          {canEdit && <button type="button" className="qc-action-btn qc-action-btn-edit" onClick={() => onEdit(user)} title="Editar usuario"><i className="bi bi-pencil-square" aria-hidden="true" /></button>}
+          {canDelete && <button type="button" className="qc-action-btn qc-action-btn-delete" onClick={() => onDelete(user.id)} title="Eliminar usuario"><i className="bi bi-trash" aria-hidden="true" /></button>}
         </div>
       </td>
     </tr>
@@ -140,6 +143,9 @@ export default function TablaUsuarios({
   onSelectMany,
   onClearSelection,
   onBatchEdit,
+  canEdit = true,
+  canDelete = true,
+  canBatch = true,
 }) {
   const [busqueda, setBusqueda] = useState("");
   const [filtroProyecto, setFiltroProyecto] = useState("");
@@ -290,7 +296,7 @@ export default function TablaUsuarios({
         <div className="qc-users-selection-left">
           <label className="qc-users-select-screen">
             <span className="qc-users-check">
-              <input ref={selectPageRef} type="checkbox" checked={allPageSelected} onChange={toggleCurrentPage} disabled={!pageIds.length} />
+              <input ref={selectPageRef} type="checkbox" checked={allPageSelected} onChange={toggleCurrentPage} disabled={!pageIds.length || !canBatch} />
               <span aria-hidden="true"><i className="bi bi-check-lg" /></span>
             </span>
             <span>Seleccionar todo en pantalla</span>
@@ -300,7 +306,7 @@ export default function TablaUsuarios({
             type="button"
             className={`qc-users-select-filtered-btn ${allFilteredSelected ? "is-active" : ""}`}
             onClick={toggleAllFiltered}
-            disabled={!filteredIds.length}
+            disabled={!filteredIds.length || !canBatch}
             title={allFilteredSelected ? "Quitar de la selección todos los usuarios filtrados" : "Seleccionar todos los usuarios que coinciden con los filtros actuales"}
           >
             <i className={allFilteredSelected ? "bi bi-check2-all" : "bi bi-ui-checks-grid"} aria-hidden="true" />
@@ -311,7 +317,7 @@ export default function TablaUsuarios({
         <div className="qc-users-selection-actions">
           {selectedCount > 0 && <span className="qc-users-selected-pill"><i className="bi bi-check2-circle" /> {selectedCount} {selectedCount === 1 ? "usuario seleccionado" : "usuarios seleccionados"}</span>}
           <button type="button" className="qc-users-clear-btn" onClick={onClearSelection} disabled={!selectedCount}><i className="bi bi-trash3" /> Limpiar selección</button>
-          <button type="button" className="qc-users-batch-btn" onClick={onBatchEdit} disabled={!selectedCount}><i className="bi bi-pencil-square" /> Editar lote</button>
+          {canBatch && <button type="button" className="qc-users-batch-btn" onClick={onBatchEdit} disabled={!selectedCount}><i className="bi bi-pencil-square" /> Editar lote</button>}
         </div>
       </div>
 
@@ -321,7 +327,7 @@ export default function TablaUsuarios({
             <tr>
               <th className="qc-users-col-check">
                 <label className="qc-users-check" title="Seleccionar usuarios de esta página">
-                  <input type="checkbox" checked={allPageSelected} onChange={toggleCurrentPage} ref={(node) => { if (node) node.indeterminate = somePageSelected; }} disabled={!pageIds.length} />
+                  <input type="checkbox" checked={allPageSelected} onChange={toggleCurrentPage} ref={(node) => { if (node) node.indeterminate = somePageSelected; }} disabled={!pageIds.length || !canBatch} />
                   <span aria-hidden="true"><i className="bi bi-check-lg" /></span>
                 </label>
               </th>
@@ -345,6 +351,9 @@ export default function TablaUsuarios({
                 onToggle={onToggleSelection}
                 onEdit={setEditando}
                 onDelete={eliminarUsuario}
+                canEdit={canEdit}
+                canDelete={canDelete}
+                canSelect={canBatch}
               />
             )) : (
               <tr><td colSpan="9"><div className="qc-users-empty-state"><i className="bi bi-search" aria-hidden="true" /><strong>No se encontraron usuarios</strong><span>Prueba con otra búsqueda o cambia los filtros.</span></div></td></tr>
