@@ -4,6 +4,8 @@ const db = require("../db");
 const { logDev } = require("../utils/logger");
 const { queryWithRetry } = require("../utils/dbRetry");
 const { optimizeUploadedAudio } = require("../utils/audioOptimizer");
+const { writeAudit } = require("../utils/auditService");
+const { detectBlacklist } = require("../utils/blacklistService");
 const {
   chatAuthMiddleware,
   enforceAuthenticatedActor,
@@ -989,6 +991,18 @@ router.post(
 
     logDev("📦 Mensaje listo para emitir:", nuevoMensaje);
 
+    // Auditoría y blacklist se ejecutan sin bloquear la entrega del mensaje.
+    req.auditHandled = true;
+    writeAudit(req, {
+      category: "chat", event: "MENSAJE_ENVIADO", action: "Envió mensaje", actorUserId: senderId,
+      targetUserId: receiverId, chatUserId: receiverId, messageId: Number(result.insertId),
+      metadata: { replyToId: replyToIdNum, reenviado: 0 },
+    }).catch(() => {});
+    detectBlacklist({
+      req, actorUserId: senderId, targetUserId: receiverId, messageId: Number(result.insertId),
+      text: message, type: "chat",
+    }).catch(() => {});
+
     // Respondemos primero porque el mensaje ya fue guardado.
     // Si falla un socket, no debe mostrarse la alerta falsa de "no se pudo enviar".
     res.status(201).json(nuevoMensaje);
@@ -1225,6 +1239,17 @@ router.put(
     enviarEventoAlUsuario(mensajeUTC.usuario_envia_id, "mensajeEliminado", mensajeUTC);
     enviarEventoAlUsuario(mensajeUTC.usuario_recibe_id, "mensajeEliminado", mensajeUTC);
 
+    req.auditHandled = true;
+    await writeAudit(req, {
+      category: "chat",
+      event: isOwner ? "MENSAJE_ELIMINADO" : "MENSAJE_ELIMINADO_ADMIN",
+      action: isOwner ? "Eliminó su mensaje" : "Eliminó mensaje de otro usuario",
+      actorUserId: usuarioId, targetUserId: Number(target.usuario_envia_id),
+      chatUserId: Number(target.usuario_envia_id) === usuarioId ? Number(target.usuario_recibe_id) : Number(target.usuario_envia_id),
+      messageId: Number(id), permission: isOwner ? "chat_eliminar_mensajes" : "chat_eliminar_cualquier_mensaje",
+      before: { eliminado: Number(target.eliminado || 0), texto: target.mensaje },
+      after: { eliminado: 1, eliminado_por_admin: isOwner ? 0 : 1 },
+    });
     res.json({ success: true, mensaje: mensajeUTC });
   } catch (err) {
     console.error("❌ Error eliminando mensaje:", err);
@@ -1295,6 +1320,13 @@ router.put(
     enviarEventoAlUsuario(mensajeUTC.usuario_envia_id, "mensajeDeshecho", mensajeUTC);
     enviarEventoAlUsuario(mensajeUTC.usuario_recibe_id, "mensajeDeshecho", mensajeUTC);
 
+    req.auditHandled = true;
+    await writeAudit(req, {
+      category: "chat", event: "MENSAJE_RESTAURADO", action: "Restauró mensaje", actorUserId: usuarioId,
+      targetUserId: Number(target.usuario_envia_id), messageId: Number(id),
+      permission: wasAdminDeleted ? "chat_eliminar_cualquier_mensaje" : null,
+      before: { eliminado: 1, eliminado_por_admin: Number(target.eliminado_por_admin || 0) }, after: { eliminado: 0 },
+    });
     res.json({ success: true, mensaje: mensajeUTC });
   } catch (err) {
     console.error("❌ Error deshaciendo mensaje:", err);
@@ -1364,6 +1396,13 @@ router.put(
     enviarEventoAlUsuario(mensajeUTC.usuario_envia_id, "mensajeEditado", mensajeUTC);
     enviarEventoAlUsuario(mensajeUTC.usuario_recibe_id, "mensajeEditado", mensajeUTC);
 
+    req.auditHandled = true;
+    await writeAudit(req, {
+      category: "chat", event: "MENSAJE_EDITADO", action: "Editó mensaje", actorUserId: usuarioId,
+      targetUserId: Number(original.usuario_recibe_id), chatUserId: Number(original.usuario_recibe_id), messageId: Number(id),
+      permission: "chat_editar_mensajes", before: { texto: original.mensaje }, after: { texto: nuevoTexto },
+    });
+    detectBlacklist({ req, actorUserId: usuarioId, targetUserId: Number(original.usuario_recibe_id), messageId: Number(id), text: nuevoTexto, type: "chat" }).catch(() => {});
     res.json({ success: true, mensaje: mensajeUTC });
   } catch (err) {
     console.error("❌ Error al editar mensaje:", err);

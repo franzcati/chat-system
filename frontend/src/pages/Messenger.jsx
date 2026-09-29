@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback, lazy, Suspense } from 'react';
+import toast from "react-hot-toast";
 import { useNavigate } from 'react-router-dom'; // 👈
 import { logDev } from "../utils/logger";
 import "../css/MessengerShell.css";
@@ -15,6 +16,7 @@ const ProjectManagement = lazy(() => import('../components/ProjectManagement'));
 const AddUsers = lazy(() => import("../components/AddUsers"));
 const EditUsers = lazy(() => import("../components/EditUsers"));
 const RoleManagement = lazy(() => import("../components/RoleManagement"));
+const AuditManagement = lazy(() => import("../components/AuditManagement"));
 
 const LazyPanelFallback = () => (
   <div className="flex-1 d-flex align-items-center justify-content-center">
@@ -437,6 +439,17 @@ const Messenger = () => {
   }, [usuario?.id, navigate]);
 
   useEffect(() => {
+    if (!usuario?.id) return undefined;
+    const handleBlacklistAlert = (payload = {}) => {
+      const palabra = payload?.palabra_detectada || "palabra restringida";
+      const severidad = String(payload?.severidad || "").toUpperCase();
+      toast.error(`Blacklist${severidad ? ` · ${severidad}` : ""}: ${palabra}`, { duration: 6500 });
+    };
+    socket.on("blacklistAlerta", handleBlacklistAlert);
+    return () => socket.off("blacklistAlerta", handleBlacklistAlert);
+  }, [usuario?.id]);
+
+  useEffect(() => {
     if (!usuario?.id) return;
 
     logDev("🔌 Messenger va a conectar socket", usuario.id);
@@ -500,6 +513,14 @@ const Messenger = () => {
               usuarioLogueado={usuario}
               onBackToChat={() => setActiveTab("chat")}
             />
+          </Suspense>
+        </div>
+      )}
+
+      {activeTab === "records" && (
+        <div className="flex-1 wa-admin-stage">
+          <Suspense fallback={<LazyPanelFallback />}>
+            <AuditManagement usuarioLogueado={usuario} />
           </Suspense>
         </div>
       )}

@@ -29,6 +29,17 @@ const ROLE_ADMIN_OPTIONS = [
   ["eliminar_roles", "Eliminar roles"],
 ];
 
+const AUDIT_OPTIONS = [
+  ["ver_registros", "Ver registros", "Puede acceder al historial de auditoría.", "bi-file-earmark-text"],
+  ["ver_registros_admin", "Registros administrativos", "Puede consultar acciones administrativas.", "bi-person-gear"],
+  ["ver_registros_chat", "Registros de chat", "Puede consultar eventos de chats privados.", "bi-chat-square-dots"],
+  ["ver_registros_grupo", "Registros grupales", "Puede consultar eventos de chats grupales.", "bi-people"],
+  ["ver_registros_seguridad", "Registros de seguridad", "Puede revisar actividad de autenticación y seguridad.", "bi-shield-lock"],
+  ["ver_blacklist", "Ver blacklist", "Puede revisar detecciones y reglas de blacklist.", "bi-ban"],
+  ["gestionar_blacklist", "Gestionar blacklist", "Puede crear, editar y eliminar reglas.", "bi-shield-exclamation"],
+  ["exportar_registros", "Exportar registros", "Puede exportar reportes CSV.", "bi-download"],
+];
+
 const initials = (name) => String(name || "R").trim().charAt(0).toUpperCase();
 const title = (value) => String(value || "").trim().toLowerCase().replace(/(^|\s)\S/g, (m) => m.toUpperCase());
 const roleDescription = (role) => role.descripcion || "Rol del sistema con permisos configurables.";
@@ -114,6 +125,7 @@ export default function RoleManagement({ usuarioLogueado, onBackToChat }) {
           scope: ADMIN_OPTIONS.some(([key]) => (json.permissions || []).includes(key)),
           assign: (json.assignable_role_ids || []).length > 0,
           chat: CHAT_OPTIONS.some(([key]) => (json.permissions || []).includes(key)),
+          audit: AUDIT_OPTIONS.some(([key]) => (json.permissions || []).includes(key)),
         },
       });
     } catch (error) { alert(error.message); }
@@ -138,6 +150,11 @@ export default function RoleManagement({ usuarioLogueado, onBackToChat }) {
       if (!enabled && section === "chat") {
         const permissions = new Set(next.permissions || prev.permissions);
         CHAT_OPTIONS.forEach(([key]) => permissions.delete(key));
+        next.permissions = permissions;
+      }
+      if (!enabled && section === "audit") {
+        const permissions = new Set(next.permissions || prev.permissions);
+        AUDIT_OPTIONS.forEach(([key]) => permissions.delete(key));
         next.permissions = permissions;
       }
       if (!enabled && section === "assign") next.assignableRoleIds = new Set();
@@ -192,6 +209,7 @@ export default function RoleManagement({ usuarioLogueado, onBackToChat }) {
     const isAdmin = String(role.nombre).toLowerCase() === "admin";
     const adminSelected = ADMIN_OPTIONS.filter(([key]) => form.permissions.has(key)).length;
     const chatSelected = CHAT_OPTIONS.filter(([key]) => form.permissions.has(key)).length;
+    const auditSelected = AUDIT_OPTIONS.filter(([key]) => form.permissions.has(key)).length;
     return (
       <main className="qc-roles-page qc-role-edit-page">
         <div className="qc-roles-bg" aria-hidden="true" />
@@ -233,6 +251,11 @@ export default function RoleManagement({ usuarioLogueado, onBackToChat }) {
               <div className="qc-role-options-grid three">{CHAT_OPTIONS.map(([key,label,desc,icon]) => <CheckCard key={key} checked={form.permissions.has(key)} onChange={(v) => togglePermission(key, v)} icon={icon} label={label} description={desc} disabled={viewOnly || isAdmin || !form.sections.chat} />)}</div>
             </section>
 
+            <section className="qc-role-config-card">
+              <div className="qc-role-config-head"><Toggle checked={form.sections.audit} onChange={(v) => setSectionEnabled("audit", v)} disabled={viewOnly || isAdmin} /><span className="qc-role-section-icon"><i className="bi bi-file-earmark-text" /></span><div><h3>Registros y auditoría</h3><p>Controla el acceso al historial, seguridad, blacklist y exportación.</p></div></div>
+              <div className="qc-role-options-grid four">{AUDIT_OPTIONS.map(([key,label,desc,icon]) => <CheckCard key={key} checked={form.permissions.has(key)} onChange={(v) => togglePermission(key, v)} icon={icon} label={label} description={desc} disabled={viewOnly || isAdmin || !form.sections.audit} />)}</div>
+            </section>
+
             {canEdit && !viewOnly && <section className="qc-role-config-card qc-role-extra-card"><div><h3>Permisos de Gestión de Roles</h3><p>Controla quién puede administrar esta misma sección.</p></div><div className="qc-role-inline-checks">{ROLE_ADMIN_OPTIONS.map(([key,label]) => <label key={key}><input type="checkbox" checked={form.permissions.has(key)} onChange={(e)=>togglePermission(key,e.target.checked)} disabled={isAdmin}/><span>{label}</span></label>)}</div></section>}
           </div>
 
@@ -244,6 +267,7 @@ export default function RoleManagement({ usuarioLogueado, onBackToChat }) {
             <div className="qc-role-summary-row"><span><i className="bi bi-person-gear" /> Gestión de usuarios</span><strong>{adminSelected} de {ADMIN_OPTIONS.length}</strong></div>
             <div className="qc-role-summary-row"><span><i className="bi bi-shield-check" /> Roles asignables</span><strong>{form.assignableRoleIds.size} de {data.roles?.length || 0}</strong></div>
             <div className="qc-role-summary-row"><span><i className="bi bi-chat-square-text" /> Permisos del chat</span><strong>{chatSelected} de {CHAT_OPTIONS.length}</strong></div>
+            <div className="qc-role-summary-row"><span><i className="bi bi-file-earmark-text" /> Registros y auditoría</span><strong>{auditSelected} de {AUDIT_OPTIONS.length}</strong></div>
             <div className="qc-role-summary-note"><i className="bi bi-info-circle" /><span>Los cambios se aplicarán inmediatamente a los usuarios que tienen este rol. La autorización sensible también se valida en backend.</span></div>
             <div className="qc-role-summary-actions"><button onClick={() => { setSelectedRoleId(null); setDetail(null); }} className="secondary">Cancelar</button>{!viewOnly && canEdit && <button onClick={saveRole} disabled={saving} className="primary"><i className="bi bi-floppy" /> {saving ? 'Guardando...' : 'Guardar cambios'}</button>}</div>
           </aside>

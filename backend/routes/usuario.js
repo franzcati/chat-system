@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const pool = require('../db');
-const { setAuthSession, clearAuthSession } = require("../utils/sessionAuth");
+const { setAuthSession, clearAuthSession, verifyAuthSession } = require("../utils/sessionAuth");
 const { requireAuth } = require("../middleware/requireAuth");
 const {
   resolveInstance,
@@ -9,6 +9,7 @@ const {
 const { createMfaChallenge } = require('../utils/mfaService');
 const { findTrustedDevice } = require('../utils/trustedDeviceService');
 const { auditMfa } = require('../utils/mfaAuditService');
+const { writeAudit } = require('../utils/auditService');
 
 const DEFAULT_CHAT_PERMISSIONS = {
   crear_grupos: 0,
@@ -139,8 +140,13 @@ router.get(
 
 // CERRAR SESIÓN
 router.post('/logout', async (req, res) => {
+  let actorUserId = null;
+  try { actorUserId = verifyAuthSession(req).userId; } catch {}
   clearAuthSession(req, res);
-
+  req.auditHandled = true;
+  await writeAudit(req, {
+    category: 'seguridad', event: 'LOGOUT', action: 'Cierre de sesión', actorUserId,
+  });
   return res.json({
     mensaje: 'Sesión cerrada correctamente',
   });
@@ -290,6 +296,8 @@ router.post(
           });
 
           setAuthSession(req, res, usuario.id);
+          req.auditHandled = true;
+          await writeAudit(req, { category: 'seguridad', event: 'LOGIN', action: 'Inicio de sesión en dispositivo confiable', actorUserId: usuario.id, targetUserId: usuario.id, result: 'exitoso' });
 
           return res.json({
             mensaje: 'Inicio de sesión exitoso en dispositivo confiable',
@@ -318,6 +326,8 @@ router.post(
         success: true,
       });
 
+      req.auditHandled = true;
+      await writeAudit(req, { category: 'seguridad', event: 'LOGIN_MFA_REQUERIDO', action: 'Contraseña validada; se solicitó segundo factor', actorUserId: usuarioContrasena.id, targetUserId: usuarioContrasena.id, result: 'exitoso', metadata: { setupRequired } });
       return res.json({
         mensaje: setupRequired
           ? 'Elige cómo proteger esta cuenta.'
@@ -336,6 +346,8 @@ router.post(
     const usuario = await prepararUsuarioRespuesta(usuarioContrasena);
 
     setAuthSession(req, res, usuario.id);
+    req.auditHandled = true;
+    await writeAudit(req, { category: 'seguridad', event: 'LOGIN', action: 'Inicio de sesión', actorUserId: usuario.id, targetUserId: usuario.id, result: 'exitoso' });
 
     return res.json({
       mensaje: 'Inicio de sesión exitoso',

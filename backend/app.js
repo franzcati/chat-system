@@ -45,6 +45,10 @@ app.use(cors({
 }));
 app.use(express.json());
 
+// Auditoría transversal: registra mutaciones relevantes sin alterar la operación principal.
+const { auditRequestLifecycle } = require("./middleware/auditLifecycle");
+app.use(auditRequestLifecycle);
+
 // Identificador del proceso desplegado. El frontend lo consulta periódicamente
 // para detectar una actualización/reinicio y recargarse sin cerrar la sesión.
 // APP_RELEASE permite fijar un ID de versión desde el despliegue; si no existe,
@@ -108,6 +112,9 @@ app.use("/api/roles", require("./routes/roles"));
 
 //FUNCION PARA PERMISOS DE ROLES
 app.use("/api/roles_permisos", require("./routes/roles_permisos"));
+
+// REGISTROS / AUDITORÍA / BLACKLIST
+app.use("/api/registros", require("./routes/registros"));
 
 const gruposRoutes = require("./routes/grupos");
 app.use("/api/grupos", gruposRoutes);

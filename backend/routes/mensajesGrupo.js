@@ -7,6 +7,8 @@ const fs = require("fs");
 const { logDev } = require("../utils/logger");
 const { queryWithRetry } = require("../utils/dbRetry");
 const { optimizeUploadedAudio } = require("../utils/audioOptimizer");
+const { writeAudit } = require("../utils/auditService");
+const { detectBlacklist } = require("../utils/blacklistService");
 const {
   chatAuthMiddleware,
   enforceAuthenticatedActor,
@@ -926,6 +928,14 @@ router.post(
       background: usuario.background || null,
     };
 
+    req.auditHandled = true;
+    writeAudit(req, {
+      category: "chat_grupal", event: "MENSAJE_GRUPO_ENVIADO", action: "Envió mensaje en grupo",
+      actorUserId: usuarioId, groupId: Number(grupoId), messageId: Number(result.insertId),
+      metadata: { replyToId: replyToIdNum, reenviado: 0 },
+    }).catch(() => {});
+    detectBlacklist({ req, actorUserId: usuarioId, messageId: Number(result.insertId), groupId: Number(grupoId), text: mensaje, type: "grupo" }).catch(() => {});
+
     // Respondemos antes de consultar miembros y emitir sockets. Si esa parte falla,
     // el frontend ya recibió que el mensaje se guardó correctamente.
     res.status(201).json(nuevoMensaje);
@@ -1153,6 +1163,14 @@ router.put(
 
     io.to(`grupo_${msg.grupo_id}`).emit("mensajeEliminadoGrupo", msg);
 
+    req.auditHandled = true;
+    await writeAudit(req, {
+      category: "chat_grupal", event: isOwner ? "MENSAJE_GRUPO_ELIMINADO" : "MENSAJE_GRUPO_ELIMINADO_ADMIN",
+      action: isOwner ? "Eliminó su mensaje de grupo" : "Eliminó mensaje de otro usuario en grupo",
+      actorUserId: usuarioId, targetUserId: Number(target.usuario_id), groupId: Number(target.grupo_id), messageId: Number(id),
+      permission: isOwner ? "chat_eliminar_mensajes" : "chat_eliminar_cualquier_mensaje",
+      before: { eliminado: Number(target.eliminado || 0), texto: target.mensaje }, after: { eliminado: 1, eliminado_por_admin: isOwner ? 0 : 1 },
+    });
     return res.json({ success: true, id: msg.id });
   } catch (err) {
     console.error("❌ Error eliminando mensaje de grupo:", err);
@@ -1222,6 +1240,12 @@ router.put(
       fecha_envio: fechaEnvioISO
     });
 
+    req.auditHandled = true;
+    await writeAudit(req, {
+      category: "chat_grupal", event: "MENSAJE_GRUPO_RESTAURADO", action: "Restauró mensaje de grupo",
+      actorUserId: usuarioId, targetUserId: Number(target.usuario_id), groupId: Number(target.grupo_id), messageId: Number(id),
+      permission: wasAdminDeleted ? "chat_eliminar_cualquier_mensaje" : null, before: { eliminado: 1 }, after: { eliminado: 0 },
+    });
     return res.json({ success: true, mensaje: msg });
   } catch (err) {
     console.error("❌ Error deshaciendo mensaje de grupo:", err);
@@ -1297,6 +1321,13 @@ router.put(
       grupoId: mensajeActual.grupo_id,
     });
 
+    req.auditHandled = true;
+    await writeAudit(req, {
+      category: "chat_grupal", event: "MENSAJE_GRUPO_EDITADO", action: "Editó mensaje de grupo",
+      actorUserId: usuarioId, groupId: Number(mensajeActual.grupo_id), messageId: Number(id),
+      permission: "chat_editar_mensajes", before: { texto: mensajeActual.mensaje }, after: { texto: nuevoTexto },
+    });
+    detectBlacklist({ req, actorUserId: usuarioId, messageId: Number(id), groupId: Number(mensajeActual.grupo_id), text: nuevoTexto, type: "grupo" }).catch(() => {});
     return res.json({ success: true, mensaje: mensajeConUTC });
 
   } catch (err) {

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { UserPlus, Edit3, Users, MessageSquare, Sun, Moon, Settings, Folder, Shield } from "feather-icons-react";
+import { UserPlus, Edit3, Users, MessageSquare, Sun, Moon, Settings, Folder, Shield, FileText } from "feather-icons-react";
 import { logDev } from "../utils/logger";
 import SidebarProfilePanel from "../components/SidebarProfilePanel";
 import { getAvatarUrl } from "../utils/url";
@@ -136,6 +136,8 @@ const Sidebar = ({ usuario, active, setActive, onUsuarioUpdate, unreadTotal = 0,
     .some((permiso) => usuario?.rol_permisos?.includes(permiso));
   const canGestionarRoles = ["gestionar_roles", "crear_roles", "editar_roles", "eliminar_roles"]
     .some((permiso) => usuario?.rol_permisos?.includes(permiso));
+  const canVerRegistros = ["ver_registros", "ver_registros_admin", "ver_registros_chat", "ver_registros_grupo", "ver_registros_seguridad", "ver_blacklist", "gestionar_blacklist"]
+    .some((permiso) => usuario?.rol_permisos?.includes(permiso));
 
   const unreadBadge = Number(unreadTotal) > 999 ? "999+" : Number(unreadTotal) || null;
 
@@ -143,6 +145,7 @@ const Sidebar = ({ usuario, active, setActive, onUsuarioUpdate, unreadTotal = 0,
     { id: "chat", label: "Mensajes", icon: <MessageSquare />, badge: unreadBadge },
     ...(canGestionarUsuarios ? [{ id: "edit-user", label: "Gestión de Usuarios", icon: <Users /> }] : []),
     ...(canCrearUsuarios ? [{ id: "add-user", label: "Nuevo Usuario", icon: <UserPlus /> }] : []),
+    ...(canVerRegistros ? [{ id: "records", label: "Registros", icon: <FileText /> }] : []),
     ...(canGestionarProyectos ? [{ id: "projects", label: "Proyectos", icon: <Folder /> }] : []),
     ...(canGestionarRoles ? [{ id: "roles", label: "Gestión de Roles", icon: <Shield /> }] : []),
     ...(canCrearGrupo ? [{ id: "edit", label: "Crear Chat Grupal", icon: <Edit3 /> }] : []),
