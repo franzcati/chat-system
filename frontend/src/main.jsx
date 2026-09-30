@@ -1,6 +1,7 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
 import App from "./App.jsx";
+import "./assets/fontawesome/css/all.min.css";
 import "./index.css";
 import "./App.css";
 import { ThemeProvider } from "./context/ThemeContext.jsx";

@@ -453,6 +453,7 @@ const ChatBox = ({ chat, user, setChat, onCloseChat, onVerPerfil, onAddToList, e
 
   // pestaña activa: "todos" o "favoritos" (si luego quieres más)
   const [stickerTab, setStickerTab] = useState("todos");
+  const [stickerSearch, setStickerSearch] = useState("");
 
   // Catálogo completo
   const [stickersTodos, setStickersTodos] = useState([]);
@@ -460,8 +461,17 @@ const ChatBox = ({ chat, user, setChat, onCloseChat, onVerPerfil, onAddToList, e
   // Solo favoritos del usuario
   const [stickersFavoritos, setStickersFavoritos] = useState([]);
 
-  const listaStickers =
-  stickerTab === "favoritos" ? stickersFavoritos : stickersTodos;
+  const listaStickersBase = stickerTab === "favoritos" ? stickersFavoritos : stickersTodos;
+  const listaStickers = listaStickersBase.filter((sticker) => {
+    const term = stickerSearch.trim().toLowerCase();
+    if (!term) return true;
+    return [
+      sticker?.nombre_archivo_original,
+      sticker?.creador_nombre,
+      sticker?.creador_apellido,
+      sticker?.url,
+    ].some((value) => String(value || "").toLowerCase().includes(term));
+  });
 
   const normalizeStickerMessageUrl = useCallback((url = "") => {
     let cleanUrl = String(url || "").trim().replace(/^(\[sticker\])+/i, "");
@@ -1524,6 +1534,7 @@ const ChatBox = ({ chat, user, setChat, onCloseChat, onVerPerfil, onAddToList, e
 
       ) {
         setShowStickerPicker(false);
+        setMostrarMenuLlamada(false);
       }
     };
 
@@ -1556,6 +1567,7 @@ const ChatBox = ({ chat, user, setChat, onCloseChat, onVerPerfil, onAddToList, e
         setShowEmojiPicker(false);
         setShowGifPicker(false);
         setShowStickerPicker(false);
+        setMostrarMenuLlamada(false);
       }
     };
 
@@ -4367,7 +4379,7 @@ const ChatBox = ({ chat, user, setChat, onCloseChat, onVerPerfil, onAddToList, e
                           <i className="fa-solid fa-caret-down ms-1" aria-hidden="true" />
                         </button>
                         {mostrarMenuLlamada && (
-                          <div className="wa-call-menu">
+                          <div className="wa-call-menu qc-call-menu">
                             <div className="wa-call-menu-head">
                               {chat.tipo === "grupo" ? (
                                 <GroupAvatar group={chat} members={chat.miembros} size={42} />
@@ -5315,7 +5327,10 @@ const ChatBox = ({ chat, user, setChat, onCloseChat, onVerPerfil, onAddToList, e
                             <LazyEmojiPicker
                               onEmojiSelect={(emoji) => handleEmojiClick({ emoji: emoji.native })}
                               previewPosition="none"
+                              navPosition="top"
+                              searchPosition="sticky"
                               skinTonePosition="search"
+                              maxFrequentRows={1}
                               perLine={9}
                               dynamicWidth
                               theme={emojiTheme}
@@ -5337,20 +5352,27 @@ const ChatBox = ({ chat, user, setChat, onCloseChat, onVerPerfil, onAddToList, e
                             />
                             <div className="wa-gif-grid">
                               {gifResults.map((gif) => (
-                                <img
+                                <button
                                   key={gif.id}
-                                  src={gif.images.fixed_height_small?.url || gif.images.fixed_height?.url}
-                                  alt={gif.title || "GIF"}
-                                  className="wa-gif-result"
-                                  loading="lazy"
-                                  decoding="async"
+                                  type="button"
+                                  className="wa-gif-item"
+                                  aria-label={`Enviar GIF ${gif.title || ""}`.trim()}
                                   aria-busy={gifSendingId === gif.id}
                                   style={{
                                     opacity: gifSendingId && gifSendingId !== gif.id ? 0.55 : 1,
                                     pointerEvents: gifSendingId ? "none" : "auto",
                                   }}
                                   onClick={() => handleSelectGif(gif)}
-                                />
+                                >
+                                  <img
+                                    src={gif.images.fixed_height_small?.url || gif.images.fixed_height?.url}
+                                    alt={gif.title || "GIF"}
+                                    className="wa-gif-result"
+                                    loading="lazy"
+                                    decoding="async"
+                                  />
+                                  <span className="wa-gif-badge">GIF</span>
+                                </button>
                               ))}
                             </div>
                           </div>
@@ -5390,10 +5412,21 @@ const ChatBox = ({ chat, user, setChat, onCloseChat, onVerPerfil, onAddToList, e
                               </button>
                             </div>
 
-                            <div className="wa-sticker-search-shell">
+                            <label className="wa-sticker-search-shell">
                               <i className="fa-solid fa-magnifying-glass" aria-hidden="true" />
-                              <span>Buscar stickers</span>
-                            </div>
+                              <input
+                                type="search"
+                                value={stickerSearch}
+                                onChange={(event) => setStickerSearch(event.target.value)}
+                                placeholder="Buscar stickers"
+                                aria-label="Buscar stickers"
+                              />
+                              {stickerSearch && (
+                                <button type="button" onClick={() => setStickerSearch("")} aria-label="Limpiar búsqueda de stickers">
+                                  <i className="fa-solid fa-xmark" aria-hidden="true" />
+                                </button>
+                              )}
+                            </label>
 
                             <div className="wa-sticker-grid-wrap">
                               <div className="wa-sticker-grid wa-sticker-grid-whatsapp">
@@ -5432,9 +5465,11 @@ const ChatBox = ({ chat, user, setChat, onCloseChat, onVerPerfil, onAddToList, e
                                   ))
                                 ) : (
                                   <div className="wa-sticker-empty">
-                                    {stickerTab === "favoritos"
-                                      ? "Tus stickers favoritos aparecerán aquí"
-                                      : "Tus stickers enviados aparecerán aquí"}
+                                    {stickerSearch.trim()
+                                      ? "No se encontraron stickers"
+                                      : stickerTab === "favoritos"
+                                        ? "Tus stickers favoritos aparecerán aquí"
+                                        : "Tus stickers enviados aparecerán aquí"}
                                   </div>
                                 )}
                               </div>

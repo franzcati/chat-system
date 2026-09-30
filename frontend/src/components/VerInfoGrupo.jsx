@@ -1063,8 +1063,8 @@ const GroupSearchView = ({ chat, value, onChange, results, loading, error, onSel
   const groupName = chat?.usuario_nombre || chat?.nombre || "este grupo";
 
   return (
-    <div className="wa-group-search-view">
-      <div className="wa-group-search-input-row">
+    <div className="wa-group-search-view qc-message-search-view">
+      <div className="wa-group-search-input-row qc-message-search-input-row">
         <i className="fa-regular fa-calendar" aria-hidden="true" />
         <div className="wa-group-search-input-wrap">
           <i className="fa-solid fa-magnifying-glass" aria-hidden="true" />
@@ -1083,7 +1083,18 @@ const GroupSearchView = ({ chat, value, onChange, results, loading, error, onSel
       </div>
 
       {!value.trim() ? (
-        <div className="wa-search-empty-state">Buscar mensajes con {groupName}</div>
+        <div className="wa-search-empty-state qc-message-search-empty">
+          <div className="qc-message-search-illustration" aria-hidden="true">
+            <span className="qc-search-orbit qc-search-orbit-one" />
+            <span className="qc-search-orbit qc-search-orbit-two" />
+            <span className="qc-search-bubble qc-search-bubble-left"><i className="fa-regular fa-message" /></span>
+            <span className="qc-search-bubble qc-search-bubble-right"><i className="fa-regular fa-message" /></span>
+            <span className="qc-search-main-icon"><i className="fa-solid fa-magnifying-glass" /></span>
+            <span className="qc-search-spark qc-search-spark-one" />
+            <span className="qc-search-spark qc-search-spark-two" />
+          </div>
+          <p>Buscar mensajes con <strong>{groupName}</strong></p>
+        </div>
       ) : loading ? (
         <div className="wa-search-empty-state">Buscando...</div>
       ) : error ? (

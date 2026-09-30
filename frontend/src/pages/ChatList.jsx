@@ -184,6 +184,28 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat, addToLi
   const gruposRef = useRef(grupos);
   const estadosUsuariosRef = useRef(estadosUsuarios);
 
+  useEffect(() => {
+    const closeFloatingMenus = () => {
+      setFilterMenuOpen(false);
+      setFilterMenuPosition(null);
+      setCustomListMenuOpen(false);
+      setCustomListMenuPosition(null);
+      setMenuChatAbierto(null);
+      setMenuChatPosition(null);
+    };
+
+    const handleKeyDown = (event) => {
+      if (event.key === "Escape") closeFloatingMenus();
+    };
+
+    window.addEventListener("resize", closeFloatingMenus);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("resize", closeFloatingMenus);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, []);
+
   selectedChatRef.current = selectedChat;
   silenciadosRef.current = silenciados;
   gruposRef.current = grupos;
@@ -2247,7 +2269,7 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat, addToLi
 
         {menuChatAbierto === chatKey && createPortal(
           <div
-            className="shadow-sm border rounded-3 bg-white wa-chat-options-menu wa-chat-options-menu-lg"
+            className="shadow-sm border rounded-3 bg-white wa-chat-options-menu wa-chat-options-menu-lg qc-chat-context-menu"
             style={
               menuChatPosition
                 ? { top: `${menuChatPosition.top}px`, left: `${menuChatPosition.left}px` }
@@ -2488,7 +2510,7 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat, addToLi
     setCustomListMenuPosition(null);
   };
 
-  const getFloatingMenuPosition = (buttonEl, menuWidth = 230, menuHeight = 236) => {
+  const getFloatingMenuPosition = (buttonEl, menuWidth = 340, menuHeight = 330) => {
     const rect = buttonEl.getBoundingClientRect();
     const margin = 8;
     const left = Math.max(
@@ -2514,7 +2536,7 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat, addToLi
     typeof document !== "undefined" &&
     createPortal(
       <div
-        className="wa-filter-dropdown wa-filter-dropdown-portal wa-custom-list-dropdown shadow-sm"
+        className="wa-filter-dropdown wa-filter-dropdown-portal wa-custom-list-dropdown qc-custom-list-menu shadow-sm"
         style={{ top: `${customListMenuPosition.top}px`, left: `${customListMenuPosition.left}px` }}
         onClick={(e) => e.stopPropagation()}
       >
@@ -2532,8 +2554,8 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat, addToLi
               }}
               title={lista.nombre}
             >
-              <span>{lista.emoji || ""}{lista.nombre}</span>
-              <strong>{lista.items?.length || 0}</strong>
+              <span className="qc-custom-list-name"><span className="qc-custom-list-icon"><i className="fa-solid fa-list" aria-hidden="true" /></span><span>{lista.emoji || ""}{lista.nombre}</span></span>
+              <strong className="qc-custom-list-count">{lista.items?.length || 0}</strong>
             </button>
             <button
               type="button"
@@ -2565,13 +2587,14 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat, addToLi
         ))}
         <button
           type="button"
-          className="wa-filter-new-list"
+          className="wa-filter-new-list qc-custom-list-new"
           onClick={() => {
             closeCustomListMenu();
             abrirCrearLista();
           }}
         >
-          <span><i className="fa-solid fa-plus" aria-hidden="true" /> Nueva lista</span>
+          <span className="qc-custom-list-icon is-new"><i className="fa-solid fa-plus" aria-hidden="true" /></span>
+          <span className="qc-custom-list-new-label">Nueva lista</span>
         </button>
       </div>,
       document.body
@@ -2583,49 +2606,61 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat, addToLi
     typeof document !== "undefined" &&
     createPortal(
       <div
-        className="wa-filter-dropdown wa-filter-dropdown-portal shadow-sm"
+        className="wa-filter-dropdown wa-filter-dropdown-portal qc-chat-filter-menu shadow-sm"
         style={{ top: `${filterMenuPosition.top}px`, left: `${filterMenuPosition.left}px` }}
         onClick={(e) => e.stopPropagation()}
       >
         <button
           type="button"
-          className={activeFilter === "favoritos" ? "active" : ""}
+          className={`qc-filter-menu-item ${activeFilter === "favoritos" ? "active" : ""}`}
           onClick={() => {
             setActiveFilter("favoritos");
             closeFilterMenu();
           }}
         >
-          <span>Favoritos</span>
-          <span>{filterCounts.favoritos}</span>
+          <span className="qc-filter-menu-icon is-favorite"><i className="fa-solid fa-star" aria-hidden="true" /></span>
+          <span className="qc-filter-menu-label">Favoritos</span>
+          <strong className="qc-filter-menu-count">{filterCounts.favoritos}</strong>
+          <i className="fa-solid fa-chevron-right qc-filter-menu-chevron" aria-hidden="true" />
         </button>
         <button
           type="button"
-          className={activeFilter === "grupos" ? "active" : ""}
+          className={`qc-filter-menu-item ${activeFilter === "grupos" ? "active" : ""}`}
           onClick={() => {
             setActiveFilter("grupos");
             closeFilterMenu();
           }}
         >
-          <span>Grupos</span>
-          <span>{filterCounts.grupos}</span>
+          <span className="qc-filter-menu-icon is-group"><i className="fa-solid fa-user-group" aria-hidden="true" /></span>
+          <span className="qc-filter-menu-label">Grupos</span>
+          <strong className="qc-filter-menu-count">{filterCounts.grupos}</strong>
+          <i className="fa-solid fa-chevron-right qc-filter-menu-chevron" aria-hidden="true" />
         </button>
         <button
           type="button"
-          className={activeFilter === "privados" ? "active" : ""}
+          className={`qc-filter-menu-item ${activeFilter === "privados" ? "active" : ""}`}
           onClick={() => {
             setActiveFilter("privados");
             closeFilterMenu();
           }}
         >
-          <span>Chats individuales</span>
-          <span>{filterCounts.privados}</span>
+          <span className="qc-filter-menu-icon is-private"><i className="fa-solid fa-user" aria-hidden="true" /></span>
+          <span className="qc-filter-menu-label">Chats individuales</span>
+          <strong className="qc-filter-menu-count">{filterCounts.privados}</strong>
+          <i className="fa-solid fa-chevron-right qc-filter-menu-chevron" aria-hidden="true" />
         </button>
+        <div className="qc-filter-menu-separator" />
         <button
           type="button"
-          className="wa-filter-new-list"
-          onClick={() => abrirCrearLista()}
+          className="wa-filter-new-list qc-filter-new-list"
+          onClick={() => {
+            closeFilterMenu();
+            abrirCrearLista();
+          }}
         >
-          <span><i className="fa-solid fa-plus" aria-hidden="true" /> Nueva lista</span>
+          <span className="qc-filter-menu-icon is-new"><i className="fa-solid fa-plus" aria-hidden="true" /></span>
+          <span className="qc-filter-menu-label">Nueva lista</span>
+          <i className="fa-solid fa-chevron-right qc-filter-menu-chevron" aria-hidden="true" />
         </button>
       </div>,
       document.body
@@ -2902,7 +2937,7 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat, addToLi
 
                       setCustomListMenuOpen(false);
                       setCustomListMenuPosition(null);
-                      setFilterMenuPosition(getFloatingMenuPosition(e.currentTarget, 230, 236));
+                      setFilterMenuPosition(getFloatingMenuPosition(e.currentTarget, 230, 205));
                       setFilterMenuOpen(true);
                     }}
                     title="Más filtros"
@@ -2970,7 +3005,7 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat, addToLi
 
                         setFilterMenuOpen(false);
                         setFilterMenuPosition(null);
-                        setCustomListMenuPosition(getFloatingMenuPosition(e.currentTarget, 230, 236));
+                        setCustomListMenuPosition(getFloatingMenuPosition(e.currentTarget, 292, 210));
                         setCustomListMenuOpen(true);
                       }}
                       title="Más listas"
