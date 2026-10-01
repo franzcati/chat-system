@@ -3174,88 +3174,177 @@ body.dark .wa-chat-header .wa-presence-badge,
 
 
 /* ========================================================================== */
-/* ChatList V3 — listas compactas, + centrado y acciones tras 1.5 s de hover */
+/* ChatList V5 — chips compactos + acciones deslizables solo desde MessengerShell */
 /* ========================================================================== */
+/*
+  IMPORTANTE: Todo lo relativo a ChatList vive aquí. ChatBox.css se carga de forma
+  diferida al abrir una conversación y no debe cambiar el aspecto inicial de la lista.
+*/
 
-/* El + debe quedar matemáticamente centrado en ambos menús. */
-.qc-chat-filter-menu .qc-filter-menu-icon.is-new,
-.wa-filter-dropdown-portal.qc-custom-list-menu .qc-custom-list-icon.is-new {
-  display: inline-grid !important;
-  place-items: center !important;
-  padding: 0 !important;
-  text-align: center !important;
-  line-height: 1 !important;
-}
-.qc-chat-filter-menu .qc-filter-menu-icon.is-new > i,
-.wa-filter-dropdown-portal.qc-custom-list-menu .qc-custom-list-icon.is-new > i {
-  display: block !important;
-  width: auto !important;
-  height: auto !important;
-  margin: 0 !important;
-  padding: 0 !important;
-  line-height: 1 !important;
-  transform: none !important;
-}
-
-/* "Nueva lista" queda como una fila normal inmediatamente debajo de las listas. */
-.wa-filter-dropdown-portal.qc-custom-list-menu .qc-custom-list-new {
+/* El chip ocupa SOLO lo que necesita el nombre/contador. No deja un cuadro vacío. */
+.wa-messenger-root.active-tab-chat .wa-custom-list-row {
+  display: flex !important;
+  align-items: center !important;
   justify-content: flex-start !important;
-  text-align: left !important;
-  width: 100% !important;
-  margin: 1px 0 0 !important;
-  padding: 5px 6px !important;
+  gap: 7px !important;
+  overflow: visible !important;
 }
-.wa-filter-dropdown-portal.qc-custom-list-menu .qc-custom-list-new-label {
+
+.wa-messenger-root.active-tab-chat .wa-custom-list-chip-wrap {
+  flex: 0 0 auto !important;
+  width: fit-content !important;
+  min-width: 0 !important;
+  max-width: min(178px, 58vw) !important;
   display: inline-flex !important;
   align-items: center !important;
   justify-content: flex-start !important;
-  margin: 0 !important;
-  padding: 0 !important;
+  overflow: hidden !important;
+  white-space: nowrap !important;
+  border-radius: 999px !important;
+  transition: border-color .16s ease, background-color .16s ease, box-shadow .16s ease !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-custom-list-chip-wrap > .wa-custom-list-chip {
   flex: 0 1 auto !important;
-  font-size: 12.5px !important;
-  font-weight: 800 !important;
-  line-height: 1.15 !important;
+  width: auto !important;
+  min-width: 0 !important;
+  max-width: 124px !important;
+  min-height: 32px !important;
+  padding: 5px 12px !important;
+  border-radius: 999px !important;
+  transition: border-radius .16s ease 0s, padding .16s ease !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-custom-list-chip-wrap > .wa-custom-list-chip span {
+  display: block !important;
+  min-width: 0 !important;
+  max-width: 92px !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
   white-space: nowrap !important;
 }
 
-/* Los botones Editar/Eliminar de las dos listas visibles permanecen ocultos.
-   Solo aparecen cuando el puntero permanece 1.5 s sobre esa lista. Se reserva
-   su espacio para evitar que el chip salte o cambie de ancho al mostrarlos. */
-.wa-custom-list-chip-wrap > .wa-list-chip-action {
+.wa-messenger-root.active-tab-chat .wa-custom-list-chip-wrap > .wa-custom-list-chip small {
+  flex: 0 0 auto !important;
+  margin-left: 6px !important;
+}
+
+/* Acciones: 0 px en reposo. Por tanto NO reservan espacio antes del hover. */
+.wa-messenger-root.active-tab-chat .wa-custom-list-chip-wrap > .wa-list-chip-action {
+  flex: 0 0 0 !important;
+  width: 0 !important;
+  min-width: 0 !important;
+  max-width: 0 !important;
+  height: 26px !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border-width: 0 !important;
+  overflow: hidden !important;
   opacity: 0 !important;
   visibility: hidden !important;
   pointer-events: none !important;
-  transform: translateY(0) scale(.94) !important;
-  transition-property: opacity, visibility, transform, background-color, color !important;
-  transition-duration: .14s, 0s, .14s, .14s, .14s !important;
-  transition-delay: 0s, 0s, 0s, 0s, 0s !important;
-}
-.wa-custom-list-chip-wrap:hover > .wa-list-chip-action {
-  opacity: .82 !important;
-  visibility: visible !important;
-  pointer-events: auto !important;
-  transform: translateY(0) scale(1) !important;
-  transition-delay: 1.5s, 1.5s, 1.5s, 0s, 0s !important;
-}
-.wa-custom-list-chip-wrap:hover > .wa-list-chip-action:hover {
-  opacity: 1 !important;
-  transition-delay: 0s !important;
-}
-/* Teclado: no obligamos a esperar 1.5 s. */
-.wa-custom-list-chip-wrap:focus-within > .wa-list-chip-action {
-  opacity: .82 !important;
-  visibility: visible !important;
-  pointer-events: auto !important;
-  transform: translateY(0) scale(1) !important;
-  transition-delay: 0s !important;
+  display: inline-grid !important;
+  place-items: center !important;
+  transform: translateX(-7px) scale(.90) !important;
+  transform-origin: left center !important;
+  transition:
+    width .18s ease 0s,
+    min-width .18s ease 0s,
+    max-width .18s ease 0s,
+    opacity .13s ease 0s,
+    transform .18s ease 0s,
+    visibility 0s linear .18s,
+    background-color .14s ease,
+    color .14s ease !important;
 }
 
-@media (hover: none), (pointer: coarse) {
-  /* En táctil no existe hover sostenido: mantener acciones accesibles. */
-  .wa-custom-list-chip-wrap > .wa-list-chip-action {
-    opacity: .82 !important;
+.wa-messenger-root.active-tab-chat .wa-custom-list-chip-wrap > .wa-list-chip-action i {
+  width: 12px !important;
+  height: 12px !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  display: inline-grid !important;
+  place-items: center !important;
+  line-height: 1 !important;
+  font-size: 11px !important;
+}
+
+/* Tras 1.5 s el contenedor crece únicamente el ancho exacto de 2 acciones. */
+@media (hover: hover) and (pointer: fine) {
+  .wa-messenger-root.active-tab-chat .wa-custom-list-chip-wrap:hover > .wa-custom-list-chip {
+    border-radius: 999px 0 0 999px !important;
+    transition-delay: 1.5s !important;
+  }
+
+  .wa-messenger-root.active-tab-chat .wa-custom-list-chip-wrap:hover > .wa-list-chip-action {
+    flex-basis: 26px !important;
+    width: 26px !important;
+    min-width: 26px !important;
+    max-width: 26px !important;
+    opacity: .84 !important;
     visibility: visible !important;
     pointer-events: auto !important;
-    transform: none !important;
+    transform: translateX(0) scale(1) !important;
+    transition-delay: 1.5s, 1.5s, 1.5s, 1.5s, 1.5s, 1.5s, 0s, 0s !important;
   }
+
+  .wa-messenger-root.active-tab-chat .wa-custom-list-chip-wrap:hover > .wa-list-chip-action:hover {
+    opacity: 1 !important;
+    transition-delay: 0s !important;
+  }
+}
+
+/* Teclado: las acciones se muestran de inmediato cuando reciben foco. */
+.wa-messenger-root.active-tab-chat .wa-custom-list-chip-wrap > .wa-list-chip-action:focus-visible {
+  flex-basis: 26px !important;
+  width: 26px !important;
+  min-width: 26px !important;
+  max-width: 26px !important;
+  opacity: 1 !important;
+  visibility: visible !important;
+  pointer-events: auto !important;
+  transform: none !important;
+}
+
+/* En táctil permanecen compactos. Editar/eliminar sigue disponible desde el
+   desplegable de listas, evitando controles imposibles de revelar por hover. */
+@media (hover: none), (pointer: coarse) {
+  .wa-messenger-root.active-tab-chat .wa-custom-list-chip-wrap > .wa-list-chip-action {
+    flex: 0 0 0 !important;
+    width: 0 !important;
+    min-width: 0 !important;
+    max-width: 0 !important;
+    opacity: 0 !important;
+    visibility: hidden !important;
+    pointer-events: none !important;
+  }
+}
+
+/* Botón "Iniciar conversación": centro geométrico del icono Font Awesome. */
+.wa-messenger-root.active-tab-chat .wa-chat-compose-button {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  padding: 0 !important;
+  text-align: center !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-chat-compose-button > i {
+  position: static !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  width: 20px !important;
+  height: 20px !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  line-height: 20px !important;
+  text-align: center !important;
+  transform: none !important;
+}
+
+.wa-messenger-root.active-tab-chat .wa-chat-compose-button > i::before {
+  display: block !important;
+  margin: 0 !important;
+  line-height: 20px !important;
 }

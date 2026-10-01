@@ -324,6 +324,159 @@ const STICKER_EDITOR_COLORS = [
   "#ef4444",
 ];
 
+const STICKER_EDITOR_FONT_OPTIONS = [
+  { value: 'Arial, sans-serif', label: 'Sans Serif' },
+  { value: 'Georgia, serif', label: 'Serif' },
+  { value: '"Trebuchet MS", sans-serif', label: 'Rounded' },
+  { value: '"Courier New", monospace', label: 'Monospace' },
+  { value: '"Comic Sans MS", cursive', label: 'Comic' },
+  { value: '"Sticker Norican", cursive', label: 'Norican' },
+  { value: '"Sticker Oswald", sans-serif', label: 'Oswald' },
+  { value: '"Sticker Bryndan Write", cursive', label: 'Bryndan-Write' },
+];
+
+const STICKER_EDITOR_CANVAS_SIZE = 512;
+const STICKER_EDITOR_TEXT_PADDING_X = 16;
+const STICKER_EDITOR_TEXT_PADDING_Y = 12;
+const STICKER_EDITOR_TEXT_MIN_BOX_WIDTH = 92;
+const STICKER_EDITOR_TEXT_MAX_BOX_WIDTH = 430;
+const stickerTextMeasureCanvas = typeof document !== "undefined" ? document.createElement("canvas") : null;
+
+const clampStickerValue = (value, min, max) => Math.min(max, Math.max(min, value));
+
+const normalizeStickerAngle = (angle) => {
+  const numeric = Number.isFinite(Number(angle)) ? Number(angle) : 0;
+  let normalized = numeric % 360;
+  if (normalized < 0) normalized += 360;
+  return normalized;
+};
+
+const getStickerShapeTransform = (shape, size = STICKER_EDITOR_CANVAS_SIZE) => ({
+  cx: (shape?.x || 0.5) * size,
+  cy: (shape?.y || 0.5) * size,
+  w: Math.max(1, (shape?.w || 0.001) * size),
+  h: Math.max(1, (shape?.h || 0.001) * size),
+  rotation: normalizeStickerAngle(shape?.rotation || 0),
+});
+
+const getStickerTextMeasureContext = (fontSize = 28, fontFamily = "Arial, sans-serif") => {
+  if (!stickerTextMeasureCanvas) return null;
+  const ctx = stickerTextMeasureCanvas.getContext("2d");
+  if (!ctx) return null;
+  ctx.font = `700 ${fontSize}px ${fontFamily}`;
+  return ctx;
+};
+
+const splitStickerWordByWidth = (ctx, word, maxWidth) => {
+  if (!word) return [""];
+  const parts = [];
+  let chunk = "";
+
+  Array.from(word).forEach((char) => {
+    const nextChunk = `${chunk}${char}`;
+    if (chunk && ctx.measureText(nextChunk).width > maxWidth) {
+      parts.push(chunk);
+      chunk = char;
+    } else {
+      chunk = nextChunk;
+    }
+  });
+
+  if (chunk) parts.push(chunk);
+  return parts.length ? parts : [word];
+};
+
+const wrapStickerParagraph = (ctx, paragraph, maxWidth) => {
+  if (!ctx || !maxWidth || maxWidth <= 0) return [paragraph || ""];
+  if (!paragraph) return [""];
+
+  const tokens = String(paragraph).match(/\S+|\s+/g) || [paragraph];
+  const lines = [];
+  let currentLine = "";
+
+  tokens.forEach((token) => {
+    const isWhitespace = /^\s+$/.test(token);
+    const draft = `${currentLine}${token}`;
+
+    if (currentLine && ctx.measureText(draft).width <= maxWidth) {
+      currentLine = draft;
+      return;
+    }
+
+    if (!currentLine && !isWhitespace && ctx.measureText(token).width > maxWidth) {
+      const pieces = splitStickerWordByWidth(ctx, token, maxWidth);
+      pieces.forEach((piece, index) => {
+        if (index < pieces.length - 1) lines.push(piece);
+        else currentLine = piece;
+      });
+      return;
+    }
+
+    if (currentLine && ctx.measureText(draft).width > maxWidth) {
+      lines.push(currentLine.trimEnd());
+      currentLine = isWhitespace ? "" : token;
+      if (currentLine && ctx.measureText(currentLine).width > maxWidth) {
+        const pieces = splitStickerWordByWidth(ctx, currentLine, maxWidth);
+        currentLine = "";
+        pieces.forEach((piece, index) => {
+          if (index < pieces.length - 1) lines.push(piece);
+          else currentLine = piece;
+        });
+      }
+      return;
+    }
+
+    currentLine = draft;
+  });
+
+  lines.push((currentLine || "").trimEnd());
+  return lines.length ? lines : [""];
+};
+
+const getStickerTextLayout = (item, canvasSize = STICKER_EDITOR_CANVAS_SIZE) => {
+  const fontSize = Math.max(16, Number(item?.fontSize || 28));
+  const padX = STICKER_EDITOR_TEXT_PADDING_X;
+  const padY = STICKER_EDITOR_TEXT_PADDING_Y;
+  const lineHeight = Math.round(fontSize * 1.22);
+  const ctx = getStickerTextMeasureContext(fontSize, item?.fontFamily || "Arial, sans-serif");
+  const rawText = String(item?.text ?? "").replace(/\r\n/g, "\n");
+  const paragraphs = rawText.split("\n");
+  const minBoxWidth = STICKER_EDITOR_TEXT_MIN_BOX_WIDTH;
+  const maxBoxWidth = Math.min(STICKER_EDITOR_TEXT_MAX_BOX_WIDTH, canvasSize * 0.92);
+  const hasManualWidth = Number.isFinite(Number(item?.boxWidth)) && Number(item?.boxWidth) > 0;
+  const manualBoxWidth = hasManualWidth ? clampStickerValue(Number(item.boxWidth), minBoxWidth, maxBoxWidth) : null;
+  const maxTextWidth = manualBoxWidth ? Math.max(24, manualBoxWidth - padX * 2) : null;
+
+  let lines = [];
+  if (manualBoxWidth && ctx) {
+    paragraphs.forEach((paragraph) => {
+      lines.push(...wrapStickerParagraph(ctx, paragraph, maxTextWidth));
+    });
+  } else {
+    lines = paragraphs.length ? paragraphs : [""];
+  }
+  if (!lines.length) lines = [""];
+
+  const textWidths = ctx
+    ? lines.map((line) => ctx.measureText(line || " ").width)
+    : lines.map((line) => Math.max(1, String(line || " ").length) * (fontSize * 0.58));
+  const widestLine = textWidths.length ? Math.max(...textWidths) : 0;
+  const boxWidth = manualBoxWidth || clampStickerValue(widestLine + padX * 2, minBoxWidth, maxBoxWidth);
+  const boxHeight = Math.max(lineHeight + padY * 2, lines.length * lineHeight + padY * 2);
+
+  return {
+    fontSize,
+    padX,
+    padY,
+    lineHeight,
+    lines,
+    widestLine,
+    boxWidth,
+    boxHeight,
+    textWidthLimit: Math.max(24, boxWidth - padX * 2),
+  };
+};
+
 
 const ChatBox = ({ chat, user, setChat, onCloseChat, onVerPerfil, onAddToList, estadosUsuarios = {} }) => {
 
@@ -386,9 +539,12 @@ const ChatBox = ({ chat, user, setChat, onCloseChat, onVerPerfil, onAddToList, e
   const stickerBtnRef = useRef(null); // ref para el botón
   const stickerFileInputRef = useRef(null);
   const stickerEditorCanvasRef = useRef(null);
+  const stickerEditorPreviewCanvasRef = useRef(null);
   const stickerEditorImageRef = useRef(null);
   const stickerDrawingRef = useRef(false);
   const stickerCropDragRef = useRef(null);
+  const stickerOverlayInteractionRef = useRef(null);
+  const stickerImageInteractionRef = useRef(null);
   const typingStopTimeoutRef = useRef(null);
   const typingSenderStateRef = useRef({ isTyping: false, key: null, payload: null, lastStartAt: 0 });
   const typingUsersTimeoutRef = useRef({});
@@ -433,14 +589,21 @@ const ChatBox = ({ chat, user, setChat, onCloseChat, onVerPerfil, onAddToList, e
   const [pendingStickerPreview, setPendingStickerPreview] = useState("");
   const [stickerEditorRotation, setStickerEditorRotation] = useState(0);
   const [stickerEditorFlipX, setStickerEditorFlipX] = useState(false);
-  const [stickerEditorTool, setStickerEditorTool] = useState("crop");
+  const [stickerEditorTool, setStickerEditorTool] = useState("preview");
   const [stickerEditorFilter, setStickerEditorFilter] = useState("none");
   const [stickerDrawColor, setStickerDrawColor] = useState("#22c55e");
+  const [stickerDrawWidth, setStickerDrawWidth] = useState(8);
   const [stickerShapeType, setStickerShapeType] = useState("rect");
+  const [stickerShapeCreationType, setStickerShapeCreationType] = useState(null);
   const [stickerTextItems, setStickerTextItems] = useState([]);
   const [stickerShapeItems, setStickerShapeItems] = useState([]);
+  const [stickerSelectedItem, setStickerSelectedItem] = useState(null);
   const [stickerDrawPaths, setStickerDrawPaths] = useState([]);
   const [stickerCropRect, setStickerCropRect] = useState({ x: 0, y: 0, w: 1, h: 1 });
+  const [stickerImageTransform, setStickerImageTransform] = useState({ x: 0.5, y: 0.5, w: 0.82, h: 0.82 });
+  const [stickerImageSelected, setStickerImageSelected] = useState(false);
+  const [stickerImageHovered, setStickerImageHovered] = useState(false);
+  const [stickerSnapGuides, setStickerSnapGuides] = useState({ x: false, y: false });
   const [isCreatingSticker, setIsCreatingSticker] = useState(false);
   const [typingUsers, setTypingUsers] = useState([]);
   const [forwardSelectionMode, setForwardSelectionMode] = useState(false);
@@ -2923,14 +3086,21 @@ const ChatBox = ({ chat, user, setChat, onCloseChat, onVerPerfil, onAddToList, e
     setPendingStickerFile(null);
     setStickerEditorRotation(0);
     setStickerEditorFlipX(false);
-    setStickerEditorTool("crop");
+    setStickerEditorTool("preview");
     setStickerEditorFilter("none");
     setStickerDrawColor("#22c55e");
+    setStickerDrawWidth(8);
     setStickerShapeType("rect");
+    setStickerShapeCreationType(null);
     setStickerTextItems([]);
     setStickerShapeItems([]);
+    setStickerSelectedItem(null);
     setStickerDrawPaths([]);
     setStickerCropRect({ x: 0, y: 0, w: 1, h: 1 });
+    setStickerImageTransform({ x: 0.5, y: 0.5, w: 0.82, h: 0.82 });
+    setStickerImageSelected(false);
+    setStickerImageHovered(false);
+    setStickerSnapGuides({ x: false, y: false });
     if (pendingStickerPreview) {
       URL.revokeObjectURL(pendingStickerPreview);
       setPendingStickerPreview("");
@@ -2957,14 +3127,20 @@ const ChatBox = ({ chat, user, setChat, onCloseChat, onVerPerfil, onAddToList, e
     setPendingStickerPreview(URL.createObjectURL(file));
     setStickerEditorRotation(0);
     setStickerEditorFlipX(false);
-    setStickerEditorTool("crop");
+    setStickerEditorTool("preview");
     setStickerEditorFilter("none");
     setStickerDrawColor("#22c55e");
+    setStickerDrawWidth(8);
     setStickerShapeType("rect");
+    setStickerShapeCreationType(null);
     setStickerTextItems([]);
     setStickerShapeItems([]);
     setStickerDrawPaths([]);
     setStickerCropRect({ x: 0, y: 0, w: 1, h: 1 });
+    setStickerImageTransform({ x: 0.5, y: 0.5, w: 0.82, h: 0.82 });
+    setStickerImageSelected(false);
+    setStickerImageHovered(false);
+    setStickerSnapGuides({ x: false, y: false });
     setShowStickerEditor(true);
   }, [pendingStickerPreview]);
 
@@ -2985,6 +3161,30 @@ const ChatBox = ({ chat, user, setChat, onCloseChat, onVerPerfil, onAddToList, e
       y: Math.max(0, Math.min(1, (event.clientY - rect.top) / rect.height)),
     };
   };
+
+  const getStickerImageInitialTransform = useCallback((width, height) => {
+    if (!width || !height) {
+      return { x: 0.5, y: 0.5, w: 0.82, h: 0.82 };
+    }
+
+    const maxSide = 0.88;
+    const ratio = width / height;
+    let nextW = maxSide;
+    let nextH = maxSide;
+
+    if (ratio >= 1) {
+      nextH = Math.max(0.22, Math.min(maxSide, maxSide / ratio));
+    } else {
+      nextW = Math.max(0.22, Math.min(maxSide, maxSide * ratio));
+    }
+
+    return {
+      x: 0.5,
+      y: 0.5,
+      w: Math.min(0.94, nextW),
+      h: Math.min(0.94, nextH),
+    };
+  }, []);
 
   const updateStickerCropFromPointer = useCallback((event) => {
     const corner = stickerCropDragRef.current;
@@ -3054,17 +3254,98 @@ const ChatBox = ({ chat, user, setChat, onCloseChat, onVerPerfil, onAddToList, e
     };
   }, [showStickerEditor, updateStickerCropFromPointer]);
 
-  const handleStickerCanvasPointerDown = (event) => {
-    if (stickerEditorTool !== "paint") return;
+  const startStickerImageDrag = (event) => {
+    if (stickerEditorTool === "preview") return;
     const point = getStickerPointerPoint(event);
     if (!point) return;
     event.preventDefault();
+    event.stopPropagation();
+    setStickerSelectedItem(null);
+    setStickerImageSelected(true);
+    stickerImageInteractionRef.current = {
+      start: point,
+      initial: { ...stickerImageTransform },
+    };
+    try { event.currentTarget.setPointerCapture?.(event.pointerId); } catch {}
+  };
+
+  useEffect(() => {
+    if (!showStickerEditor) return undefined;
+
+    const handleMove = (event) => {
+      const drag = stickerImageInteractionRef.current;
+      if (!drag) return;
+      const point = getStickerPointerPoint(event);
+      if (!point) return;
+      event.preventDefault();
+      const dx = point.x - drag.start.x;
+      const dy = point.y - drag.start.y;
+      const halfW = (drag.initial.w || 0.82) / 2;
+      const halfH = (drag.initial.h || 0.82) / 2;
+      const canvasRect = stickerEditorCanvasRef.current?.getBoundingClientRect();
+      const thresholdX = canvasRect?.width ? Math.min(0.035, 12 / canvasRect.width) : 0.025;
+      const thresholdY = canvasRect?.height ? Math.min(0.035, 12 / canvasRect.height) : 0.025;
+
+      let nextX = Math.max(halfW, Math.min(1 - halfW, drag.initial.x + dx));
+      let nextY = Math.max(halfH, Math.min(1 - halfH, drag.initial.y + dy));
+      const snapX = Math.abs(nextX - 0.5) <= thresholdX;
+      const snapY = Math.abs(nextY - 0.5) <= thresholdY;
+
+      if (snapX) nextX = 0.5;
+      if (snapY) nextY = 0.5;
+
+      setStickerSnapGuides({ x: snapX, y: snapY });
+      setStickerImageTransform({
+        ...drag.initial,
+        x: nextX,
+        y: nextY,
+      });
+    };
+
+    const handleUp = () => {
+      stickerImageInteractionRef.current = null;
+      setStickerSnapGuides({ x: false, y: false });
+    };
+
+    window.addEventListener("pointermove", handleMove, { passive: false });
+    window.addEventListener("pointerup", handleUp);
+    window.addEventListener("pointercancel", handleUp);
+
+    return () => {
+      window.removeEventListener("pointermove", handleMove);
+      window.removeEventListener("pointerup", handleUp);
+      window.removeEventListener("pointercancel", handleUp);
+    };
+  }, [showStickerEditor, stickerImageTransform]);
+
+  const handleStickerCanvasPointerDown = (event) => {
+    if (stickerEditorTool === "shape" && stickerShapeCreationType) {
+      const point = getStickerPointerPoint(event);
+      if (!point) return;
+      event.preventDefault();
+      setStickerSelectedItem(null);
+      setStickerImageSelected(false);
+      createStickerShapeDraft(stickerShapeCreationType, point);
+      return;
+    }
+
+    if (stickerEditorTool !== "paint") {
+      setStickerSelectedItem(null);
+      setStickerImageSelected(false);
+      return;
+    }
+    const point = getStickerPointerPoint(event);
+    if (!point) return;
+    event.preventDefault();
+    setStickerSelectedItem(null);
+    setStickerImageSelected(false);
     stickerDrawingRef.current = true;
     setStickerDrawPaths((prev) => [
       ...prev,
       {
         id: `path-${Date.now()}`,
         color: stickerDrawColor,
+        width: stickerDrawWidth,
         points: [point],
       },
     ]);
@@ -3089,61 +3370,271 @@ const ChatBox = ({ chat, user, setChat, onCloseChat, onVerPerfil, onAddToList, e
   };
 
   const addStickerText = () => {
-    const text = window.prompt("Texto del sticker", "Hola como estan");
-    if (!text) return;
+    const id = `text-${Date.now()}`;
     setStickerEditorTool("text");
+    setStickerImageSelected(false);
     setStickerTextItems((prev) => [
       ...prev,
       {
-        id: `text-${Date.now()}`,
-        text,
+        id,
+        text: "Escribe algo",
         x: 0.5,
         y: 0.5,
-        color: stickerDrawColor,
+        color: "#ffffff",
         background: true,
+        backgroundColor: "#374151",
         fontSize: 28,
+        fontFamily: "Arial, sans-serif",
+        align: "center",
+        boxWidth: null,
       },
     ]);
+    setStickerSelectedItem({ kind: "text", id });
   };
 
   const addStickerShape = (type = stickerShapeType) => {
     setStickerEditorTool("shape");
-    setStickerShapeItems((prev) => [
-      ...prev,
-      {
-        id: `shape-${Date.now()}`,
-        type,
-        x: 0.5,
-        y: 0.5,
-        w: 0.22,
-        h: 0.16,
-        color: stickerDrawColor,
-      },
-    ]);
+    setStickerShapeType(type);
+    setStickerShapeCreationType(type);
+    setStickerSelectedItem(null);
+    setStickerImageSelected(false);
   };
 
-  const buildEditedStickerFile = async () => {
-    if (!pendingStickerFile) return null;
-    const image = stickerEditorImageRef.current;
-    if (!image) return pendingStickerFile;
+  const createStickerShapeDraft = (type, startPoint) => {
+    const id = `shape-${Date.now()}`;
+    const initialShape = {
+      id,
+      type,
+      x: startPoint.x,
+      y: startPoint.y,
+      w: 0.001,
+      h: 0.001,
+      color: "#ef4444",
+      fillEnabled: false,
+      fillColor: "#64dc2f",
+      fillOpacity: 0.25,
+      strokeWidth: 7,
+      rotation: 0,
+      directionX: 1,
+      directionY: 1,
+    };
+    setStickerShapeItems((prev) => [...prev, initialShape]);
+    setStickerSelectedItem({ kind: "shape", id });
+    setStickerImageSelected(false);
+    stickerOverlayInteractionRef.current = {
+      kind: "shape-create",
+      id,
+      type,
+      start: startPoint,
+      initial: { ...initialShape },
+    };
+    return id;
+  };
 
-    const size = 512;
-    const sourceCanvas = document.createElement("canvas");
-    sourceCanvas.width = size;
-    sourceCanvas.height = size;
-    const ctx = sourceCanvas.getContext("2d");
-    if (!ctx) return pendingStickerFile;
+
+  const updateSelectedStickerColor = (color) => {
+    if (!stickerSelectedItem) return;
+    setStickerDrawColor(color);
+    if (stickerSelectedItem.kind === "shape") {
+      setStickerShapeItems((prev) => prev.map((item) => item.id === stickerSelectedItem.id
+        ? { ...item, color }
+        : item));
+    } else if (stickerSelectedItem.kind === "text") {
+      setStickerTextItems((prev) => prev.map((item) => item.id === stickerSelectedItem.id ? { ...item, color } : item));
+    }
+  };
+
+  const deleteSelectedStickerItem = () => {
+    if (!stickerSelectedItem) return;
+    if (stickerSelectedItem.kind === "shape") {
+      setStickerShapeItems((prev) => prev.filter((item) => item.id !== stickerSelectedItem.id));
+    } else if (stickerSelectedItem.kind === "text") {
+      setStickerTextItems((prev) => prev.filter((item) => item.id !== stickerSelectedItem.id));
+    }
+    setStickerSelectedItem(null);
+  };
+
+  const startStickerOverlayInteraction = (kind, id, mode = "drag") => (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const point = getStickerPointerPoint(event);
+    if (!point) return;
+    const source = kind === "shape"
+      ? stickerShapeItems.find((item) => item.id === id)
+      : stickerTextItems.find((item) => item.id === id);
+    if (!source) return;
+    setStickerSelectedItem({ kind, id });
+    setStickerImageSelected(false);
+    setStickerEditorTool(kind === "shape" ? "shape" : "text");
+    if (kind === "shape") {
+      setStickerShapeCreationType(null);
+    }
+    stickerOverlayInteractionRef.current = {
+      kind,
+      id,
+      mode,
+      start: point,
+      initial: { ...source },
+      startAngle: kind === "shape" && mode === "rotate"
+        ? Math.atan2(point.y - source.y, point.x - source.x)
+        : null,
+      initialRotation: kind === "shape" ? normalizeStickerAngle(source.rotation || 0) : 0,
+    };
+    try { event.currentTarget.setPointerCapture?.(event.pointerId); } catch {}
+  };
+
+  useEffect(() => {
+    if (!showStickerEditor) return undefined;
+
+    const handleMove = (event) => {
+      const drag = stickerOverlayInteractionRef.current;
+      if (!drag) return;
+      const point = getStickerPointerPoint(event);
+      if (!point) return;
+      event.preventDefault();
+      const dx = point.x - drag.start.x;
+      const dy = point.y - drag.start.y;
+
+      if (drag.kind === "shape" || drag.kind === "shape-create") {
+        const canvasRect = stickerEditorCanvasRef.current?.getBoundingClientRect();
+        const thresholdX = canvasRect?.width ? Math.min(0.035, 12 / canvasRect.width) : 0.025;
+        const thresholdY = canvasRect?.height ? Math.min(0.035, 12 / canvasRect.height) : 0.025;
+        let nextGuides = { x: false, y: false };
+
+        setStickerShapeItems((prev) => prev.map((item) => {
+          if (item.id !== drag.id) return item;
+
+          if (drag.kind === "shape-create") {
+            const minSize = drag.type === "line" || drag.type === "arrow" ? 0.02 : 0.045;
+            const left = clampStickerValue(Math.min(drag.start.x, point.x), 0, 1);
+            const right = clampStickerValue(Math.max(drag.start.x, point.x), 0, 1);
+            const top = clampStickerValue(Math.min(drag.start.y, point.y), 0, 1);
+            const bottom = clampStickerValue(Math.max(drag.start.y, point.y), 0, 1);
+            const nextW = Math.max(minSize, right - left);
+            const nextH = Math.max(minSize, bottom - top);
+            return {
+              ...item,
+              x: clampStickerValue(left + nextW / 2, nextW / 2, 1 - nextW / 2),
+              y: clampStickerValue(top + nextH / 2, nextH / 2, 1 - nextH / 2),
+              w: nextW,
+              h: nextH,
+              directionX: point.x >= drag.start.x ? 1 : -1,
+              directionY: point.y >= drag.start.y ? 1 : -1,
+            };
+          }
+
+          if (drag.mode === "rotate") {
+            const currentAngle = Math.atan2(point.y - drag.initial.y, point.x - drag.initial.x);
+            const angleDelta = (currentAngle - (drag.startAngle || 0)) * (180 / Math.PI);
+            return {
+              ...item,
+              rotation: normalizeStickerAngle((drag.initialRotation || 0) + angleDelta),
+            };
+          }
+
+          if (String(drag.mode).startsWith("resize")) {
+            const minSize = item.type === "line" || item.type === "arrow" ? 0.02 : 0.045;
+            let left = drag.initial.x - drag.initial.w / 2;
+            let right = drag.initial.x + drag.initial.w / 2;
+            let top = drag.initial.y - drag.initial.h / 2;
+            let bottom = drag.initial.y + drag.initial.h / 2;
+
+            if (drag.mode === "resize" || drag.mode === "resize-se") {
+              right = Math.min(1, Math.max(left + minSize, right + dx));
+              bottom = Math.min(1, Math.max(top + minSize, bottom + dy));
+            } else if (drag.mode === "resize-sw") {
+              left = Math.max(0, Math.min(right - minSize, left + dx));
+              bottom = Math.min(1, Math.max(top + minSize, bottom + dy));
+            } else if (drag.mode === "resize-ne") {
+              right = Math.min(1, Math.max(left + minSize, right + dx));
+              top = Math.max(0, Math.min(bottom - minSize, top + dy));
+            } else if (drag.mode === "resize-nw") {
+              left = Math.max(0, Math.min(right - minSize, left + dx));
+              top = Math.max(0, Math.min(bottom - minSize, top + dy));
+            }
+
+            const nextW = Math.max(minSize, right - left);
+            const nextH = Math.max(minSize, bottom - top);
+            return {
+              ...item,
+              x: left + nextW / 2,
+              y: top + nextH / 2,
+              w: nextW,
+              h: nextH,
+            };
+          }
+
+          const halfW = (drag.initial.w || 0.2) / 2;
+          const halfH = (drag.initial.h || 0.16) / 2;
+          let nextX = Math.max(halfW, Math.min(1 - halfW, drag.initial.x + dx));
+          let nextY = Math.max(halfH, Math.min(1 - halfH, drag.initial.y + dy));
+          const snapX = Math.abs(nextX - 0.5) <= thresholdX;
+          const snapY = Math.abs(nextY - 0.5) <= thresholdY;
+          if (snapX) nextX = 0.5;
+          if (snapY) nextY = 0.5;
+          nextGuides = { x: snapX, y: snapY };
+          return { ...item, x: nextX, y: nextY };
+        }));
+
+        if (drag.kind === "shape-create" || drag.mode === "rotate" || String(drag.mode).startsWith("resize")) {
+          setStickerSnapGuides({ x: false, y: false });
+        } else {
+          setStickerSnapGuides(nextGuides);
+        }
+      } else {
+        setStickerTextItems((prev) => prev.map((item) => {
+          if (item.id !== drag.id) return item;
+          if (drag.mode === "resize") {
+            const initialBoxWidth = Number.isFinite(Number(drag.initial.boxWidth)) && Number(drag.initial.boxWidth) > 0
+              ? Number(drag.initial.boxWidth)
+              : getStickerTextLayout(drag.initial).boxWidth;
+            const nextBoxWidth = clampStickerValue(
+              initialBoxWidth + dx * STICKER_EDITOR_CANVAS_SIZE,
+              STICKER_EDITOR_TEXT_MIN_BOX_WIDTH,
+              Math.min(STICKER_EDITOR_TEXT_MAX_BOX_WIDTH, STICKER_EDITOR_CANVAS_SIZE * 0.92)
+            );
+            return { ...item, boxWidth: nextBoxWidth };
+          }
+          const layout = getStickerTextLayout(item);
+          const halfW = Math.min(0.46, layout.boxWidth / (2 * STICKER_EDITOR_CANVAS_SIZE));
+          const halfH = Math.min(0.46, layout.boxHeight / (2 * STICKER_EDITOR_CANVAS_SIZE));
+          return {
+            ...item,
+            x: Math.max(halfW, Math.min(1 - halfW, drag.initial.x + dx)),
+            y: Math.max(halfH, Math.min(1 - halfH, drag.initial.y + dy)),
+          };
+        }));
+      }
+    };
+    const handleUp = () => {
+      stickerOverlayInteractionRef.current = null;
+      setStickerSnapGuides({ x: false, y: false });
+    };
+    window.addEventListener("pointermove", handleMove, { passive: false });
+    window.addEventListener("pointerup", handleUp);
+    window.addEventListener("pointercancel", handleUp);
+    return () => {
+      window.removeEventListener("pointermove", handleMove);
+      window.removeEventListener("pointerup", handleUp);
+      window.removeEventListener("pointercancel", handleUp);
+    };
+  }, [showStickerEditor]);
+
+  const renderStickerEditorSource = useCallback((ctx, size = STICKER_EDITOR_CANVAS_SIZE) => {
+    const image = stickerEditorImageRef.current;
+    if (!ctx || !image) return false;
 
     const sourceWidth = image.naturalWidth || image.width || size;
     const sourceHeight = image.naturalHeight || image.height || size;
-    const maxImageSize = size * 0.88;
-    const scale = Math.min(maxImageSize / sourceWidth, maxImageSize / sourceHeight);
-    const drawWidth = sourceWidth * scale;
-    const drawHeight = sourceHeight * scale;
+    const imageTransform = stickerImageTransform || getStickerImageInitialTransform(sourceWidth, sourceHeight);
+    const drawWidth = Math.max(1, imageTransform.w * size);
+    const drawHeight = Math.max(1, imageTransform.h * size);
+    const drawCenterX = imageTransform.x * size;
+    const drawCenterY = imageTransform.y * size;
 
     ctx.clearRect(0, 0, size, size);
     ctx.save();
-    ctx.translate(size / 2, size / 2);
+    ctx.translate(drawCenterX, drawCenterY);
     ctx.rotate((stickerEditorRotation * Math.PI) / 180);
     ctx.scale(stickerEditorFlipX ? -1 : 1, 1);
     ctx.filter = STICKER_EDITOR_FILTERS[stickerEditorFilter]?.css || "none";
@@ -3157,7 +3648,7 @@ const ChatBox = ({ chat, user, setChat, onCloseChat, onVerPerfil, onAddToList, e
       if (!path.points?.length) return;
       ctx.save();
       ctx.strokeStyle = path.color || "#22c55e";
-      ctx.lineWidth = 8;
+      ctx.lineWidth = Math.max(2, Number(path.width) || 8);
       ctx.lineCap = "round";
       ctx.lineJoin = "round";
       ctx.beginPath();
@@ -3171,37 +3662,56 @@ const ChatBox = ({ chat, user, setChat, onCloseChat, onVerPerfil, onAddToList, e
     });
 
     stickerShapeItems.forEach((shape) => {
-      const x = (shape.x - shape.w / 2) * size;
-      const y = (shape.y - shape.h / 2) * size;
-      const w = shape.w * size;
-      const h = shape.h * size;
+      const { cx, cy, w, h, rotation } = getStickerShapeTransform(shape, size);
       ctx.save();
+      ctx.translate(cx, cy);
+      ctx.rotate((rotation * Math.PI) / 180);
       ctx.strokeStyle = shape.color || "#22c55e";
-      ctx.lineWidth = 7;
+      ctx.lineWidth = Math.max(2, Number(shape.strokeWidth) || 7);
       ctx.lineCap = "round";
       ctx.lineJoin = "round";
 
       if (shape.type === "circle") {
         ctx.beginPath();
-        ctx.ellipse(shape.x * size, shape.y * size, Math.abs(w) / 2, Math.abs(h) / 2, 0, 0, Math.PI * 2);
+        ctx.ellipse(0, 0, Math.abs(w) / 2, Math.abs(h) / 2, 0, 0, Math.PI * 2);
+        if (shape.fillEnabled) {
+          ctx.save();
+          ctx.globalAlpha = Number.isFinite(Number(shape.fillOpacity)) ? Number(shape.fillOpacity) : 0.18;
+          ctx.fillStyle = shape.fillColor || "#22c55e";
+          ctx.fill();
+          ctx.restore();
+        }
         ctx.stroke();
       } else if (shape.type === "line" || shape.type === "arrow") {
+        const dirX = shape.directionX === -1 ? -1 : 1;
+        const dirY = shape.directionY === -1 ? -1 : 1;
+        const startX = dirX > 0 ? -w / 2 : w / 2;
+        const endX = dirX > 0 ? w / 2 : -w / 2;
+        const startY = dirY > 0 ? -h / 2 : h / 2;
+        const endY = dirY > 0 ? h / 2 : -h / 2;
         ctx.beginPath();
-        ctx.moveTo(x, y + h);
-        ctx.lineTo(x + w, y);
+        ctx.moveTo(startX, startY);
+        ctx.lineTo(endX, endY);
         ctx.stroke();
         if (shape.type === "arrow") {
-          const angle = Math.atan2(-h, w);
-          const head = 24;
+          const angle = Math.atan2(endY - startY, endX - startX);
+          const head = Math.max(16, Math.min(30, (Number(shape.strokeWidth) || 7) * 3.2));
           ctx.beginPath();
-          ctx.moveTo(x + w, y);
-          ctx.lineTo(x + w - head * Math.cos(angle - Math.PI / 6), y - head * Math.sin(angle - Math.PI / 6));
-          ctx.moveTo(x + w, y);
-          ctx.lineTo(x + w - head * Math.cos(angle + Math.PI / 6), y - head * Math.sin(angle + Math.PI / 6));
+          ctx.moveTo(endX, endY);
+          ctx.lineTo(endX - head * Math.cos(angle - Math.PI / 6), endY - head * Math.sin(angle - Math.PI / 6));
+          ctx.moveTo(endX, endY);
+          ctx.lineTo(endX - head * Math.cos(angle + Math.PI / 6), endY - head * Math.sin(angle + Math.PI / 6));
           ctx.stroke();
         }
       } else {
-        ctx.strokeRect(x, y, w, h);
+        if (shape.fillEnabled) {
+          ctx.save();
+          ctx.globalAlpha = Number.isFinite(Number(shape.fillOpacity)) ? Number(shape.fillOpacity) : 0.18;
+          ctx.fillStyle = shape.fillColor || "#22c55e";
+          ctx.fillRect(-w / 2, -h / 2, w, h);
+          ctx.restore();
+        }
+        ctx.strokeRect(-w / 2, -h / 2, w, h);
       }
       ctx.restore();
     });
@@ -3209,27 +3719,83 @@ const ChatBox = ({ chat, user, setChat, onCloseChat, onVerPerfil, onAddToList, e
     stickerTextItems.forEach((item) => {
       const x = item.x * size;
       const y = item.y * size;
-      const fontSize = item.fontSize || 28;
+      const layout = getStickerTextLayout(item, size);
+      const safeLines = layout.lines.length ? layout.lines : [""];
+      const textAlign = item.align || "center";
+      const textX = textAlign === "left"
+        ? x - layout.boxWidth / 2 + layout.padX
+        : textAlign === "right"
+          ? x + layout.boxWidth / 2 - layout.padX
+          : x;
       ctx.save();
-      ctx.font = `700 ${fontSize}px Arial, sans-serif`;
+      ctx.font = `700 ${layout.fontSize}px ${item.fontFamily || "Arial, sans-serif"}`;
       ctx.textBaseline = "middle";
-      ctx.textAlign = "center";
-      const metrics = ctx.measureText(item.text);
-      const padX = 12;
-      const padY = 7;
+      ctx.textAlign = textAlign;
       if (item.background) {
-        ctx.fillStyle = "rgba(255,255,255,0.92)";
-        ctx.strokeStyle = item.color || "#22c55e";
+        ctx.fillStyle = item.backgroundColor || "rgba(55,65,81,0.88)";
+        ctx.strokeStyle = item.color || "#ffffff";
         ctx.lineWidth = 4;
-        const boxW = metrics.width + padX * 2;
-        const boxH = fontSize + padY * 2;
-        ctx.fillRect(x - boxW / 2, y - boxH / 2, boxW, boxH);
-        ctx.strokeRect(x - boxW / 2, y - boxH / 2, boxW, boxH);
+        ctx.beginPath();
+        ctx.roundRect(x - layout.boxWidth / 2, y - layout.boxHeight / 2, layout.boxWidth, layout.boxHeight, 12);
+        ctx.fill();
+        ctx.stroke();
       }
-      ctx.fillStyle = "#111827";
-      ctx.fillText(item.text, x, y);
+      ctx.fillStyle = item.color || "#ffffff";
+      const startY = y - ((safeLines.length - 1) * layout.lineHeight) / 2;
+      safeLines.forEach((line, index) => {
+        ctx.fillText(line, textX, startY + index * layout.lineHeight);
+      });
       ctx.restore();
     });
+
+    return true;
+  }, [getStickerImageInitialTransform, stickerDrawPaths, stickerEditorFilter, stickerEditorFlipX, stickerEditorRotation, stickerImageTransform, stickerShapeItems, stickerTextItems]);
+
+  const renderStickerPreviewCanvas = useCallback(() => {
+    const canvas = stickerEditorPreviewCanvasRef.current;
+    if (!canvas) return;
+    const size = STICKER_EDITOR_CANVAS_SIZE;
+    if (canvas.width !== size) canvas.width = size;
+    if (canvas.height !== size) canvas.height = size;
+    const outCtx = canvas.getContext("2d");
+    if (!outCtx) return;
+    outCtx.clearRect(0, 0, size, size);
+
+    const sourceCanvas = document.createElement("canvas");
+    sourceCanvas.width = size;
+    sourceCanvas.height = size;
+    const sourceCtx = sourceCanvas.getContext("2d");
+    if (!sourceCtx) return;
+    const rendered = renderStickerEditorSource(sourceCtx, size);
+    if (!rendered) return;
+
+    const crop = stickerCropRect || { x: 0, y: 0, w: 1, h: 1 };
+    const cropX = Math.max(0, Math.min(size - 1, crop.x * size));
+    const cropY = Math.max(0, Math.min(size - 1, crop.y * size));
+    const cropW = Math.max(1, Math.min(size - cropX, crop.w * size));
+    const cropH = Math.max(1, Math.min(size - cropY, crop.h * size));
+
+    outCtx.drawImage(sourceCanvas, cropX, cropY, cropW, cropH, 0, 0, size, size);
+  }, [renderStickerEditorSource, stickerCropRect]);
+
+  useEffect(() => {
+    if (!showStickerEditor || stickerEditorTool !== "preview") return;
+    renderStickerPreviewCanvas();
+  }, [renderStickerPreviewCanvas, showStickerEditor, stickerEditorTool]);
+
+  const buildEditedStickerFile = async () => {
+    if (!pendingStickerFile) return null;
+    const image = stickerEditorImageRef.current;
+    if (!image) return pendingStickerFile;
+
+    const size = STICKER_EDITOR_CANVAS_SIZE;
+    const sourceCanvas = document.createElement("canvas");
+    sourceCanvas.width = size;
+    sourceCanvas.height = size;
+    const sourceCtx = sourceCanvas.getContext("2d");
+    if (!sourceCtx) return pendingStickerFile;
+    const rendered = renderStickerEditorSource(sourceCtx, size);
+    if (!rendered) return pendingStickerFile;
 
     const crop = stickerCropRect || { x: 0, y: 0, w: 1, h: 1 };
     const cropX = Math.max(0, Math.min(size - 1, crop.x * size));
@@ -4636,6 +5202,790 @@ const ChatBox = ({ chat, user, setChat, onCloseChat, onVerPerfil, onAddToList, e
             </div>
           </div>
           
+          {/* Editor previo para crear sticker */}
+          {showStickerEditor && pendingStickerPreview && (
+            <div className="wa-sticker-editor" role="dialog" aria-label="Crear sticker">
+              <div className="wa-sticker-editor-topbar">
+                <div className="wa-sticker-editor-heading">
+                  <div className="wa-sticker-editor-heading-icon" aria-hidden="true">
+                    <i className="fa-solid fa-wand-magic-sparkles" />
+                  </div>
+                  <div>
+                    <strong>Crear sticker</strong>
+                    <span>Edita la imagen antes de enviarla al chat.</span>
+                  </div>
+                </div>
+                <div className="wa-sticker-editor-history-actions">
+                  <button type="button" className="wa-sticker-editor-undo" title="Deshacer último trazo" onClick={() => setStickerDrawPaths((prev) => prev.slice(0, -1))}>
+                    <i className="fa-solid fa-rotate-left" aria-hidden="true" />
+                  </button>
+                  <button
+                    type="button"
+                    className="wa-sticker-editor-undo is-disabled"
+                    title="Rehacer no disponible"
+                    aria-disabled="true"
+                  >
+                    <i className="fa-solid fa-rotate-right" aria-hidden="true" />
+                  </button>
+                  <button
+                    type="button"
+                    className="wa-sticker-editor-close-inline"
+                    onClick={closeStickerEditor}
+                    aria-label="Cerrar editor de sticker"
+                    title="Cerrar"
+                  >
+                    <i className="fa-solid fa-xmark" aria-hidden="true" />
+                  </button>
+                </div>
+              </div>
+
+              <div className="wa-sticker-editor-toolbar" aria-label="Herramientas de sticker">
+                <button
+                  type="button"
+                  className={`wa-sticker-editor-tool ${stickerEditorTool === "preview" ? "active" : ""}`}
+                  title="Vista previa"
+                  onClick={() => { setStickerSelectedItem(null); setStickerImageSelected(false); setStickerEditorTool("preview"); }}
+                >
+                  <i className="fa-solid fa-eye" aria-hidden="true" />
+                  <span>Preview</span>
+                </button>
+                <button
+                  type="button"
+                  className={`wa-sticker-editor-tool ${stickerEditorTool === "crop" ? "active" : ""}`}
+                  title="Recortar y rotar"
+                  onClick={() => { setStickerSelectedItem(null); setStickerEditorTool("crop"); }}
+                >
+                  <i className="fa-solid fa-crop-simple" aria-hidden="true" />
+                  <span>Recortar</span>
+                </button>
+                <button
+                  type="button"
+                  className={`wa-sticker-editor-tool ${stickerEditorTool === "filter" ? "active" : ""}`}
+                  title="Filtros"
+                  onClick={() => { setStickerSelectedItem(null); setStickerEditorTool("filter"); }}
+                >
+                  <i className="fa-solid fa-wand-magic-sparkles" aria-hidden="true" />
+                  <span>Filtros</span>
+                </button>
+                <button
+                  type="button"
+                  className={`wa-sticker-editor-tool ${stickerEditorTool === "paint" ? "active" : ""}`}
+                  title="Dibujar"
+                  onClick={() => { setStickerSelectedItem(null); setStickerEditorTool("paint"); }}
+                >
+                  <i className="fa-solid fa-pen" aria-hidden="true" />
+                  <span>Dibujar</span>
+                </button>
+                <button
+                  type="button"
+                  className={`wa-sticker-editor-tool ${stickerEditorTool === "text" ? "active" : ""}`}
+                  title="Texto"
+                  onClick={addStickerText}
+                >
+                  <span className="wa-sticker-editor-aa">Aa</span>
+                  <span>Texto</span>
+                </button>
+                <button
+                  type="button"
+                  className={`wa-sticker-editor-tool ${stickerEditorTool === "shape" ? "active" : ""}`}
+                  title="Formas"
+                  onClick={() => { setStickerSelectedItem(null); setStickerImageSelected(false); setStickerEditorTool("shape"); }}
+                >
+                  <i className="fa-regular fa-square" aria-hidden="true" />
+                  <span>Formas</span>
+                </button>
+              </div>
+
+              {stickerEditorTool === "filter" && (
+                <div className="wa-sticker-filter-strip">
+                  {Object.entries(STICKER_EDITOR_FILTERS).map(([key, filter]) => (
+                    <button
+                      key={key}
+                      type="button"
+                      className={`wa-sticker-filter-item ${stickerEditorFilter === key ? "active" : ""}`}
+                      onClick={() => setStickerEditorFilter(key)}
+                    >
+                      <span className="wa-sticker-filter-thumb">
+                        <img src={pendingStickerPreview} alt={filter.label} style={{ filter: filter.css }} />
+                      </span>
+                      <span>{filter.label}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {stickerEditorTool === "paint" && (
+                <div className="wa-sticker-draw-controls" role="toolbar" aria-label="Opciones de dibujo">
+                  <div className="wa-sticker-draw-colors" aria-label="Color del pincel">
+                    {STICKER_EDITOR_COLORS.map((color) => (
+                      <button
+                        key={color}
+                        type="button"
+                        className={`wa-sticker-draw-color ${stickerDrawColor === color ? "active" : ""}`}
+                        style={{ backgroundColor: color }}
+                        onClick={() => setStickerDrawColor(color)}
+                        aria-label={`Color ${color}`}
+                      />
+                    ))}
+                    <label className="wa-sticker-draw-custom-color" title="Elegir otro color">
+                      <i className="fa-solid fa-palette" aria-hidden="true" />
+                      <input
+                        type="color"
+                        value={stickerDrawColor}
+                        onChange={(event) => setStickerDrawColor(event.target.value)}
+                        aria-label="Elegir color personalizado"
+                      />
+                    </label>
+                  </div>
+                  <span className="wa-sticker-draw-divider" aria-hidden="true" />
+                  <div className="wa-sticker-draw-sizes" role="group" aria-label="Grosor del pincel">
+                    {[3, 6, 10, 16].map((width) => (
+                      <button
+                        key={width}
+                        type="button"
+                        className={`wa-sticker-draw-size ${stickerDrawWidth === width ? "active" : ""}`}
+                        onClick={() => setStickerDrawWidth(width)}
+                        aria-label={`Grosor ${width}`}
+                        title={`Grosor ${width}`}
+                      >
+                        <span style={{ width: `${Math.max(5, width + 3)}px`, height: `${Math.max(5, width + 3)}px` }} />
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {stickerEditorTool === "shape" && (
+                <div className="wa-sticker-shape-popover">
+                  <button type="button" className={stickerShapeCreationType === "rect" ? "active" : ""} onClick={() => addStickerShape("rect")} title="Cuadrado">
+                    <i className="fa-regular fa-square" aria-hidden="true" />
+                  </button>
+                  <button type="button" className={stickerShapeCreationType === "circle" ? "active" : ""} onClick={() => addStickerShape("circle")} title="Círculo">
+                    <i className="fa-regular fa-circle" aria-hidden="true" />
+                  </button>
+                  <button type="button" className={stickerShapeCreationType === "line" ? "active" : ""} onClick={() => addStickerShape("line")} title="Línea">
+                    <i className="fa-solid fa-minus" aria-hidden="true" />
+                  </button>
+                  <button type="button" className={stickerShapeCreationType === "arrow" ? "active" : ""} onClick={() => addStickerShape("arrow")} title="Flecha">
+                    <i className="fa-solid fa-arrow-right-long" aria-hidden="true" />
+                  </button>
+                </div>
+              )}
+
+              {(stickerSelectedItem?.kind === "shape" || stickerSelectedItem?.kind === "text") && (
+                <div className="wa-sticker-object-controls" role="toolbar" aria-label="Propiedades del elemento seleccionado">
+                  <div className="wa-sticker-object-colors">
+                    {STICKER_EDITOR_COLORS.map((color) => {
+                      const currentItem = stickerSelectedItem.kind === "shape"
+                        ? stickerShapeItems.find((item) => item.id === stickerSelectedItem.id)
+                        : stickerTextItems.find((item) => item.id === stickerSelectedItem.id);
+                      return (
+                        <button
+                          key={color}
+                          type="button"
+                          className={`wa-sticker-object-color ${currentItem?.color === color ? "active" : ""}`}
+                          style={{ backgroundColor: color }}
+                          onClick={() => updateSelectedStickerColor(color)}
+                          aria-label={`Usar color ${color}`}
+                        />
+                      );
+                    })}
+                    <label className="wa-sticker-custom-color" title="Elegir otro color">
+                      <i className="fa-solid fa-palette" aria-hidden="true" />
+                      <input
+                        type="color"
+                        value={(stickerSelectedItem.kind === "shape"
+                          ? stickerShapeItems.find((item) => item.id === stickerSelectedItem.id)?.color
+                          : stickerTextItems.find((item) => item.id === stickerSelectedItem.id)?.color) || "#ef4444"}
+                        onChange={(event) => updateSelectedStickerColor(event.target.value)}
+                      />
+                    </label>
+                  </div>
+
+                  {stickerSelectedItem.kind === "shape" && (() => {
+                    const currentShapeItem = stickerShapeItems.find((item) => item.id === stickerSelectedItem.id);
+                    if (!currentShapeItem) return null;
+                    const canFill = currentShapeItem.type === "rect" || currentShapeItem.type === "circle";
+                    return (
+                      <div className="wa-sticker-shape-properties">
+                        {canFill && (
+                          <button
+                            type="button"
+                            className={currentShapeItem.fillEnabled ? "active" : ""}
+                            title={currentShapeItem.fillEnabled ? "Quitar fondo" : "Añadir fondo"}
+                            onClick={() => setStickerShapeItems((prev) => prev.map((item) => item.id === stickerSelectedItem.id
+                              ? {
+                                  ...item,
+                                  fillEnabled: !item.fillEnabled,
+                                  fillColor: item.fillColor || "#64dc2f",
+                                  fillOpacity: Number.isFinite(Number(item.fillOpacity)) ? Number(item.fillOpacity) : 0.25,
+                                }
+                              : item))}
+                          >
+                            <i className={currentShapeItem.fillEnabled ? "fa-solid fa-fill-drip" : "fa-solid fa-ban"} aria-hidden="true" />
+                          </button>
+                        )}
+
+                        {canFill && currentShapeItem.fillEnabled && (
+                          <label className="wa-sticker-fill-color" title="Color del fondo">
+                            <span className="wa-sticker-fill-swatch" style={{ backgroundColor: currentShapeItem.fillColor || '#64dc2f' }} />
+                            <input
+                              type="color"
+                              value={currentShapeItem.fillColor || '#64dc2f'}
+                              onChange={(event) => {
+                                const nextColor = event.target.value;
+                                setStickerShapeItems((prev) => prev.map((item) => item.id === stickerSelectedItem.id
+                                  ? { ...item, fillColor: nextColor }
+                                  : item));
+                              }}
+                              aria-label="Color del fondo"
+                            />
+                          </label>
+                        )}
+
+                        <label className="wa-sticker-shape-thickness" title="Grosor de la línea">
+                          <i className="fa-solid fa-minus" aria-hidden="true" />
+                          <input
+                            type="range"
+                            min="2"
+                            max="20"
+                            step="1"
+                            value={Math.max(2, Number(currentShapeItem.strokeWidth) || 7)}
+                            onChange={(event) => {
+                              const nextWidth = Number(event.target.value);
+                              setStickerShapeItems((prev) => prev.map((item) => item.id === stickerSelectedItem.id
+                                ? { ...item, strokeWidth: nextWidth }
+                                : item));
+                            }}
+                            aria-label="Grosor de la línea"
+                          />
+                          <span>{Math.max(2, Number(currentShapeItem.strokeWidth) || 7)}</span>
+                        </label>
+
+                        {canFill && currentShapeItem.fillEnabled && (
+                          <label className="wa-sticker-shape-thickness wa-sticker-shape-opacity" title="Transparencia del fondo">
+                            <i className="fa-solid fa-circle-half-stroke" aria-hidden="true" />
+                            <input
+                              type="range"
+                              min="0"
+                              max="100"
+                              step="1"
+                              value={Math.round((Number.isFinite(Number(currentShapeItem.fillOpacity)) ? Number(currentShapeItem.fillOpacity) : 0.25) * 100)}
+                              onChange={(event) => {
+                                const nextOpacity = clampStickerValue(Number(event.target.value) / 100, 0, 1);
+                                setStickerShapeItems((prev) => prev.map((item) => item.id === stickerSelectedItem.id
+                                  ? { ...item, fillOpacity: nextOpacity }
+                                  : item));
+                              }}
+                              aria-label="Transparencia del fondo"
+                            />
+                            <span>{Math.round((Number.isFinite(Number(currentShapeItem.fillOpacity)) ? Number(currentShapeItem.fillOpacity) : 0.25) * 100)}%</span>
+                          </label>
+                        )}
+                      </div>
+                    );
+                  })()}
+
+
+                  {stickerSelectedItem.kind === "text" && (() => {
+                    const currentTextItem = stickerTextItems.find((item) => item.id === stickerSelectedItem.id);
+                    return (
+                    <div className="wa-sticker-text-properties">
+                      <button
+                        type="button"
+                        title="Reducir texto"
+                        onClick={() => setStickerTextItems((prev) => prev.map((item) => item.id === stickerSelectedItem.id ? { ...item, fontSize: Math.max(16, (item.fontSize || 28) - 2) } : item))}
+                      >
+                        <i className="fa-solid fa-minus" aria-hidden="true" />
+                      </button>
+                      <span className="wa-sticker-font-label">Aa</span>
+                      <button
+                        type="button"
+                        title="Aumentar texto"
+                        onClick={() => setStickerTextItems((prev) => prev.map((item) => item.id === stickerSelectedItem.id ? { ...item, fontSize: Math.min(72, (item.fontSize || 28) + 2) } : item))}
+                      >
+                        <i className="fa-solid fa-plus" aria-hidden="true" />
+                      </button>
+
+                      <label className="wa-sticker-font-picker" title="Tipo de letra">
+                        <i className="fa-solid fa-font" aria-hidden="true" />
+                        <select
+                          value={currentTextItem?.fontFamily || 'Arial, sans-serif'}
+                          onChange={(event) => setStickerTextItems((prev) => prev.map((item) => item.id === stickerSelectedItem.id ? { ...item, fontFamily: event.target.value } : item))}
+                          aria-label="Elegir tipo de letra"
+                        >
+                          {STICKER_EDITOR_FONT_OPTIONS.map((option) => (
+                            <option key={option.value} value={option.value} style={{ fontFamily: option.value }}>
+                              {option.label}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+
+                      <div className="wa-sticker-align-group" role="group" aria-label="Alineación del texto">
+                        <button
+                          type="button"
+                          className={(currentTextItem?.align || 'center') === 'left' ? 'active' : ''}
+                          title="Alinear a la izquierda"
+                          onClick={() => setStickerTextItems((prev) => prev.map((item) => item.id === stickerSelectedItem.id ? { ...item, align: 'left' } : item))}
+                        >
+                          <i className="fa-solid fa-align-left" aria-hidden="true" />
+                        </button>
+                        <button
+                          type="button"
+                          className={(currentTextItem?.align || 'center') === 'center' ? 'active' : ''}
+                          title="Centrar texto"
+                          onClick={() => setStickerTextItems((prev) => prev.map((item) => item.id === stickerSelectedItem.id ? { ...item, align: 'center' } : item))}
+                        >
+                          <i className="fa-solid fa-align-center" aria-hidden="true" />
+                        </button>
+                        <button
+                          type="button"
+                          className={(currentTextItem?.align || 'center') === 'right' ? 'active' : ''}
+                          title="Alinear a la derecha"
+                          onClick={() => setStickerTextItems((prev) => prev.map((item) => item.id === stickerSelectedItem.id ? { ...item, align: 'right' } : item))}
+                        >
+                          <i className="fa-solid fa-align-right" aria-hidden="true" />
+                        </button>
+                      </div>
+
+                      <button
+                        type="button"
+                        className={currentTextItem?.background ? "active" : ""}
+                        title="Alternar fondo"
+                        onClick={() => setStickerTextItems((prev) => prev.map((item) => item.id === stickerSelectedItem.id ? { ...item, background: !item.background } : item))}
+                      >
+                        <i className="fa-solid fa-circle-half-stroke" aria-hidden="true" />
+                      </button>
+                    </div>
+                    );
+                  })()}
+
+                  <button
+                    type="button"
+                    className="wa-sticker-delete-object"
+                    title="Eliminar elemento"
+                    onClick={deleteSelectedStickerItem}
+                  >
+                    <i className="fa-regular fa-trash-can" aria-hidden="true" />
+                  </button>
+                </div>
+              )}
+
+              <div className="wa-sticker-editor-stage">
+                <div
+                  ref={stickerEditorCanvasRef}
+                  className={`wa-sticker-editor-canvas tool-${stickerEditorTool}`}
+                  onPointerDown={handleStickerCanvasPointerDown}
+                  onPointerMove={handleStickerCanvasPointerMove}
+                  onPointerUp={stopStickerDrawing}
+                  onPointerLeave={stopStickerDrawing}
+                >
+                  {stickerEditorTool === "crop" && (
+                    <>
+                      <span
+                        className="wa-sticker-crop-box"
+                        style={{
+                          left: `${stickerCropRect.x * 100}%`,
+                          top: `${stickerCropRect.y * 100}%`,
+                          width: `${stickerCropRect.w * 100}%`,
+                          height: `${stickerCropRect.h * 100}%`,
+                        }}
+                        aria-hidden="true"
+                      >
+                        <span className="wa-sticker-editor-handle top-left" onPointerDown={startStickerCropDrag("top-left")} />
+                        <span className="wa-sticker-editor-handle top-right" onPointerDown={startStickerCropDrag("top-right")} />
+                        <span className="wa-sticker-editor-handle bottom-left" onPointerDown={startStickerCropDrag("bottom-left")} />
+                        <span className="wa-sticker-editor-handle bottom-right" onPointerDown={startStickerCropDrag("bottom-right")} />
+                      </span>
+                      <span
+                        className="wa-sticker-crop-overlay top"
+                        style={{ height: `${stickerCropRect.y * 100}%` }}
+                        aria-hidden="true"
+                      />
+                      <span
+                        className="wa-sticker-crop-overlay bottom"
+                        style={{ top: `${(stickerCropRect.y + stickerCropRect.h) * 100}%` }}
+                        aria-hidden="true"
+                      />
+                      <span
+                        className="wa-sticker-crop-overlay left"
+                        style={{
+                          top: `${stickerCropRect.y * 100}%`,
+                          width: `${stickerCropRect.x * 100}%`,
+                          height: `${stickerCropRect.h * 100}%`,
+                        }}
+                        aria-hidden="true"
+                      />
+                      <span
+                        className="wa-sticker-crop-overlay right"
+                        style={{
+                          top: `${stickerCropRect.y * 100}%`,
+                          left: `${(stickerCropRect.x + stickerCropRect.w) * 100}%`,
+                          height: `${stickerCropRect.h * 100}%`,
+                        }}
+                        aria-hidden="true"
+                      />
+                    </>
+                  )}
+                  {(stickerSnapGuides.x || stickerSnapGuides.y) && stickerEditorTool !== "preview" && (
+                    <div className="wa-sticker-snap-guides" aria-hidden="true">
+                      {stickerSnapGuides.x && <span className="wa-sticker-snap-guide vertical" />}
+                      {stickerSnapGuides.y && <span className="wa-sticker-snap-guide horizontal" />}
+                      {stickerSnapGuides.x && stickerSnapGuides.y && <span className="wa-sticker-snap-center" />}
+                    </div>
+                  )}
+                  <img
+                    ref={stickerEditorImageRef}
+                    src={pendingStickerPreview}
+                    alt=""
+                    aria-hidden="true"
+                    className="wa-sticker-source-preload"
+                    onLoad={(event) => {
+                      const element = event.currentTarget;
+                      if (!element.naturalWidth || !element.naturalHeight) return;
+                      setStickerImageTransform((current) => {
+                        const untouched =
+                          Math.abs((current?.x ?? 0.5) - 0.5) < 0.0001 &&
+                          Math.abs((current?.y ?? 0.5) - 0.5) < 0.0001 &&
+                          Math.abs((current?.w ?? 0.82) - 0.82) < 0.0001 &&
+                          Math.abs((current?.h ?? 0.82) - 0.82) < 0.0001;
+                        return untouched
+                          ? getStickerImageInitialTransform(element.naturalWidth, element.naturalHeight)
+                          : current;
+                      });
+                    }}
+                  />
+                  {stickerEditorTool === "preview" ? (
+                    <canvas
+                      ref={stickerEditorPreviewCanvasRef}
+                      className="wa-sticker-preview-canvas"
+                      aria-label="Vista previa final del sticker"
+                    />
+                  ) : (
+                    <>
+                      <div
+                        className={`wa-sticker-base-image ${stickerImageSelected ? "selected" : ""}`}
+                        style={{
+                          left: `${(stickerImageTransform.x - stickerImageTransform.w / 2) * 100}%`,
+                          top: `${(stickerImageTransform.y - stickerImageTransform.h / 2) * 100}%`,
+                          width: `${stickerImageTransform.w * 100}%`,
+                          height: `${stickerImageTransform.h * 100}%`,
+                        }}
+                        onMouseEnter={() => setStickerImageHovered(true)}
+                        onMouseLeave={() => setStickerImageHovered(false)}
+                      >
+                        <img
+                          src={pendingStickerPreview}
+                          alt="Vista previa del sticker"
+                          style={{
+                            width: "100%",
+                            height: "100%",
+                            objectFit: "contain",
+                            filter: STICKER_EDITOR_FILTERS[stickerEditorFilter]?.css || "none",
+                            transform: `rotate(${stickerEditorRotation}deg) scaleX(${stickerEditorFlipX ? -1 : 1})`,
+                          }}
+                        />
+                        {(stickerImageHovered || stickerImageSelected) && (
+                          <button
+                            type="button"
+                            className={`wa-sticker-image-hit ${stickerImageSelected ? "selected" : ""}`}
+                            onPointerDown={startStickerImageDrag}
+                            onClick={(event) => {
+                              event.preventDefault();
+                              event.stopPropagation();
+                              setStickerSelectedItem(null);
+                              setStickerImageSelected(true);
+                            }}
+                            title="Arrastra para mover la imagen"
+                            aria-label="Mover imagen del sticker"
+                          >
+                            <span className="wa-sticker-overlay-handle top-left" />
+                            <span className="wa-sticker-overlay-handle top-right" />
+                            <span className="wa-sticker-overlay-handle bottom-left" />
+                            <span className="wa-sticker-overlay-handle bottom-right" />
+                          </button>
+                        )}
+                      </div>
+
+                      <svg className="wa-sticker-draw-layer" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+                        {stickerDrawPaths.map((path) => (
+                          <polyline
+                            key={path.id}
+                            points={(path.points || []).map((point) => `${point.x * 100},${point.y * 100}`).join(" ")}
+                            fill="none"
+                            stroke={path.color || "#22c55e"}
+                            strokeWidth={Math.max(0.65, (Number(path.width) || 8) / 4)}
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          />
+                        ))}
+                        {stickerShapeItems.map((shape) => {
+                          const x = (shape.x - shape.w / 2) * 100;
+                          const y = (shape.y - shape.h / 2) * 100;
+                          const w = shape.w * 100;
+                          const h = shape.h * 100;
+                          const cx = shape.x * 100;
+                          const cy = shape.y * 100;
+                          const rotation = normalizeStickerAngle(shape.rotation || 0);
+                          const strokeWidth = Math.max(0.7, (Number(shape.strokeWidth) || 7) / 4);
+                          const fillColor = shape.fillEnabled ? (shape.fillColor || "#22c55e") : "none";
+                          const fillOpacity = shape.fillEnabled ? (Number.isFinite(Number(shape.fillOpacity)) ? Number(shape.fillOpacity) : 0.18) : undefined;
+                          if (shape.type === "circle") {
+                            return (
+                              <g key={shape.id} transform={`rotate(${rotation} ${cx} ${cy})`}>
+                                <ellipse cx={cx} cy={cy} rx={w / 2} ry={h / 2} fill={fillColor} fillOpacity={fillOpacity} stroke={shape.color} strokeWidth={strokeWidth} />
+                              </g>
+                            );
+                          }
+                          if (shape.type === "line" || shape.type === "arrow") {
+                            const dirX = shape.directionX === -1 ? -1 : 1;
+                            const dirY = shape.directionY === -1 ? -1 : 1;
+                            const x1 = dirX > 0 ? x : x + w;
+                            const x2 = dirX > 0 ? x + w : x;
+                            const y1 = dirY > 0 ? y : y + h;
+                            const y2 = dirY > 0 ? y + h : y;
+                            return (
+                              <g key={shape.id} transform={`rotate(${rotation} ${cx} ${cy})`}>
+                                <line
+                                  x1={x1}
+                                  y1={y1}
+                                  x2={x2}
+                                  y2={y2}
+                                  stroke={shape.color}
+                                  strokeWidth={strokeWidth}
+                                  strokeLinecap="round"
+                                  markerEnd={shape.type === "arrow" ? "url(#waStickerArrow)" : undefined}
+                                />
+                              </g>
+                            );
+                          }
+                          return (
+                            <g key={shape.id} transform={`rotate(${rotation} ${cx} ${cy})`}>
+                              <rect x={x} y={y} width={w} height={h} fill={fillColor} fillOpacity={fillOpacity} stroke={shape.color} strokeWidth={strokeWidth} />
+                            </g>
+                          );
+                        })}
+                        <defs>
+                          <marker id="waStickerArrow" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto" markerUnits="strokeWidth">
+                            <path d="M0,0 L6,3 L0,6 Z" fill="context-stroke" />
+                          </marker>
+                        </defs>
+                      </svg>
+
+                      {stickerShapeItems.map((shape) => {
+                        const selected = stickerSelectedItem?.kind === "shape" && stickerSelectedItem.id === shape.id;
+                        return (
+                          <div
+                            key={`hit-${shape.id}`}
+                            className={`wa-sticker-shape-hit ${selected ? "selected" : ""}`}
+                            style={{
+                              left: `${(shape.x - shape.w / 2) * 100}%`,
+                              top: `${(shape.y - shape.h / 2) * 100}%`,
+                              width: `${shape.w * 100}%`,
+                              height: `${shape.h * 100}%`,
+                              transform: `rotate(${normalizeStickerAngle(shape.rotation || 0)}deg)`,
+                              transformOrigin: "center center",
+                              "--wa-selection-color": shape.color,
+                            }}
+                            onPointerDown={startStickerOverlayInteraction("shape", shape.id, "drag")}
+                            title="Arrastra para mover"
+                          >
+                            {selected && (
+                              <>
+                                <span
+                                  className="wa-sticker-overlay-handle rotate-handle"
+                                  onPointerDown={startStickerOverlayInteraction("shape", shape.id, "rotate")}
+                                  title="Arrastra para girar"
+                                >
+                                  <i className="fa-solid fa-rotate-right" aria-hidden="true" />
+                                </span>
+                                <span
+                                  className="wa-sticker-overlay-handle top-left resize"
+                                  onPointerDown={startStickerOverlayInteraction("shape", shape.id, "resize-nw")}
+                                  title="Arrastra para cambiar tamaño"
+                                />
+                                <span
+                                  className="wa-sticker-overlay-handle top-right resize"
+                                  onPointerDown={startStickerOverlayInteraction("shape", shape.id, "resize-ne")}
+                                  title="Arrastra para cambiar tamaño"
+                                />
+                                <span
+                                  className="wa-sticker-overlay-handle bottom-left resize"
+                                  onPointerDown={startStickerOverlayInteraction("shape", shape.id, "resize-sw")}
+                                  title="Arrastra para cambiar tamaño"
+                                />
+                                <span
+                                  className="wa-sticker-overlay-handle bottom-right resize"
+                                  onPointerDown={startStickerOverlayInteraction("shape", shape.id, "resize-se")}
+                                  title="Arrastra para cambiar tamaño"
+                                />
+                              </>
+                            )}
+                          </div>
+                        );
+                      })}
+
+                      {stickerTextItems.map((item) => {
+                        const selected = stickerSelectedItem?.kind === "text" && stickerSelectedItem.id === item.id;
+                        const layout = getStickerTextLayout(item);
+                        const displayText = layout.lines.join("\n");
+                        return (
+                          <div
+                            key={item.id}
+                            className={`wa-sticker-text-item ${selected ? "selected" : ""}`}
+                            data-align={item.align || "center"}
+                            style={{
+                              left: `${item.x * 100}%`,
+                              top: `${item.y * 100}%`,
+                              width: `${layout.boxWidth}px`,
+                              minHeight: `${layout.boxHeight}px`,
+                              borderColor: selected ? item.color : "transparent",
+                              color: item.color,
+                              background: item.background ? (item.backgroundColor || "rgba(55,65,81,.88)") : "transparent",
+                              fontSize: `${item.fontSize || 28}px`,
+                              fontFamily: item.fontFamily || "Arial, sans-serif",
+                              textAlign: item.align || "center",
+                              "--wa-selection-color": item.color,
+                            }}
+                            onPointerDown={startStickerOverlayInteraction("text", item.id, "drag")}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              setStickerImageSelected(false);
+                              setStickerSelectedItem({ kind: "text", id: item.id });
+                              setStickerEditorTool("text");
+                            }}
+                            title="Arrastra para mover"
+                          >
+                            {selected ? (
+                              <textarea
+                                className="wa-sticker-text-input"
+                                value={item.text}
+                                autoFocus
+                                rows={Math.max(1, layout.lines.length)}
+                                style={{
+                                  height: `${layout.boxHeight - 2}px`,
+                                  fontFamily: item.fontFamily || "Arial, sans-serif",
+                                  textAlign: item.align || "center",
+                                }}
+                                onPointerDown={(event) => event.stopPropagation()}
+                                onKeyDown={(event) => {
+                                  if (event.key === "Enter" && !event.shiftKey) {
+                                    event.preventDefault();
+                                    event.currentTarget.blur();
+                                  }
+                                }}
+                                onChange={(event) => setStickerTextItems((prev) => prev.map((entry) => entry.id === item.id ? { ...entry, text: event.target.value } : entry))}
+                                aria-label="Texto del sticker"
+                              />
+                            ) : (
+                              <span>{displayText}</span>
+                            )}
+                            {selected && (
+                              <span
+                                className="wa-sticker-overlay-handle bottom-right resize"
+                                onPointerDown={startStickerOverlayInteraction("text", item.id, "resize")}
+                                title="Arrastra para cambiar tamaño"
+                              />
+                            )}
+                          </div>
+                        );
+                      })}
+                    </>
+                  )}
+                </div>
+              </div>
+
+              <div className="wa-sticker-editor-actions">
+                {stickerEditorTool === "crop" && (
+                  <>
+                    <button
+                      type="button"
+                      className="wa-sticker-editor-mini"
+                      title="Girar"
+                      onClick={() => setStickerEditorRotation((value) => (value + 90) % 360)}
+                    >
+                      <i className="fa-solid fa-rotate-right" aria-hidden="true" />
+                    </button>
+                    <button
+                      type="button"
+                      className="wa-sticker-editor-mini"
+                      title="Voltear"
+                      onClick={() => setStickerEditorFlipX((value) => !value)}
+                    >
+                      <i className="fa-solid fa-right-left" aria-hidden="true" />
+                    </button>
+                  </>
+                )}
+                {(stickerEditorRotation !== 0 || stickerEditorFlipX || stickerEditorFilter !== "none" || stickerTextItems.length || stickerShapeItems.length || stickerDrawPaths.length || stickerCropRect.x !== 0 || stickerCropRect.y !== 0 || stickerCropRect.w !== 1 || stickerCropRect.h !== 1) && (
+                  <button
+                    type="button"
+                    className="wa-sticker-editor-reset"
+                    onClick={() => {
+                      setStickerEditorRotation(0);
+                      setStickerEditorFlipX(false);
+                      setStickerEditorFilter("none");
+                      setStickerTextItems([]);
+                      setStickerShapeItems([]);
+                      setStickerSelectedItem(null);
+                      setStickerDrawPaths([]);
+                      setStickerDrawWidth(8);
+                      setStickerCropRect({ x: 0, y: 0, w: 1, h: 1 });
+                      if (stickerEditorImageRef.current) {
+                        setStickerImageTransform(getStickerImageInitialTransform(
+                          stickerEditorImageRef.current.naturalWidth || stickerEditorImageRef.current.width,
+                          stickerEditorImageRef.current.naturalHeight || stickerEditorImageRef.current.height,
+                        ));
+                      } else {
+                        setStickerImageTransform({ x: 0.5, y: 0.5, w: 0.82, h: 0.82 });
+                      }
+                      setStickerImageSelected(false);
+                    }}
+                  >
+                    Restablecer
+                  </button>
+                )}
+              </div>
+
+              <div className="wa-sticker-editor-bottom">
+                <div className="wa-sticker-editor-selection">
+                  <div className="wa-sticker-editor-thumb">
+                    <img src={pendingStickerPreview} alt="Sticker seleccionado" />
+                  </div>
+                  <div className="wa-sticker-editor-selection-copy">
+                    <strong>Vista previa</strong>
+                    <span>Se enviará como sticker PNG.</span>
+                  </div>
+                </div>
+                <div className="wa-sticker-editor-bottom-actions">
+                  <button
+                    type="button"
+                    className="wa-sticker-editor-cancel"
+                    onClick={closeStickerEditor}
+                    disabled={isCreatingSticker}
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="button"
+                    className="wa-sticker-editor-send wa-sticker-editor-send-wide"
+                    onClick={confirmStickerCreation}
+                    disabled={isCreatingSticker}
+                    aria-label="Crear y enviar sticker"
+                  >
+                    {isCreatingSticker ? (
+                      <span className="spinner-border spinner-border-sm" role="status" aria-hidden="true" />
+                    ) : (
+                      <i className="fa-solid fa-paper-plane" aria-hidden="true" />
+                    )}
+                    <span>{isCreatingSticker ? "Creando..." : "Crear y enviar"}</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+
           {/* 🔹 Mensajes fijados estilo WhatsApp */}
           {pinnedMessages.length > 0 && (
             <div className="pinned-bar d-flex align-items-center justify-content-between px-3 py-1 border-bottom">
@@ -4983,326 +6333,6 @@ const ChatBox = ({ chat, user, setChat, onCloseChat, onVerPerfil, onAddToList, e
                     onChange={handleStickerFileSelected}
                   />
 
-                  {/* Editor previo para crear sticker */}
-                  {showStickerEditor && pendingStickerPreview && (
-                    <div className="wa-sticker-editor" role="dialog" aria-label="Crear sticker">
-                      <div className="wa-sticker-editor-topbar">
-                        <button
-                          type="button"
-                          className="wa-sticker-editor-close-inline"
-                          onClick={closeStickerEditor}
-                          aria-label="Cerrar editor de sticker"
-                        >
-                          <i className="fa-solid fa-xmark" aria-hidden="true" />
-                        </button>
-                        <button type="button" className="wa-sticker-editor-undo" title="Deshacer" onClick={() => setStickerDrawPaths((prev) => prev.slice(0, -1))}>
-                          <i className="fa-solid fa-rotate-left" aria-hidden="true" />
-                        </button>
-                        <button
-                          type="button"
-                          className="wa-sticker-editor-undo"
-                          title="Rehacer"
-                          onClick={() => {}}
-                        >
-                          <i className="fa-solid fa-rotate-right" aria-hidden="true" />
-                        </button>
-                      </div>
-
-                      <div className="wa-sticker-editor-toolbar" aria-label="Herramientas de sticker">
-                        <button
-                          type="button"
-                          className={`wa-sticker-editor-tool ${stickerEditorTool === "crop" ? "active" : ""}`}
-                          title="Recortar y rotar"
-                          onClick={() => setStickerEditorTool("crop")}
-                        >
-                          <i className="fa-solid fa-crop-simple" aria-hidden="true" />
-                        </button>
-                        <button
-                          type="button"
-                          className={`wa-sticker-editor-tool ${stickerEditorTool === "filter" ? "active" : ""}`}
-                          title="Filtros"
-                          onClick={() => setStickerEditorTool("filter")}
-                        >
-                          <i className="fa-solid fa-wand-magic-sparkles" aria-hidden="true" />
-                        </button>
-                        <button
-                          type="button"
-                          className={`wa-sticker-editor-tool ${stickerEditorTool === "paint" ? "active" : ""}`}
-                          title="Dibujar"
-                          onClick={() => setStickerEditorTool("paint")}
-                        >
-                          <i className="fa-solid fa-pen" aria-hidden="true" />
-                        </button>
-                        <button
-                          type="button"
-                          className={`wa-sticker-editor-tool ${stickerEditorTool === "text" ? "active" : ""}`}
-                          title="Texto"
-                          onClick={addStickerText}
-                        >
-                          Aa
-                        </button>
-                        <button
-                          type="button"
-                          className={`wa-sticker-editor-tool ${stickerEditorTool === "shape" ? "active" : ""}`}
-                          title="Formas"
-                          onClick={() => setStickerEditorTool((value) => value === "shape" ? "crop" : "shape")}
-                        >
-                          <i className="fa-regular fa-square" aria-hidden="true" />
-                        </button>
-                      </div>
-
-                      {stickerEditorTool === "filter" && (
-                        <div className="wa-sticker-filter-strip">
-                          {Object.entries(STICKER_EDITOR_FILTERS).map(([key, filter]) => (
-                            <button
-                              key={key}
-                              type="button"
-                              className={`wa-sticker-filter-item ${stickerEditorFilter === key ? "active" : ""}`}
-                              onClick={() => setStickerEditorFilter(key)}
-                            >
-                              <span className="wa-sticker-filter-thumb">
-                                <img src={pendingStickerPreview} alt={filter.label} style={{ filter: filter.css }} />
-                              </span>
-                              <span>{filter.label}</span>
-                            </button>
-                          ))}
-                        </div>
-                      )}
-
-                      {stickerEditorTool === "paint" && (
-                        <div className="wa-sticker-color-strip">
-                          {STICKER_EDITOR_COLORS.map((color) => (
-                            <button
-                              key={color}
-                              type="button"
-                              className={`wa-sticker-color-dot ${stickerDrawColor === color ? "active" : ""}`}
-                              style={{ backgroundColor: color }}
-                              onClick={() => setStickerDrawColor(color)}
-                              aria-label={`Color ${color}`}
-                            />
-                          ))}
-                        </div>
-                      )}
-
-                      {stickerEditorTool === "shape" && (
-                        <div className="wa-sticker-shape-popover">
-                          <button type="button" onClick={() => { setStickerShapeType("rect"); addStickerShape("rect"); }} title="Cuadrado">
-                            <i className="fa-regular fa-square" aria-hidden="true" />
-                          </button>
-                          <button type="button" onClick={() => { setStickerShapeType("circle"); addStickerShape("circle"); }} title="Círculo">
-                            <i className="fa-regular fa-circle" aria-hidden="true" />
-                          </button>
-                          <button type="button" onClick={() => { setStickerShapeType("line"); addStickerShape("line"); }} title="Línea">
-                            <i className="fa-solid fa-minus" aria-hidden="true" />
-                          </button>
-                          <button type="button" onClick={() => { setStickerShapeType("arrow"); addStickerShape("arrow"); }} title="Flecha">
-                            <i className="fa-solid fa-arrow-right-long" aria-hidden="true" />
-                          </button>
-                        </div>
-                      )}
-
-                      <div className="wa-sticker-editor-stage">
-                        <div
-                          ref={stickerEditorCanvasRef}
-                          className={`wa-sticker-editor-canvas tool-${stickerEditorTool}`}
-                          onPointerDown={handleStickerCanvasPointerDown}
-                          onPointerMove={handleStickerCanvasPointerMove}
-                          onPointerUp={stopStickerDrawing}
-                          onPointerLeave={stopStickerDrawing}
-                        >
-                          {stickerEditorTool === "crop" && (
-                            <>
-                              <span
-                                className="wa-sticker-crop-box"
-                                style={{
-                                  left: `${stickerCropRect.x * 100}%`,
-                                  top: `${stickerCropRect.y * 100}%`,
-                                  width: `${stickerCropRect.w * 100}%`,
-                                  height: `${stickerCropRect.h * 100}%`,
-                                }}
-                                aria-hidden="true"
-                              >
-                                <span className="wa-sticker-editor-handle top-left" onPointerDown={startStickerCropDrag("top-left")} />
-                                <span className="wa-sticker-editor-handle top-right" onPointerDown={startStickerCropDrag("top-right")} />
-                                <span className="wa-sticker-editor-handle bottom-left" onPointerDown={startStickerCropDrag("bottom-left")} />
-                                <span className="wa-sticker-editor-handle bottom-right" onPointerDown={startStickerCropDrag("bottom-right")} />
-                              </span>
-                              <span
-                                className="wa-sticker-crop-overlay top"
-                                style={{ height: `${stickerCropRect.y * 100}%` }}
-                                aria-hidden="true"
-                              />
-                              <span
-                                className="wa-sticker-crop-overlay bottom"
-                                style={{ top: `${(stickerCropRect.y + stickerCropRect.h) * 100}%` }}
-                                aria-hidden="true"
-                              />
-                              <span
-                                className="wa-sticker-crop-overlay left"
-                                style={{
-                                  top: `${stickerCropRect.y * 100}%`,
-                                  width: `${stickerCropRect.x * 100}%`,
-                                  height: `${stickerCropRect.h * 100}%`,
-                                }}
-                                aria-hidden="true"
-                              />
-                              <span
-                                className="wa-sticker-crop-overlay right"
-                                style={{
-                                  top: `${stickerCropRect.y * 100}%`,
-                                  left: `${(stickerCropRect.x + stickerCropRect.w) * 100}%`,
-                                  height: `${stickerCropRect.h * 100}%`,
-                                }}
-                                aria-hidden="true"
-                              />
-                            </>
-                          )}
-                          <img
-                            ref={stickerEditorImageRef}
-                            src={pendingStickerPreview}
-                            alt="Vista previa del sticker"
-                            style={{
-                              filter: STICKER_EDITOR_FILTERS[stickerEditorFilter]?.css || "none",
-                              transform: `rotate(${stickerEditorRotation}deg) scaleX(${stickerEditorFlipX ? -1 : 1})`,
-                            }}
-                          />
-
-                          <svg className="wa-sticker-draw-layer" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
-                            {stickerDrawPaths.map((path) => (
-                              <polyline
-                                key={path.id}
-                                points={(path.points || []).map((point) => `${point.x * 100},${point.y * 100}`).join(" ")}
-                                fill="none"
-                                stroke={path.color || "#22c55e"}
-                                strokeWidth="1.7"
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                              />
-                            ))}
-                            {stickerShapeItems.map((shape) => {
-                              const x = (shape.x - shape.w / 2) * 100;
-                              const y = (shape.y - shape.h / 2) * 100;
-                              const w = shape.w * 100;
-                              const h = shape.h * 100;
-                              if (shape.type === "circle") {
-                                return <ellipse key={shape.id} cx={shape.x * 100} cy={shape.y * 100} rx={w / 2} ry={h / 2} fill="none" stroke={shape.color} strokeWidth="1.7" />;
-                              }
-                              if (shape.type === "line" || shape.type === "arrow") {
-                                return (
-                                  <line
-                                    key={shape.id}
-                                    x1={x}
-                                    y1={y + h}
-                                    x2={x + w}
-                                    y2={y}
-                                    stroke={shape.color}
-                                    strokeWidth="1.7"
-                                    strokeLinecap="round"
-                                    markerEnd={shape.type === "arrow" ? "url(#waStickerArrow)" : undefined}
-                                  />
-                                );
-                              }
-                              return <rect key={shape.id} x={x} y={y} width={w} height={h} fill="none" stroke={shape.color} strokeWidth="1.7" />;
-                            })}
-                            <defs>
-                              <marker id="waStickerArrow" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto" markerUnits="strokeWidth">
-                                <path d="M0,0 L6,3 L0,6 Z" fill={stickerDrawColor} />
-                              </marker>
-                            </defs>
-                          </svg>
-
-                          {stickerTextItems.map((item) => (
-                            <div
-                              key={item.id}
-                              className="wa-sticker-text-item"
-                              style={{
-                                left: `${item.x * 100}%`,
-                                top: `${item.y * 100}%`,
-                                borderColor: item.color,
-                              }}
-                              onDoubleClick={() => {
-                                const text = window.prompt("Editar texto", item.text);
-                                if (!text) return;
-                                setStickerTextItems((prev) => prev.map((entry) => entry.id === item.id ? { ...entry, text } : entry));
-                              }}
-                            >
-                              <span>{item.text}</span>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-
-                      <div className="wa-sticker-editor-actions">
-                        {stickerEditorTool === "crop" && (
-                          <>
-                            <button
-                              type="button"
-                              className="wa-sticker-editor-mini"
-                              title="Girar"
-                              onClick={() => setStickerEditorRotation((value) => (value + 90) % 360)}
-                            >
-                              <i className="fa-solid fa-rotate-right" aria-hidden="true" />
-                            </button>
-                            <button
-                              type="button"
-                              className="wa-sticker-editor-mini"
-                              title="Voltear"
-                              onClick={() => setStickerEditorFlipX((value) => !value)}
-                            >
-                              <i className="fa-solid fa-right-left" aria-hidden="true" />
-                            </button>
-                          </>
-                        )}
-                        {(stickerEditorRotation !== 0 || stickerEditorFlipX || stickerEditorFilter !== "none" || stickerTextItems.length || stickerShapeItems.length || stickerDrawPaths.length || stickerCropRect.x !== 0 || stickerCropRect.y !== 0 || stickerCropRect.w !== 1 || stickerCropRect.h !== 1) && (
-                          <button
-                            type="button"
-                            className="wa-sticker-editor-reset"
-                            onClick={() => {
-                              setStickerEditorRotation(0);
-                              setStickerEditorFlipX(false);
-                              setStickerEditorFilter("none");
-                              setStickerTextItems([]);
-                              setStickerShapeItems([]);
-                              setStickerDrawPaths([]);
-                              setStickerCropRect({ x: 0, y: 0, w: 1, h: 1 });
-                            }}
-                          >
-                            Restablecer
-                          </button>
-                        )}
-                      </div>
-
-                      <div className="wa-sticker-editor-bottom">
-                        <div className="wa-sticker-editor-thumb">
-                          <img src={pendingStickerPreview} alt="Sticker seleccionado" />
-                        </div>
-                        <div className="wa-sticker-editor-bottom-actions">
-                          <button
-                            type="button"
-                            className="wa-sticker-editor-ok"
-                            onClick={confirmStickerCreation}
-                            disabled={isCreatingSticker}
-                          >
-                            OK
-                          </button>
-                          <button
-                            type="button"
-                            className="wa-sticker-editor-send"
-                            onClick={confirmStickerCreation}
-                            disabled={isCreatingSticker}
-                            aria-label="Enviar sticker"
-                          >
-                            {isCreatingSticker ? (
-                              <span className="spinner-border spinner-border-sm" role="status" aria-hidden="true" />
-                            ) : (
-                              <i className="fa-solid fa-paper-plane" aria-hidden="true" />
-                            )}
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
                   {/* Picker flotante unificado tipo WhatsApp */}
                   {isMediaPickerOpen && (
                     <div
@@ -5342,14 +6372,22 @@ const ChatBox = ({ chat, user, setChat, onCloseChat, onVerPerfil, onAddToList, e
 
                         {activeMediaPicker === "gif" && (
                           <div className="wa-gif-picker-panel">
-                            <input
-                              type="text"
-                              className="wa-gif-search"
-                              placeholder="Buscar GIFs..."
-                              value={gifSearch}
-                              onChange={(e) => setGifSearch(e.target.value)}
-                              onKeyUp={(e) => e.key === "Enter" && fetchGifs(gifSearch)}
-                            />
+                            <label className="wa-gif-search-shell">
+                              <i className="fa-solid fa-magnifying-glass" aria-hidden="true" />
+                              <input
+                                type="text"
+                                className="wa-gif-search"
+                                placeholder="Buscar GIFs..."
+                                value={gifSearch}
+                                onChange={(e) => setGifSearch(e.target.value)}
+                                onKeyUp={(e) => e.key === "Enter" && fetchGifs(gifSearch)}
+                              />
+                              {gifSearch && (
+                                <button type="button" onClick={() => setGifSearch("")} aria-label="Limpiar búsqueda de GIFs">
+                                  <i className="fa-solid fa-xmark" aria-hidden="true" />
+                                </button>
+                              )}
+                            </label>
                             <div className="wa-gif-grid">
                               {gifResults.map((gif) => (
                                 <button

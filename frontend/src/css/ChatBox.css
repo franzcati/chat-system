@@ -18747,29 +18747,6 @@ body.dark .wa-history-message-row.in .wa-history-message-time,
 }
 
 /* =========================================================
-   REDISEÑO 2026-09-29 · compatibilidad de menús ChatList
-   ChatBox.css se carga de forma diferida y contiene reglas legacy
-   con los mismos nombres. Estas clases qc-* evitan que las pise.
-   ========================================================= */
-.wa-filter-dropdown-portal.qc-chat-filter-menu,
-.wa-filter-dropdown-portal.qc-custom-list-menu,
-.wa-chat-options-menu.qc-chat-context-menu {
-  background: var(--qc-popover-bg, rgba(249,252,255,.98)) !important;
-  color: var(--qc-popover-text, #10234a) !important;
-  border: 1px solid var(--qc-popover-border-accent, rgba(91,88,255,.48)) !important;
-  border-radius: 22px !important;
-  box-shadow: var(--qc-popover-shadow, 0 18px 44px rgba(41,72,126,.18)) !important;
-}
-:root[data-theme="dark"] .wa-filter-dropdown-portal.qc-chat-filter-menu,
-:root[data-theme="dark"] .wa-filter-dropdown-portal.qc-custom-list-menu,
-:root[data-theme="dark"] .wa-chat-options-menu.qc-chat-context-menu {
-  --qc-popover-bg: rgba(4,20,47,.98);
-  --qc-popover-text: #f3f7ff;
-  --qc-popover-border-accent: rgba(108,83,255,.78);
-  --qc-popover-shadow: 0 20px 48px rgba(0,0,0,.42);
-}
-
-/* =========================================================
    REDISEÑO 2026-09-29 · Buscar mensajes / llamadas / media picker
    ========================================================= */
 
@@ -19283,231 +19260,1730 @@ body.dark .wa-history-message-row.in .wa-history-message-time,
   .wa-gif-picker-panel .wa-gif-grid { grid-template-columns: repeat(2,minmax(0,1fr)) !important; }
 }
 
-/* ChatBox.css se inyecta después de MessengerShell.css. Estas reglas finales,
-   deliberadamente más específicas, neutralizan los estilos legacy duplicados
-   de .wa-custom-list-* sin tocar otras pantallas. */
-.wa-filter-dropdown-portal.qc-chat-filter-menu { width: min(236px, calc(100vw - 20px)) !important; padding: 8px !important; }
-.wa-filter-dropdown-portal.qc-chat-filter-menu > button.qc-filter-menu-item,
-.wa-filter-dropdown-portal.qc-chat-filter-menu > button.qc-filter-new-list {
-  width: 100% !important; min-height: 42px !important; margin: 0 !important; padding: 6px 8px !important;
-  border: 0 !important; border-radius: 11px !important; background: transparent !important;
-  color: var(--qc-popover-text, #10234a) !important; display: grid !important;
-  grid-template-columns: 30px minmax(0,1fr) auto 12px !important; align-items: center !important; gap: 8px !important;
-  text-align: left !important; font-weight: 760 !important;
-}
-.wa-filter-dropdown-portal.qc-chat-filter-menu > button.qc-filter-menu-item:hover,
-.wa-filter-dropdown-portal.qc-chat-filter-menu > button.qc-filter-menu-item.active,
-.wa-filter-dropdown-portal.qc-chat-filter-menu > button.qc-filter-new-list:hover { background: var(--qc-popover-active, rgba(43,119,255,.08)) !important; }
+/* ========================================================================== 
+   CHAT MEDIA UI V6 — compact calls + unified emoji/GIF/sticker picker
+   2026-09-30
+   ========================================================================== */
 
-.wa-filter-dropdown-portal.qc-custom-list-menu { width: min(300px, calc(100vw - 20px)) !important; padding: 8px !important; }
-.wa-filter-dropdown-portal.qc-custom-list-menu .wa-custom-list-menu-row {
-  min-height: 48px !important; margin: 0 0 6px !important; padding: 3px 6px !important;
-  border: 1px solid transparent !important; border-radius: 12px !important;
-  background: rgba(255,255,255,.28) !important; color: var(--qc-popover-text, #10234a) !important;
+/* Menú de llamada: menos grueso y más proporcionado */
+.qc-call-menu .wa-call-menu-actions {
+  gap: 8px !important;
+  padding: 2px 0 12px !important;
 }
-:root[data-theme="dark"] .wa-filter-dropdown-portal.qc-custom-list-menu .wa-custom-list-menu-row { background: rgba(8,33,70,.42) !important; }
-.wa-filter-dropdown-portal.qc-custom-list-menu .wa-custom-list-menu-row:hover,
-.wa-filter-dropdown-portal.qc-custom-list-menu .wa-custom-list-menu-row.active {
-  background: var(--qc-popover-active, rgba(43,119,255,.08)) !important;
-  border-color: var(--qc-popover-border, rgba(54,123,212,.22)) !important;
-}
-.wa-filter-dropdown-portal.qc-custom-list-menu .wa-custom-list-menu-main {
-  flex: 1 1 auto !important; min-width: 0 !important; width: auto !important; padding: 3px 4px !important;
-  justify-content: flex-start !important; display: flex !important; align-items: center !important; gap: 8px !important;
-  border: 0 !important; background: transparent !important; color: inherit !important; font-size: 13px !important;
-  font-weight: 800 !important; text-align: left !important;
-}
-.wa-filter-dropdown-portal.qc-custom-list-menu .wa-custom-list-menu-main .qc-custom-list-name {
-  min-width: 0 !important; flex: 1 1 auto !important; display: inline-flex !important; align-items: center !important; gap: 8px !important;
-}
-.wa-filter-dropdown-portal.qc-custom-list-menu .wa-custom-list-menu-main .qc-custom-list-name > span:last-child {
-  min-width: 0 !important; overflow: hidden !important; text-overflow: ellipsis !important; white-space: nowrap !important;
-}
-.wa-filter-dropdown-portal.qc-custom-list-menu .wa-custom-list-menu-main .qc-custom-list-count {
-  flex: 0 0 auto !important; margin-left: auto !important; color: #25b9ff !important; font-size: 12px !important;
-}
-.wa-filter-dropdown-portal.qc-custom-list-menu .wa-custom-list-menu-action {
-  flex: 0 0 32px !important; width: 32px !important; height: 32px !important; padding: 0 !important; margin: 0 2px !important;
-  display: inline-grid !important; place-items: center !important; justify-content: center !important;
-  border: 1px solid var(--qc-popover-border, rgba(54,123,212,.22)) !important; border-radius: 10px !important;
-  background: rgba(17,79,155,.08) !important; color: #8da5ca !important; font-size: 13px !important;
-}
-.wa-filter-dropdown-portal.qc-custom-list-menu .wa-custom-list-menu-action:hover { color: #30b6ff !important; background: rgba(27,137,255,.14) !important; }
-.wa-filter-dropdown-portal.qc-custom-list-menu .wa-custom-list-menu-action.danger { color: #ff5a76 !important; border-color: rgba(255,73,105,.25) !important; background: rgba(255,73,105,.08) !important; }
-.wa-filter-dropdown-portal.qc-custom-list-menu .qc-custom-list-new {
-  width: 100% !important; min-height: 48px !important; margin: 0 !important; padding: 6px !important;
-  border: 0 !important; border-radius: 11px !important; background: transparent !important; color: var(--qc-popover-text,#10234a) !important;
-  display: flex !important; align-items: center !important; gap: 8px !important; font-size: 13px !important; font-weight: 800 !important;
-}
-
-.wa-chat-options-menu.qc-chat-context-menu { width: min(266px, calc(100vw - 20px)) !important; min-width: 240px !important; padding: 8px !important; }
-.wa-chat-options-menu.qc-chat-context-menu .wa-chat-option-item {
-  width: 100% !important; min-height: 44px !important; padding: 0 10px !important; border: 0 !important;
-  border-radius: 14px !important; background: transparent !important; color: var(--qc-popover-text,#10234a) !important;
-  display: grid !important; grid-template-columns: 36px minmax(0,1fr) 18px !important; align-items: center !important; gap: 8px !important;
-  font-size: 12px !important; font-weight: 700 !important; text-align: left !important;
-}
-.wa-chat-options-menu.qc-chat-context-menu .wa-chat-option-item:hover { background: var(--qc-popover-active,rgba(43,119,255,.08)) !important; }
-.wa-chat-options-menu.qc-chat-context-menu .wa-chat-option-item > i:first-child { color: #a8bcdf !important; font-size: 15px !important; text-align: center !important; }
-
-/* === Compactación V2 · override final porque ChatBox.css carga después === */
-.wa-filter-dropdown-portal.qc-chat-filter-menu {
-  width: min(230px, calc(100vw - 16px)) !important;
-  padding: 7px !important;
-  border-radius: 14px !important;
-}
-.wa-filter-dropdown-portal.qc-chat-filter-menu > .qc-filter-menu-item,
-.wa-filter-dropdown-portal.qc-chat-filter-menu > .qc-filter-new-list {
-  min-height: 40px !important;
-  padding: 5px 7px !important;
-  grid-template-columns: 28px minmax(0,1fr) auto 11px !important;
+.qc-call-menu .wa-call-menu-actions button {
+  min-height: 44px !important;
+  height: 44px !important;
+  padding: 0 14px !important;
+  border-radius: 999px !important;
+  font-size: 12px !important;
+  line-height: 1 !important;
   gap: 7px !important;
-  border-radius: 10px !important;
-  font-size: 12.5px !important;
+  box-shadow: 0 6px 14px rgba(25, 95, 210, .13) !important;
+  transition: transform .16s ease, filter .16s ease, box-shadow .16s ease !important;
 }
-.wa-filter-dropdown-portal.qc-chat-filter-menu .qc-filter-menu-icon {
-  width: 28px !important; height: 28px !important; border-radius: 9px !important; font-size: 12px !important;
-}
-.wa-filter-dropdown-portal.qc-chat-filter-menu .qc-filter-menu-count {
-  min-width: 26px !important; height: 26px !important; padding: 0 6px !important; border-radius: 8px !important; font-size: 11.5px !important;
-}
-
-.wa-chat-options-menu.qc-chat-context-menu {
-  width: min(258px, calc(100vw - 16px)) !important;
-  min-width: 230px !important;
-  padding: 7px !important;
-  border-radius: 14px !important;
-}
-.wa-chat-options-menu.qc-chat-context-menu .wa-chat-option-item {
-  min-height: 42px !important;
-  padding: 0 9px !important;
-  border-radius: 10px !important;
-  grid-template-columns: 26px minmax(0,1fr) 12px !important;
-  gap: 7px !important;
-  font-size: 12.5px !important;
-  line-height: 1.2 !important;
-}
-.wa-chat-options-menu.qc-chat-context-menu .wa-chat-option-item > i:first-child {
-  width: 20px !important; font-size: 14px !important;
-}
-
-.wa-filter-dropdown-portal.qc-custom-list-menu {
-  width: min(292px, calc(100vw - 16px)) !important;
-  padding: 7px !important;
-  border-radius: 14px !important;
-}
-.wa-filter-dropdown-portal.qc-custom-list-menu .wa-custom-list-menu-row {
-  min-height: 46px !important; margin-bottom: 5px !important; padding: 3px 5px !important; border-radius: 11px !important;
-}
-.wa-filter-dropdown-portal.qc-custom-list-menu .wa-custom-list-menu-main {
-  padding: 2px 3px !important; gap: 7px !important; font-size: 12.5px !important;
-}
-.wa-filter-dropdown-portal.qc-custom-list-menu .qc-custom-list-name { gap: 7px !important; }
-.wa-filter-dropdown-portal.qc-custom-list-menu .qc-custom-list-name > span:last-child { font-size: 12.5px !important; }
-.wa-filter-dropdown-portal.qc-custom-list-menu .qc-custom-list-icon {
-  width: 29px !important; height: 29px !important; flex: 0 0 29px !important; border-radius: 9px !important; font-size: 12px !important;
-}
-.wa-filter-dropdown-portal.qc-custom-list-menu .qc-custom-list-count {
-  min-width: 26px !important; height: 26px !important; font-size: 11.5px !important;
-}
-.wa-filter-dropdown-portal.qc-custom-list-menu .wa-custom-list-menu-action {
-  flex: 0 0 30px !important; width: 30px !important; height: 30px !important; margin: 0 1px !important; border-radius: 9px !important; font-size: 12px !important;
-}
-.wa-filter-dropdown-portal.qc-custom-list-menu .qc-custom-list-new {
-  min-height: 43px !important; padding: 5px 6px !important; gap: 8px !important; border-radius: 10px !important; font-size: 12.5px !important;
-}
-.wa-filter-dropdown-portal.qc-custom-list-menu .qc-custom-list-icon.is-new {
-  width: 30px !important; height: 30px !important; flex: 0 0 30px !important;
-  border: 1px dashed rgba(57,147,255,.9) !important;
-  background: linear-gradient(135deg, rgba(0,153,255,.18), rgba(112,70,255,.20)) !important;
-  box-shadow: none !important; color: #53bfff !important;
-}
-:root[data-theme="dark"] .wa-filter-dropdown-portal.qc-custom-list-menu .qc-custom-list-icon.is-new { color:#eef8ff !important; }
-
-
-/* ========================================================================== */
-/* ChatList V3 — listas compactas, + centrado y acciones tras 1.5 s de hover */
-/* ========================================================================== */
-
-/* El + debe quedar matemáticamente centrado en ambos menús. */
-.qc-chat-filter-menu .qc-filter-menu-icon.is-new,
-.wa-filter-dropdown-portal.qc-custom-list-menu .qc-custom-list-icon.is-new {
+.qc-call-menu .wa-call-menu-actions button i {
   display: inline-grid !important;
   place-items: center !important;
-  padding: 0 !important;
-  text-align: center !important;
+  width: 14px !important;
+  min-width: 14px !important;
+  margin: 0 !important;
+  font-size: 12px !important;
   line-height: 1 !important;
 }
-.qc-chat-filter-menu .qc-filter-menu-icon.is-new > i,
-.wa-filter-dropdown-portal.qc-custom-list-menu .qc-custom-list-icon.is-new > i {
+.qc-call-menu .wa-call-menu-actions button:hover {
+  transform: translateY(-1px) !important;
+  filter: brightness(1.06) !important;
+  box-shadow: 0 9px 18px rgba(25, 95, 210, .18) !important;
+}
+.qc-call-menu .wa-call-menu-row {
+  min-height: 44px !important;
+  height: 44px !important;
+  padding: 0 12px !important;
+  gap: 11px !important;
+  border-radius: 11px !important;
+}
+.qc-call-menu .wa-call-menu-row i {
+  width: 18px !important;
+  min-width: 18px !important;
+  font-size: 12px !important;
+}
+
+/* Superficie única: evita el rectángulo interno distinto en Emoji Mart */
+.wa-media-picker-content.emoji {
+  padding: 0 !important;
+  background: rgb(248, 251, 255) !important;
+  overflow: hidden !important;
+}
+.wa-media-picker-content.emoji em-emoji-picker {
+  display: block !important;
+  width: 100% !important;
+  height: 100% !important;
+  min-width: 0 !important;
+  margin: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: rgb(248, 251, 255) !important;
+  box-shadow: none !important;
+  --border-radius: 0;
+  --rgb-background: 248, 251, 255;
+  --rgb-input: 239, 246, 255;
+  --rgb-color: 16, 35, 74;
+  --rgb-accent: 47, 113, 255;
+}
+:root[data-theme="dark"] .wa-media-picker-content.emoji,
+:root[data-theme="dark"] .wa-media-picker-content.emoji em-emoji-picker {
+  background: rgb(4, 20, 47) !important;
+}
+:root[data-theme="dark"] .wa-media-picker-content.emoji em-emoji-picker {
+  --rgb-background: 4, 20, 47;
+  --rgb-input: 12, 38, 78;
+  --rgb-color: 238, 244, 255;
+  --rgb-accent: 70, 118, 255;
+}
+
+/* Buscador de GIFs con icono real de Font Awesome (sin pseudo-elementos) */
+.wa-gif-picker-panel::before {
+  content: none !important;
+  display: none !important;
+}
+.wa-gif-picker-panel {
+  min-height: 0 !important;
+  overflow: hidden !important;
+}
+.wa-gif-search-shell {
+  flex: 0 0 48px !important;
+  min-height: 48px !important;
+  width: calc(100% - 28px) !important;
+  margin: 14px 14px 10px !important;
+  padding: 0 14px !important;
+  border: 1px solid rgba(72, 93, 255, .48) !important;
+  border-radius: 16px !important;
+  background: rgba(249, 252, 255, .92) !important;
+  color: #7085aa !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 10px !important;
+  box-sizing: border-box !important;
+  transition: border-color .16s ease, box-shadow .16s ease, background .16s ease !important;
+}
+.wa-gif-search-shell:focus-within {
+  border-color: rgba(70, 93, 255, .82) !important;
+  box-shadow: 0 0 0 3px rgba(62, 99, 255, .10) !important;
+}
+.wa-gif-search-shell > i {
+  display: grid !important;
+  place-items: center !important;
+  width: 18px !important;
+  min-width: 18px !important;
+  margin: 0 !important;
+  color: #7185aa !important;
+  font-size: 14px !important;
+}
+.wa-gif-picker-panel .wa-gif-search-shell .wa-gif-search {
+  flex: 1 1 auto !important;
+  width: auto !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+  height: 42px !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  outline: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  color: #10234a !important;
+  font-size: 13px !important;
+  font-weight: 600 !important;
+}
+.wa-gif-search-shell button {
+  width: 28px !important;
+  height: 28px !important;
+  flex: 0 0 28px !important;
+  border: 0 !important;
+  border-radius: 50% !important;
+  background: transparent !important;
+  color: inherit !important;
+  display: grid !important;
+  place-items: center !important;
+  padding: 0 !important;
+}
+.wa-gif-search-shell button:hover {
+  background: rgba(52, 105, 224, .10) !important;
+}
+:root[data-theme="dark"] .wa-gif-search-shell {
+  background: rgba(8, 30, 65, .92) !important;
+  border-color: rgba(86, 92, 255, .72) !important;
+  color: #9db0d0 !important;
+}
+:root[data-theme="dark"] .wa-gif-search-shell > i { color: #93a9cc !important; }
+:root[data-theme="dark"] .wa-gif-picker-panel .wa-gif-search-shell .wa-gif-search { color: #f2f6ff !important; }
+
+/* GIFs: celdas estables, sin superposición y con scroll propio */
+.wa-gif-picker-panel .wa-gif-grid {
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+  display: grid !important;
+  grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  grid-auto-rows: minmax(84px, 1fr) !important;
+  grid-auto-flow: row !important;
+  align-content: start !important;
+  align-items: stretch !important;
+  gap: 8px !important;
+  margin: 0 !important;
+  padding: 0 14px 12px !important;
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
+  box-sizing: border-box !important;
+}
+.wa-gif-picker-panel .wa-gif-item {
+  position: relative !important;
+  display: block !important;
+  width: 100% !important;
+  min-width: 0 !important;
+  height: 100% !important;
+  min-height: 84px !important;
+  aspect-ratio: 1.38 / 1 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  overflow: hidden !important;
+  border-radius: 12px !important;
+  transform: none !important;
+  contain: layout paint !important;
+}
+.wa-gif-picker-panel .wa-gif-item:hover {
+  transform: translateY(-1px) !important;
+  border-color: rgba(80, 111, 255, .66) !important;
+  box-shadow: 0 7px 16px rgba(35, 75, 170, .14) !important;
+}
+.wa-gif-picker-panel .wa-gif-item .wa-gif-result {
+  display: block !important;
+  width: 100% !important;
+  height: 100% !important;
+  min-height: 0 !important;
+  aspect-ratio: auto !important;
+  object-fit: cover !important;
+  border-radius: inherit !important;
+  transform: none !important;
+}
+
+/* Hover más claro para los controles superiores de stickers */
+.wa-sticker-wa-tab:not(.wa-sticker-wa-add):hover {
+  color: #315dcb !important;
+  background: rgba(47, 111, 255, .09) !important;
+  border-color: rgba(62, 112, 230, .18) !important;
+}
+:root[data-theme="dark"] .wa-sticker-wa-tab:not(.wa-sticker-wa-add):hover {
+  color: #dbe7ff !important;
+  background: rgba(73, 107, 220, .22) !important;
+  border-color: rgba(82, 119, 236, .30) !important;
+}
+.wa-sticker-wa-add:hover {
+  filter: brightness(1.08) saturate(1.04) !important;
+  transform: translateY(-1px) !important;
+  box-shadow: 0 10px 20px rgba(57, 95, 230, .24) !important;
+}
+
+/* Navegación inferior: selección = mismo azul/violeta del botón principal (+) */
+.wa-media-tabs {
+  min-height: 58px !important;
+  height: 58px !important;
+  padding: 6px !important;
+}
+.wa-media-tabs button {
+  position: relative !important;
+  min-height: 44px !important;
+  height: 44px !important;
+  border-radius: 12px !important;
+  transition: background .16s ease, color .16s ease, border-color .16s ease, box-shadow .16s ease, transform .16s ease !important;
+}
+.wa-media-tabs button:hover:not(.active) {
+  color: #355cc5 !important;
+  background: rgba(46, 105, 235, .09) !important;
+  border-color: rgba(60, 112, 226, .15) !important;
+}
+:root[data-theme="dark"] .wa-media-tabs button:hover:not(.active) {
+  color: #dce7ff !important;
+  background: rgba(66, 99, 205, .22) !important;
+  border-color: rgba(82, 116, 225, .24) !important;
+}
+.wa-media-tabs button.active {
+  color: #fff !important;
+  border-color: rgba(94, 86, 255, .72) !important;
+  background: linear-gradient(135deg, #0aa8ff 0%, #397dff 50%, #7654ff 100%) !important;
+  box-shadow: 0 7px 18px rgba(55, 91, 230, .22) !important;
+}
+.wa-media-tabs button.active::after {
+  content: none !important;
+  display: none !important;
+}
+.wa-media-tabs button.active i,
+.wa-media-tabs button.active svg {
+  color: #fff !important;
+}
+
+@media (max-width: 720px) {
+  .qc-call-menu .wa-call-menu-actions button {
+    min-height: 42px !important;
+    height: 42px !important;
+  }
+  .wa-gif-picker-panel .wa-gif-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    grid-auto-rows: minmax(92px, auto) !important;
+  }
+}
+
+/* =========================================================
+   Editor de stickers V7 — rediseño integrado QuickChat
+   Mantiene la lista de chats visible y todas las herramientas.
+   ========================================================= */
+.wa-sticker-editor {
+  --sticker-accent-a: #0aa8ff;
+  --sticker-accent-b: #7354ff;
+  --sticker-panel: rgba(248, 251, 255, .98);
+  --sticker-panel-2: #ffffff;
+  --sticker-soft: #eef4ff;
+  --sticker-border: rgba(67, 113, 214, .20);
+  --sticker-text: #10254c;
+  --sticker-muted: #7080a2;
+  left: 474px !important;
+  right: 0 !important;
+  top: 0 !important;
+  bottom: 0 !important;
+  z-index: 15000 !important;
+  width: auto !important;
+  min-width: 0 !important;
+  background:
+    radial-gradient(circle at 78% 18%, rgba(104, 91, 255, .10), transparent 28%),
+    radial-gradient(circle at 20% 82%, rgba(0, 174, 255, .08), transparent 30%),
+    var(--sticker-panel) !important;
+  color: var(--sticker-text) !important;
+  overflow: hidden !important;
+  isolation: isolate;
+}
+
+.wa-sticker-editor-topbar {
+  flex: 0 0 78px !important;
+  height: 78px !important;
+  min-height: 78px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 18px !important;
+  padding: 0 24px !important;
+  border-bottom: 1px solid var(--sticker-border) !important;
+  background: rgba(255,255,255,.92) !important;
+  box-shadow: 0 8px 24px rgba(30, 68, 145, .05) !important;
+  position: relative !important;
+  z-index: 5 !important;
+}
+.wa-sticker-editor-heading,
+.wa-sticker-editor-history-actions,
+.wa-sticker-editor-selection,
+.wa-sticker-editor-selection-copy {
+  display: flex;
+  align-items: center;
+}
+.wa-sticker-editor-heading { gap: 12px; min-width: 0; }
+.wa-sticker-editor-heading-icon {
+  width: 42px;
+  height: 42px;
+  flex: 0 0 42px;
+  border-radius: 13px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-size: 17px;
+  background: linear-gradient(135deg, var(--sticker-accent-a), var(--sticker-accent-b));
+  box-shadow: 0 8px 18px rgba(67, 92, 235, .20);
+}
+.wa-sticker-editor-heading > div:last-child { min-width: 0; }
+.wa-sticker-editor-heading strong,
+.wa-sticker-editor-heading span { display: block; }
+.wa-sticker-editor-heading strong {
+  color: var(--sticker-text);
+  font-size: 18px;
+  line-height: 1.15;
+  font-weight: 800;
+}
+.wa-sticker-editor-heading span {
+  color: var(--sticker-muted);
+  font-size: 12px;
+  margin-top: 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.wa-sticker-editor-history-actions { gap: 8px; }
+.wa-sticker-editor-close-inline,
+.wa-sticker-editor-undo {
+  width: 38px !important;
+  height: 38px !important;
+  min-width: 38px !important;
+  border: 1px solid var(--sticker-border) !important;
+  border-radius: 11px !important;
+  background: rgba(255,255,255,.72) !important;
+  color: #486089 !important;
+  font-size: 15px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  padding: 0 !important;
+  transition: transform .15s ease, background .15s ease, color .15s ease, border-color .15s ease !important;
+}
+.wa-sticker-editor-close-inline:hover,
+.wa-sticker-editor-undo:hover:not(.is-disabled) {
+  transform: translateY(-1px);
+  color: #fff !important;
+  border-color: transparent !important;
+  background: linear-gradient(135deg, var(--sticker-accent-a), var(--sticker-accent-b)) !important;
+}
+.wa-sticker-editor-undo.is-disabled { opacity: .38; cursor: default; }
+
+.wa-sticker-editor-toolbar {
+  flex: 0 0 68px !important;
+  height: 68px !important;
+  min-height: 68px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 8px !important;
+  padding: 9px 18px !important;
+  background: rgba(255,255,255,.78) !important;
+  border-bottom: 1px solid var(--sticker-border) !important;
+  position: relative !important;
+  z-index: 4 !important;
+  overflow-x: auto !important;
+  scrollbar-width: none;
+}
+.wa-sticker-editor-toolbar::-webkit-scrollbar { display: none; }
+.wa-sticker-editor-tool {
+  width: auto !important;
+  min-width: 74px !important;
+  height: 48px !important;
+  padding: 0 12px !important;
+  border: 1px solid transparent !important;
+  border-radius: 13px !important;
+  display: inline-flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 3px !important;
+  background: transparent !important;
+  color: #6c7d9c !important;
+  font-size: 14px !important;
+  line-height: 1 !important;
+  box-shadow: none !important;
+  flex: 0 0 auto !important;
+}
+.wa-sticker-editor-tool > span:last-child {
+  font-size: 10px;
+  line-height: 1;
+  font-weight: 700;
+}
+.wa-sticker-editor-aa { font-size: 13px !important; font-weight: 900 !important; }
+.wa-sticker-editor-tool:hover {
+  color: #315dcc !important;
+  background: rgba(49, 93, 204, .07) !important;
+  border-color: rgba(49, 93, 204, .12) !important;
+  box-shadow: none !important;
+}
+.wa-sticker-editor-tool.active {
+  color: #fff !important;
+  border-color: transparent !important;
+  background: linear-gradient(135deg, var(--sticker-accent-a), var(--sticker-accent-b)) !important;
+  box-shadow: 0 7px 18px rgba(62, 92, 225, .20) !important;
+}
+
+.wa-sticker-editor-stage {
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+  padding: 18px 24px 10px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  overflow: auto !important;
+  position: relative !important;
+  z-index: 1 !important;
+}
+.wa-sticker-editor-canvas {
+  width: min(520px, 64vw) !important;
+  height: min(520px, calc(100vh - 310px)) !important;
+  min-height: 280px !important;
+  max-height: 520px !important;
+  border: 1px solid rgba(80, 110, 170, .22) !important;
+  border-radius: 18px !important;
+  overflow: hidden !important;
+  box-shadow: 0 18px 50px rgba(39, 74, 145, .10) !important;
+  background-color: rgba(255,255,255,.70) !important;
+  background-image:
+    linear-gradient(45deg, rgba(151,164,190,.18) 25%, transparent 25%),
+    linear-gradient(-45deg, rgba(151,164,190,.18) 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, rgba(151,164,190,.18) 75%),
+    linear-gradient(-45deg, transparent 75%, rgba(151,164,190,.18) 75%) !important;
+  background-size: 24px 24px !important;
+  background-position: 0 0, 0 12px, 12px -12px, -12px 0 !important;
+}
+.wa-sticker-editor-canvas img {
+  max-width: 86% !important;
+  max-height: 86% !important;
+  border-radius: 8px;
+}
+.wa-sticker-crop-box {
+  z-index: 6 !important;
+  border: 2px solid rgba(255,255,255,.96) !important;
+  box-shadow: 0 0 0 1px rgba(38, 92, 220, .72), 0 0 0 9999px rgba(15, 26, 52, .20) !important;
+}
+.wa-sticker-editor-handle {
+  width: 13px !important;
+  height: 13px !important;
+  border: 2px solid #fff !important;
+  background: #3e7cff !important;
+  box-shadow: 0 0 0 1px rgba(32, 79, 190, .78) !important;
+}
+.wa-sticker-crop-overlay { display: none !important; }
+
+.wa-sticker-editor-actions {
+  flex: 0 0 50px !important;
+  min-height: 50px !important;
+  gap: 8px !important;
+  padding: 4px 16px 8px !important;
+  color: var(--sticker-muted) !important;
+}
+.wa-sticker-editor-mini,
+.wa-sticker-editor-reset {
+  min-width: 38px !important;
+  height: 36px !important;
+  padding: 0 12px !important;
+  border: 1px solid var(--sticker-border) !important;
+  border-radius: 10px !important;
+  background: rgba(255,255,255,.72) !important;
+  color: #526789 !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  font-size: 14px !important;
+}
+.wa-sticker-editor-mini:hover,
+.wa-sticker-editor-reset:hover {
+  color: #fff !important;
+  border-color: transparent !important;
+  background: linear-gradient(135deg, var(--sticker-accent-a), var(--sticker-accent-b)) !important;
+}
+.wa-sticker-editor-reset { font-size: 11px !important; font-weight: 800 !important; opacity: 1 !important; }
+
+.wa-sticker-editor-bottom {
+  flex: 0 0 82px !important;
+  min-height: 82px !important;
+  height: 82px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 16px !important;
+  padding: 12px 22px !important;
+  border-top: 1px solid var(--sticker-border) !important;
+  background: rgba(255,255,255,.92) !important;
+  position: relative !important;
+  z-index: 5 !important;
+}
+.wa-sticker-editor-selection { gap: 10px; min-width: 0; }
+.wa-sticker-editor-thumb {
+  width: 48px !important;
+  height: 48px !important;
+  flex: 0 0 48px !important;
+  padding: 2px !important;
+  border-radius: 12px !important;
+  border: 2px solid #3f7cff !important;
+  background: #fff !important;
+  overflow: hidden !important;
+}
+.wa-sticker-editor-thumb img { border-radius: 8px; }
+.wa-sticker-editor-selection-copy {
+  align-items: flex-start;
+  flex-direction: column;
+  min-width: 0;
+}
+.wa-sticker-editor-selection-copy strong { font-size: 13px; color: var(--sticker-text); }
+.wa-sticker-editor-selection-copy span { font-size: 11px; color: var(--sticker-muted); margin-top: 2px; }
+.wa-sticker-editor-bottom-actions {
+  position: static !important;
+  right: auto !important;
+  bottom: auto !important;
+  margin-left: auto !important;
+  gap: 8px !important;
+  display: flex !important;
+  align-items: center !important;
+}
+.wa-sticker-editor-cancel,
+.wa-sticker-editor-send-wide {
+  height: 42px !important;
+  border-radius: 12px !important;
+  padding: 0 16px !important;
+  font-size: 12px !important;
+  font-weight: 800 !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 8px !important;
+  white-space: nowrap !important;
+}
+.wa-sticker-editor-cancel {
+  border: 1px solid var(--sticker-border) !important;
+  background: rgba(255,255,255,.78) !important;
+  color: #53698c !important;
+}
+.wa-sticker-editor-cancel:hover { background: rgba(62, 105, 214, .07) !important; color: #315dcc !important; }
+.wa-sticker-editor-send-wide {
+  width: auto !important;
+  min-width: 142px !important;
+  border: 0 !important;
+  color: #fff !important;
+  background: linear-gradient(135deg, var(--sticker-accent-a), #397dff 50%, var(--sticker-accent-b)) !important;
+  box-shadow: 0 9px 20px rgba(58, 91, 225, .22) !important;
+}
+.wa-sticker-editor-send-wide:hover:not(:disabled) { transform: translateY(-1px); filter: brightness(1.04); }
+
+.wa-sticker-filter-strip,
+.wa-sticker-color-strip {
+  flex: 0 0 68px !important;
+  min-height: 68px !important;
+  padding: 7px 16px !important;
+  background: rgba(255,255,255,.88) !important;
+  border-bottom: 1px solid var(--sticker-border) !important;
+  overflow-x: auto !important;
+  justify-content: center !important;
+  z-index: 3 !important;
+}
+.wa-sticker-shape-popover {
+  top: 150px !important;
+  width: 170px !important;
+  border: 1px solid var(--sticker-border) !important;
+  border-radius: 14px !important;
+  background: #fff !important;
+  box-shadow: 0 14px 30px rgba(37, 63, 130, .16) !important;
+}
+
+:root[data-theme="dark"] .wa-sticker-editor {
+  --sticker-panel: #06152f;
+  --sticker-panel-2: #0a1d3f;
+  --sticker-soft: #0d2449;
+  --sticker-border: rgba(81, 126, 230, .25);
+  --sticker-text: #f5f8ff;
+  --sticker-muted: #9badcf;
+  background:
+    radial-gradient(circle at 78% 18%, rgba(94, 73, 255, .16), transparent 28%),
+    radial-gradient(circle at 20% 82%, rgba(0, 174, 255, .10), transparent 30%),
+    #06152f !important;
+}
+:root[data-theme="dark"] .wa-sticker-editor-topbar,
+:root[data-theme="dark"] .wa-sticker-editor-toolbar,
+:root[data-theme="dark"] .wa-sticker-editor-bottom,
+:root[data-theme="dark"] .wa-sticker-filter-strip,
+:root[data-theme="dark"] .wa-sticker-color-strip {
+  background: rgba(7, 24, 52, .96) !important;
+  border-color: var(--sticker-border) !important;
+}
+:root[data-theme="dark"] .wa-sticker-editor-close-inline,
+:root[data-theme="dark"] .wa-sticker-editor-undo,
+:root[data-theme="dark"] .wa-sticker-editor-mini,
+:root[data-theme="dark"] .wa-sticker-editor-reset,
+:root[data-theme="dark"] .wa-sticker-editor-cancel {
+  color: #b8c5df !important;
+  background: rgba(12, 36, 75, .88) !important;
+  border-color: rgba(82, 126, 226, .22) !important;
+}
+:root[data-theme="dark"] .wa-sticker-editor-tool { color: #a8b7d5 !important; }
+:root[data-theme="dark"] .wa-sticker-editor-tool:hover {
+  color: #e8efff !important;
+  background: rgba(68, 101, 205, .20) !important;
+  border-color: rgba(85, 123, 229, .24) !important;
+}
+:root[data-theme="dark"] .wa-sticker-editor-tool.active { color: #fff !important; }
+:root[data-theme="dark"] .wa-sticker-editor-canvas {
+  border-color: rgba(82, 126, 226, .26) !important;
+  background-color: #071a38 !important;
+  background-image:
+    linear-gradient(45deg, rgba(56,75,112,.42) 25%, transparent 25%),
+    linear-gradient(-45deg, rgba(56,75,112,.42) 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, rgba(56,75,112,.42) 75%),
+    linear-gradient(-45deg, transparent 75%, rgba(56,75,112,.42) 75%) !important;
+  box-shadow: 0 18px 50px rgba(0,0,0,.22) !important;
+}
+:root[data-theme="dark"] .wa-sticker-editor-thumb { background: #081d3d !important; }
+:root[data-theme="dark"] .wa-sticker-shape-popover {
+  background: #0a1d3f !important;
+  border-color: rgba(82, 126, 226, .26) !important;
+}
+
+@media (max-width: 991px) {
+  .wa-sticker-editor { left: 424px !important; }
+  .wa-sticker-editor-canvas {
+    width: min(460px, 62vw) !important;
+    height: min(460px, calc(100vh - 300px)) !important;
+  }
+}
+@media (max-width: 767px) {
+  .wa-sticker-editor { left: 0 !important; }
+  .wa-sticker-editor-topbar { padding: 0 12px !important; }
+  .wa-sticker-editor-heading span { display: none; }
+  .wa-sticker-editor-heading strong { font-size: 16px; }
+  .wa-sticker-editor-toolbar {
+    justify-content: flex-start !important;
+    padding: 8px 10px !important;
+  }
+  .wa-sticker-editor-tool { min-width: 66px !important; }
+  .wa-sticker-editor-stage { padding: 12px 10px 6px !important; }
+  .wa-sticker-editor-canvas {
+    width: min(390px, 92vw) !important;
+    height: min(390px, calc(100vh - 320px)) !important;
+    min-height: 240px !important;
+  }
+  .wa-sticker-editor-selection-copy { display: none !important; }
+  .wa-sticker-editor-bottom { padding: 10px 12px !important; }
+  .wa-sticker-editor-send-wide { min-width: 120px !important; padding: 0 12px !important; }
+}
+
+/* =========================================================
+   Sticker editor V8 — confinado al área real de conversación
+   Se monta como hijo directo de .wa-chat-conversation para que
+   nunca tape ChatList ni quede detrás del header del chat.
+   ========================================================= */
+.wa-chat-conversation > .wa-sticker-editor {
+  position: absolute !important;
+  inset: 62px 0 0 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  top: 62px !important;
+  bottom: 0 !important;
+  width: auto !important;
+  height: auto !important;
+  min-width: 0 !important;
+  max-width: none !important;
+  max-height: none !important;
+  z-index: 12000 !important;
+  box-sizing: border-box !important;
+  border-radius: 0 !important;
+  overflow: hidden !important;
+}
+
+/* El encabezado normal del chat siempre queda fuera/encima del editor. */
+.wa-chat-conversation > .wa-chat-header {
+  position: relative !important;
+  z-index: 12010 !important;
+  flex: 0 0 62px !important;
+}
+
+@media (max-width: 767px) {
+  .wa-chat-conversation > .wa-sticker-editor {
+    inset: 58px 0 0 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    top: 58px !important;
+    bottom: 0 !important;
+  }
+
+  .wa-chat-conversation > .wa-chat-header {
+    flex-basis: 58px !important;
+  }
+}
+
+/* =========================================================
+   Sticker editor V9 — formas y texto interactivos
+   Arrastre, selección, tamaño, color y eliminación tipo WhatsApp.
+   ========================================================= */
+.wa-sticker-shape-popover {
+  display: grid !important;
+  grid-template-columns: repeat(2, 42px) !important;
+  gap: 8px !important;
+  width: auto !important;
+  min-width: 108px !important;
+  padding: 10px !important;
+  align-items: center !important;
+  justify-content: center !important;
+}
+.wa-sticker-shape-popover button {
+  width: 42px !important;
+  height: 42px !important;
+  min-width: 42px !important;
+  padding: 0 !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  border: 1px solid rgba(71, 105, 175, .22) !important;
+  border-radius: 10px !important;
+  background: rgba(238, 244, 255, .92) !important;
+  color: #526789 !important;
+  font-size: 19px !important;
+  line-height: 1 !important;
+  box-shadow: none !important;
+}
+.wa-sticker-shape-popover button i {
   display: block !important;
   width: auto !important;
   height: auto !important;
   margin: 0 !important;
-  padding: 0 !important;
   line-height: 1 !important;
   transform: none !important;
 }
-
-/* "Nueva lista" queda como una fila normal inmediatamente debajo de las listas. */
-.wa-filter-dropdown-portal.qc-custom-list-menu .qc-custom-list-new {
-  justify-content: flex-start !important;
-  text-align: left !important;
-  width: 100% !important;
-  margin: 1px 0 0 !important;
-  padding: 5px 6px !important;
-}
-.wa-filter-dropdown-portal.qc-custom-list-menu .qc-custom-list-new-label {
-  display: inline-flex !important;
-  align-items: center !important;
-  justify-content: flex-start !important;
-  margin: 0 !important;
-  padding: 0 !important;
-  flex: 0 1 auto !important;
-  font-size: 12.5px !important;
-  font-weight: 800 !important;
-  line-height: 1.15 !important;
-  white-space: nowrap !important;
+.wa-sticker-shape-popover button:hover {
+  color: #fff !important;
+  border-color: transparent !important;
+  background: linear-gradient(135deg, var(--sticker-accent-a), var(--sticker-accent-b)) !important;
+  transform: translateY(-1px);
 }
 
-/* Los botones Editar/Eliminar de las dos listas visibles permanecen ocultos.
-   Solo aparecen cuando el puntero permanece 1.5 s sobre esa lista. Se reserva
-   su espacio para evitar que el chip salte o cambie de ancho al mostrarlos. */
-.wa-custom-list-chip-wrap > .wa-list-chip-action {
-  opacity: 0 !important;
-  visibility: hidden !important;
-  pointer-events: none !important;
-  transform: translateY(0) scale(.94) !important;
-  transition-property: opacity, visibility, transform, background-color, color !important;
-  transition-duration: .14s, 0s, .14s, .14s, .14s !important;
-  transition-delay: 0s, 0s, 0s, 0s, 0s !important;
+.wa-sticker-shape-hit {
+  position: absolute;
+  z-index: 6;
+  box-sizing: border-box;
+  border: 1px solid transparent;
+  cursor: grab;
+  touch-action: none;
+  pointer-events: auto;
 }
-.wa-custom-list-chip-wrap:hover > .wa-list-chip-action {
-  opacity: .82 !important;
-  visibility: visible !important;
-  pointer-events: auto !important;
-  transform: translateY(0) scale(1) !important;
-  transition-delay: 1.5s, 1.5s, 1.5s, 0s, 0s !important;
+.wa-sticker-shape-hit:active { cursor: grabbing; }
+.wa-sticker-shape-hit.selected {
+  border: 2px solid var(--wa-selection-color, #ff4d57);
+  box-shadow: 0 0 0 1px rgba(255,255,255,.92), 0 5px 14px rgba(5, 18, 44, .16);
 }
-.wa-custom-list-chip-wrap:hover > .wa-list-chip-action:hover {
-  opacity: 1 !important;
-  transition-delay: 0s !important;
+.wa-sticker-overlay-handle {
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  border: 2px solid var(--wa-selection-color, #ff4d57);
+  border-radius: 50%;
+  background: #fff;
+  box-sizing: border-box;
+  pointer-events: none;
 }
-/* Teclado: no obligamos a esperar 1.5 s. */
-.wa-custom-list-chip-wrap:focus-within > .wa-list-chip-action {
-  opacity: .82 !important;
-  visibility: visible !important;
-  pointer-events: auto !important;
-  transform: translateY(0) scale(1) !important;
-  transition-delay: 0s !important;
+.wa-sticker-overlay-handle.top-left { left: -6px; top: -6px; }
+.wa-sticker-overlay-handle.top-right { right: -6px; top: -6px; }
+.wa-sticker-overlay-handle.bottom-left { left: -6px; bottom: -6px; }
+.wa-sticker-overlay-handle.bottom-right { right: -6px; bottom: -6px; }
+.wa-sticker-overlay-handle.resize {
+  width: 14px;
+  height: 14px;
+  right: -8px;
+  bottom: -8px;
+  pointer-events: auto;
+  cursor: nwse-resize;
+  touch-action: none;
 }
 
-@media (hover: none), (pointer: coarse) {
-  /* En táctil no existe hover sostenido: mantener acciones accesibles. */
-  .wa-custom-list-chip-wrap > .wa-list-chip-action {
-    opacity: .82 !important;
-    visibility: visible !important;
-    pointer-events: auto !important;
-    transform: none !important;
+.wa-sticker-text-item {
+  min-width: 92px !important;
+  max-width: 78% !important;
+  padding: 6px 10px !important;
+  border-width: 2px !important;
+  border-style: solid !important;
+  border-radius: 7px !important;
+  color: #fff;
+  cursor: grab !important;
+  touch-action: none;
+  user-select: none;
+  box-shadow: 0 5px 16px rgba(8, 24, 52, .15) !important;
+}
+.wa-sticker-text-item:active { cursor: grabbing !important; }
+.wa-sticker-text-item.selected {
+  box-shadow: 0 0 0 1px rgba(255,255,255,.9), 0 6px 18px rgba(8, 24, 52, .20) !important;
+}
+.wa-sticker-text-input {
+  width: min(260px, 48vw);
+  min-width: 90px;
+  max-width: 100%;
+  padding: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: 700;
+  text-align: center;
+  user-select: text;
+  cursor: text;
+}
+
+.wa-sticker-object-controls {
+  flex: 0 0 52px;
+  min-height: 52px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 6px 16px;
+  border-top: 1px solid var(--sticker-border);
+  border-bottom: 1px solid var(--sticker-border);
+  background: rgba(255,255,255,.86);
+  position: relative;
+  z-index: 8;
+}
+.wa-sticker-object-colors {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  flex-wrap: nowrap;
+}
+.wa-sticker-object-color {
+  width: 22px;
+  height: 22px;
+  min-width: 22px;
+  padding: 0;
+  border-radius: 50%;
+  border: 2px solid rgba(84, 105, 145, .24);
+  box-shadow: 0 0 0 2px transparent;
+}
+.wa-sticker-object-color.active {
+  border-color: #fff;
+  box-shadow: 0 0 0 2px #2e6fff;
+  transform: scale(1.05);
+}
+.wa-sticker-custom-color {
+  width: 32px;
+  height: 32px;
+  border: 1px solid var(--sticker-border);
+  border-radius: 9px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #526789;
+  background: rgba(255,255,255,.75);
+  cursor: pointer;
+  position: relative;
+}
+.wa-sticker-custom-color input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  cursor: pointer;
+}
+.wa-sticker-text-properties {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding-left: 9px;
+  border-left: 1px solid var(--sticker-border);
+}
+.wa-sticker-text-properties button,
+.wa-sticker-delete-object {
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 1px solid var(--sticker-border);
+  border-radius: 9px;
+  background: rgba(255,255,255,.75);
+  color: #526789;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.wa-sticker-text-properties button:hover,
+.wa-sticker-text-properties button.active {
+  color: #fff;
+  border-color: transparent;
+  background: linear-gradient(135deg, var(--sticker-accent-a), var(--sticker-accent-b));
+}
+.wa-sticker-font-label {
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--sticker-text);
+  min-width: 22px;
+  text-align: center;
+}
+.wa-sticker-delete-object {
+  color: #f04462;
+  border-color: rgba(240, 68, 98, .28);
+  margin-left: 2px;
+}
+.wa-sticker-delete-object:hover {
+  color: #fff;
+  background: #ef4261;
+  border-color: #ef4261;
+}
+
+:root[data-theme="dark"] .wa-sticker-shape-popover button,
+:root[data-theme="dark"] .wa-sticker-object-controls,
+:root[data-theme="dark"] .wa-sticker-custom-color,
+:root[data-theme="dark"] .wa-sticker-text-properties button,
+:root[data-theme="dark"] .wa-sticker-delete-object {
+  background: rgba(10, 29, 63, .96) !important;
+  color: #b7c5df;
+  border-color: rgba(82, 126, 226, .25);
+}
+:root[data-theme="dark"] .wa-sticker-object-controls {
+  border-color: rgba(82, 126, 226, .22);
+}
+:root[data-theme="dark"] .wa-sticker-delete-object {
+  color: #ff667e;
+  border-color: rgba(255, 102, 126, .32);
+}
+:root[data-theme="dark"] .wa-sticker-delete-object:hover {
+  color: #fff;
+  background: #e94763 !important;
+  border-color: #e94763 !important;
+}
+
+@media (max-width: 767px) {
+  .wa-sticker-object-controls {
+    justify-content: flex-start;
+    overflow-x: auto;
+    padding: 6px 10px;
+    scrollbar-width: none;
   }
+  .wa-sticker-object-controls::-webkit-scrollbar { display: none; }
+  .wa-sticker-object-color { width: 20px; height: 20px; min-width: 20px; }
+  .wa-sticker-text-input { width: min(210px, 60vw); }
+}
+
+/* =========================================================
+   Sticker editor V10 — preview, texto multilínea y movimiento de imagen
+   ========================================================= */
+.wa-sticker-base-image {
+  position: absolute;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.wa-sticker-base-image img {
+  display: block;
+  max-width: 100% !important;
+  max-height: 100% !important;
+  width: 100% !important;
+  height: 100% !important;
+  border-radius: 14px;
+  user-select: none;
+  pointer-events: none;
+}
+.wa-sticker-image-hit {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  display: block;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  border: 2px solid rgba(109, 153, 255, .92);
+  border-radius: 14px;
+  background: transparent;
+  cursor: grab;
+  touch-action: none;
+  box-shadow: 0 0 0 1px rgba(255,255,255,.84), 0 8px 22px rgba(6, 18, 42, .14);
+}
+.wa-sticker-image-hit:active {
+  cursor: grabbing;
+}
+.wa-sticker-image-hit .wa-sticker-overlay-handle {
+  border-color: #6d99ff;
+}
+.wa-sticker-base-image.is-preview .wa-sticker-image-hit {
+  display: none;
+}
+.wa-sticker-text-item {
+  white-space: pre-wrap !important;
+  line-height: 1.2 !important;
+  text-align: center !important;
+}
+.wa-sticker-text-item > span {
+  display: block;
+  white-space: pre-wrap;
+}
+.wa-sticker-text-input {
+  width: min(340px, 72%) !important;
+  min-width: 180px !important;
+  min-height: 58px;
+  resize: none;
+  overflow: hidden;
+  line-height: 1.2;
+  white-space: pre-wrap;
+}
+.wa-sticker-editor-tool .fa-eye {
+  font-size: 15px;
+}
+:root[data-theme="dark"] .wa-sticker-image-hit {
+  border-color: rgba(116, 171, 255, .96);
+  box-shadow: 0 0 0 1px rgba(255,255,255,.78), 0 10px 24px rgba(0, 0, 0, .35);
+}
+
+/* =========================================================
+   Sticker editor V11 — guías magnéticas y texto de ancho dinámico
+   ========================================================= */
+.wa-sticker-snap-guides {
+  position: absolute;
+  inset: 0;
+  z-index: 9;
+  pointer-events: none;
+}
+.wa-sticker-snap-guide {
+  position: absolute;
+  display: block;
+  background: #56d346;
+  box-shadow: 0 0 0 1px rgba(255,255,255,.32);
+}
+.wa-sticker-snap-guide.vertical {
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 1px;
+  transform: translateX(-.5px);
+}
+.wa-sticker-snap-guide.horizontal {
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 1px;
+  transform: translateY(-.5px);
+}
+.wa-sticker-snap-center {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 13px;
+  height: 13px;
+  transform: translate(-50%, -50%);
+}
+.wa-sticker-snap-center::before,
+.wa-sticker-snap-center::after {
+  content: "";
+  position: absolute;
+  background: #56d346;
+  border-radius: 999px;
+}
+.wa-sticker-snap-center::before {
+  left: 0;
+  right: 0;
+  top: 6px;
+  height: 1px;
+}
+.wa-sticker-snap-center::after {
+  top: 0;
+  bottom: 0;
+  left: 6px;
+  width: 1px;
+}
+.wa-sticker-text-item {
+  min-width: 92px !important;
+  max-width: 92% !important;
+  width: max-content;
+  box-sizing: border-box;
+  white-space: pre !important;
+}
+.wa-sticker-text-item > span {
+  display: block;
+  width: 100%;
+  white-space: pre;
+  overflow: hidden;
+  text-overflow: clip;
+}
+.wa-sticker-text-input {
+  display: block;
+  width: 100% !important;
+  min-width: 0 !important;
+  max-width: none !important;
+  min-height: 0 !important;
+  height: auto !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  border: 0 !important;
+  background: transparent !important;
+  resize: none !important;
+  overflow: hidden !important;
+  white-space: pre !important;
+  word-break: normal !important;
+  overflow-wrap: normal !important;
+  line-height: 1.2 !important;
+  box-sizing: border-box;
+}
+@media (max-width: 767px) {
+  .wa-sticker-text-item {
+    max-width: 90% !important;
+  }
+  .wa-sticker-text-input {
+    width: 100% !important;
+  }
+}
+
+/* =========================================================
+   Sticker editor V12 — preview recortado y resize manual de texto
+   ========================================================= */
+.wa-sticker-source-preload {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.wa-sticker-preview-canvas {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  width: 100%;
+  height: 100%;
+  display: block;
+  pointer-events: none;
+  border-radius: 18px;
+}
+
+.wa-sticker-text-item {
+  width: auto;
+  max-width: none !important;
+  height: auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px 10px !important;
+  box-sizing: border-box;
+  white-space: pre-wrap !important;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+
+.wa-sticker-text-item > span {
+  display: block;
+  width: 100%;
+  white-space: pre-wrap !important;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  text-align: center;
+}
+
+.wa-sticker-text-input {
+  display: block;
+  width: 100% !important;
+  height: 100% !important;
+  min-width: 0 !important;
+  max-width: none !important;
+  min-height: 0 !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  border: 0 !important;
+  background: transparent !important;
+  color: inherit !important;
+  font: inherit !important;
+  font-weight: 700 !important;
+  text-align: center !important;
+  resize: none !important;
+  overflow: hidden !important;
+  white-space: pre-wrap !important;
+  overflow-wrap: anywhere !important;
+  word-break: break-word !important;
+  line-height: 1.2 !important;
+  box-sizing: border-box;
+}
+
+/* =========================================================
+   Sticker editor V13 — tipografías y alineación de texto
+   ========================================================= */
+.wa-sticker-text-item.selected {
+  overflow: visible;
+}
+
+.wa-sticker-text-item .wa-sticker-overlay-handle.resize {
+  width: 12px;
+  height: 12px;
+  right: -7px;
+  bottom: -7px;
+  border-radius: 4px;
+}
+
+.wa-sticker-text-properties {
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.wa-sticker-font-picker {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 34px;
+  padding: 0 10px;
+  border: 1px solid var(--sticker-border);
+  border-radius: 9px;
+  background: rgba(255,255,255,.75);
+  color: #526789;
+}
+
+.wa-sticker-font-picker select {
+  min-width: 118px;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.wa-sticker-align-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.wa-sticker-align-group button {
+  width: 34px;
+}
+
+:root[data-theme="dark"] .wa-sticker-font-picker {
+  background: rgba(10, 29, 63, .96) !important;
+  color: #b7c5df;
+  border-color: rgba(82, 126, 226, .25);
+}
+
+:root[data-theme="dark"] .wa-sticker-font-picker select {
+  color: #d7e4ff;
+}
+
+@media (max-width: 768px) {
+  .wa-sticker-font-picker select {
+    min-width: 94px;
+  }
+}
+
+/* =========================================================
+   Sticker editor V14 — fuentes locales + alineación real
+   ========================================================= */
+@font-face {
+  font-family: "Sticker Norican";
+  src: url("/fonts/sticker-editor/Norican-Regular.ttf") format("truetype");
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Sticker Oswald";
+  src: url("/fonts/sticker-editor/Oswald-Regular.ttf") format("truetype");
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Sticker Bryndan Write";
+  src: url("/fonts/sticker-editor/Bryndan-Write.ttf") format("truetype");
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+}
+
+.wa-sticker-text-item > span {
+  display: block;
+  width: 100%;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  text-align: inherit;
+  font-family: inherit;
+}
+
+.wa-sticker-text-input {
+  width: 100% !important;
+  min-width: 0 !important;
+  max-width: none !important;
+  box-sizing: border-box;
+  resize: none;
+  text-align: inherit !important;
+  font-family: inherit !important;
+}
+
+.wa-sticker-font-picker select {
+  appearance: auto;
+  background-color: transparent;
+}
+
+.wa-sticker-font-picker select option {
+  background: #ffffff;
+  color: #18233b;
+}
+
+:root[data-theme="dark"] .wa-sticker-font-picker,
+:root[data-theme="dark"] .wa-sticker-font-picker select {
+  color: #eef4ff !important;
+}
+
+:root[data-theme="dark"] .wa-sticker-font-picker select option {
+  background: #0b1d3d;
+  color: #eef4ff;
+}
+
+:root[data-theme="dark"] .wa-sticker-font-label,
+:root[data-theme="dark"] .wa-sticker-text-properties,
+:root[data-theme="dark"] .wa-sticker-text-properties i,
+:root[data-theme="dark"] .wa-sticker-font-picker i {
+  color: #f3f7ff;
+}
+
+:root[data-theme="dark"] .wa-sticker-text-properties button:not(.active) {
+  color: #d7e4ff !important;
+}
+
+:root[data-theme="light"] .wa-sticker-font-picker select {
+  color-scheme: light;
+}
+
+:root[data-theme="dark"] .wa-sticker-font-picker select {
+  color-scheme: dark;
+}
+
+/* =========================================================
+   Sticker editor V15 — alineación visible + estado activo
+   ========================================================= */
+.wa-sticker-text-item[data-align="left"],
+.wa-sticker-text-item[data-align="left"] > span,
+.wa-sticker-text-item[data-align="left"] .wa-sticker-text-input {
+  text-align: left !important;
+}
+
+.wa-sticker-text-item[data-align="center"],
+.wa-sticker-text-item[data-align="center"] > span,
+.wa-sticker-text-item[data-align="center"] .wa-sticker-text-input {
+  text-align: center !important;
+}
+
+.wa-sticker-text-item[data-align="right"],
+.wa-sticker-text-item[data-align="right"] > span,
+.wa-sticker-text-item[data-align="right"] .wa-sticker-text-input {
+  text-align: right !important;
+}
+
+.wa-sticker-text-item .wa-sticker-text-input {
+  padding-inline: 4px !important;
+}
+
+.wa-sticker-align-group button.active {
+  color: #fff !important;
+  border-color: rgba(120, 132, 255, .98) !important;
+  background: linear-gradient(135deg, #20a8ff 0%, #6b4dff 100%) !important;
+  box-shadow: 0 0 0 1px rgba(255,255,255,.92), 0 5px 14px rgba(52, 91, 255, .26);
+}
+
+:root[data-theme="dark"] .wa-sticker-align-group button.active {
+  color: #fff !important;
+  border-color: rgba(123, 137, 255, 1) !important;
+  background: linear-gradient(135deg, #20a8ff 0%, #6b4dff 100%) !important;
+  box-shadow: 0 0 0 1px rgba(255,255,255,.92), 0 5px 14px rgba(38, 90, 255, .32);
+}
+
+:root[data-theme="light"] .wa-sticker-align-group button.active {
+  color: #fff !important;
+  border-color: rgba(96, 116, 255, .95) !important;
+  background: linear-gradient(135deg, #1aa7ff 0%, #6d4cff 100%) !important;
+  box-shadow: 0 0 0 1px rgba(255,255,255,.95), 0 5px 14px rgba(68, 93, 220, .20);
+}
+
+/* =========================================================
+   Sticker editor V16 — formas estilo WhatsApp
+   ========================================================= */
+.wa-sticker-shape-hit .wa-sticker-overlay-handle.resize {
+  width: 12px !important;
+  height: 12px !important;
+  pointer-events: auto !important;
+  touch-action: none !important;
+  z-index: 3;
+}
+.wa-sticker-shape-hit .wa-sticker-overlay-handle.top-left.resize {
+  left: -7px !important;
+  top: -7px !important;
+  right: auto !important;
+  bottom: auto !important;
+  cursor: nwse-resize !important;
+}
+.wa-sticker-shape-hit .wa-sticker-overlay-handle.top-right.resize {
+  right: -7px !important;
+  top: -7px !important;
+  left: auto !important;
+  bottom: auto !important;
+  cursor: nesw-resize !important;
+}
+.wa-sticker-shape-hit .wa-sticker-overlay-handle.bottom-left.resize {
+  left: -7px !important;
+  bottom: -7px !important;
+  right: auto !important;
+  top: auto !important;
+  cursor: nesw-resize !important;
+}
+.wa-sticker-shape-hit .wa-sticker-overlay-handle.bottom-right.resize {
+  right: -7px !important;
+  bottom: -7px !important;
+  left: auto !important;
+  top: auto !important;
+  cursor: nwse-resize !important;
+}
+
+.wa-sticker-shape-properties {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding-left: 10px;
+  border-left: 1px solid var(--sticker-border);
+}
+
+.wa-sticker-shape-properties > button {
+  width: 34px;
+  height: 34px;
+  min-width: 34px;
+  padding: 0;
+  border: 1px solid var(--sticker-border);
+  border-radius: 9px;
+  background: rgba(255,255,255,.78);
+  color: #526789;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background .16s ease, color .16s ease, border-color .16s ease, transform .16s ease;
+}
+
+.wa-sticker-shape-properties > button:hover,
+.wa-sticker-shape-properties > button.active {
+  color: #fff;
+  border-color: transparent;
+  background: linear-gradient(135deg, var(--sticker-accent-a), var(--sticker-accent-b));
+}
+
+.wa-sticker-shape-thickness {
+  height: 34px;
+  min-width: 190px;
+  padding: 0 10px;
+  border: 1px solid var(--sticker-border);
+  border-radius: 9px;
+  background: rgba(255,255,255,.78);
+  color: #526789;
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.wa-sticker-shape-thickness > i {
+  font-size: 14px;
+  flex: 0 0 auto;
+}
+
+.wa-sticker-shape-thickness input[type="range"] {
+  width: 120px;
+  min-width: 90px;
+  accent-color: #2f7cff;
+  cursor: pointer;
+}
+
+.wa-sticker-shape-thickness > span {
+  min-width: 18px;
+  text-align: center;
+  font-size: 11px;
+  font-weight: 800;
+  color: var(--sticker-text);
+}
+
+:root[data-theme="dark"] .wa-sticker-shape-properties > button,
+:root[data-theme="dark"] .wa-sticker-shape-thickness {
+  background: rgba(10, 29, 63, .96) !important;
+  color: #b7c5df;
+  border-color: rgba(82, 126, 226, .25);
+}
+
+:root[data-theme="dark"] .wa-sticker-shape-properties > button:hover,
+:root[data-theme="dark"] .wa-sticker-shape-properties > button.active {
+  color: #fff !important;
+  border-color: transparent !important;
+  background: linear-gradient(135deg, var(--sticker-accent-a), var(--sticker-accent-b)) !important;
+}
+
+@media (max-width: 767px) {
+  .wa-sticker-shape-thickness {
+    min-width: 160px;
+  }
+  .wa-sticker-shape-thickness input[type="range"] {
+    width: 88px;
+  }
+}
+
+
+.wa-sticker-shape-popover button.active {
+  color: #fff !important;
+  border-color: transparent !important;
+  background: linear-gradient(135deg, var(--sticker-accent-a), var(--sticker-accent-b)) !important;
+}
+
+.wa-sticker-shape-hit {
+  transform-box: fill-box;
+}
+
+.wa-sticker-overlay-handle.rotate-handle {
+  width: 28px;
+  height: 28px;
+  top: -42px;
+  left: 50%;
+  right: auto;
+  bottom: auto;
+  transform: translateX(-50%);
+  pointer-events: auto;
+  cursor: grab;
+  border-width: 1px;
+  box-shadow: 0 6px 18px rgba(8, 22, 52, .18);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.wa-sticker-overlay-handle.rotate-handle i {
+  font-size: 12px;
+  color: var(--wa-selection-color, #ff4d57);
+}
+
+.wa-sticker-fill-color {
+  width: 42px;
+  height: 34px;
+  border: 1px solid var(--sticker-border);
+  border-radius: 9px;
+  background: rgba(255,255,255,.78);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  overflow: hidden;
+  cursor: pointer;
+}
+
+.wa-sticker-fill-color input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.wa-sticker-fill-swatch {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 2px solid rgba(255,255,255,.95);
+  box-shadow: 0 0 0 1px rgba(68, 88, 124, .24);
+}
+
+.wa-sticker-shape-opacity input[type="range"] {
+  width: 96px;
+}
+
+:root[data-theme="dark"] .wa-sticker-fill-color {
+  background: rgba(10, 29, 63, .96) !important;
+  border-color: rgba(82, 126, 226, .25) !important;
+}
+
+/* =========================================================
+   Sticker editor V18 — controles de Dibujo + flecha por arrastre
+   ========================================================= */
+.wa-sticker-draw-controls {
+  flex: 0 0 58px;
+  min-height: 58px;
+  padding: 7px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  border-bottom: 1px solid var(--sticker-border);
+  background: rgba(255,255,255,.90);
+  position: relative;
+  z-index: 8;
+}
+.wa-sticker-draw-colors,
+.wa-sticker-draw-sizes {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+.wa-sticker-draw-color {
+  width: 22px;
+  height: 22px;
+  min-width: 22px;
+  padding: 0;
+  border-radius: 50%;
+  border: 2px solid rgba(78, 99, 137, .22);
+  box-shadow: 0 0 0 2px transparent;
+  transition: transform .14s ease, box-shadow .14s ease;
+}
+.wa-sticker-draw-color:hover { transform: scale(1.08); }
+.wa-sticker-draw-color.active {
+  border-color: #fff;
+  box-shadow: 0 0 0 2px #2d73ff;
+}
+.wa-sticker-draw-custom-color {
+  width: 32px;
+  height: 32px;
+  border-radius: 10px;
+  border: 1px solid var(--sticker-border);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  color: #526789;
+  background: rgba(255,255,255,.78);
+  cursor: pointer;
+}
+.wa-sticker-draw-custom-color input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  cursor: pointer;
+}
+.wa-sticker-draw-divider {
+  width: 1px;
+  height: 28px;
+  background: var(--sticker-border);
+}
+.wa-sticker-draw-size {
+  width: 34px;
+  height: 34px;
+  min-width: 34px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+.wa-sticker-draw-size > span {
+  display: block;
+  border-radius: 50%;
+  background: #8793a9;
+  transition: transform .14s ease, background .14s ease, box-shadow .14s ease;
+}
+.wa-sticker-draw-size:hover > span { transform: scale(1.12); background: #65758f; }
+.wa-sticker-draw-size.active > span {
+  background: #26394f;
+  box-shadow: 0 0 0 3px rgba(45,115,255,.16);
+}
+:root[data-theme="dark"] .wa-sticker-draw-controls {
+  background: rgba(7, 24, 52, .96);
+  border-color: rgba(82, 126, 226, .22);
+}
+:root[data-theme="dark"] .wa-sticker-draw-custom-color {
+  color: #b7c5df;
+  background: rgba(10,29,63,.96);
+  border-color: rgba(82,126,226,.25);
+}
+:root[data-theme="dark"] .wa-sticker-draw-size > span { background: #8492aa; }
+:root[data-theme="dark"] .wa-sticker-draw-size:hover > span { background: #b8c6df; }
+:root[data-theme="dark"] .wa-sticker-draw-size.active > span {
+  background: #dbe7ff;
+  box-shadow: 0 0 0 3px rgba(64,133,255,.22);
+}
+@media (max-width: 767px) {
+  .wa-sticker-draw-controls {
+    justify-content: flex-start;
+    overflow-x: auto;
+    padding: 7px 10px;
+    scrollbar-width: none;
+  }
+  .wa-sticker-draw-controls::-webkit-scrollbar { display: none; }
+  .wa-sticker-draw-color { width: 20px; height: 20px; min-width: 20px; }
+  .wa-sticker-draw-colors, .wa-sticker-draw-sizes { gap: 6px; }
 }
