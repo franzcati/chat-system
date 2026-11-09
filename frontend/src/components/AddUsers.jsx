@@ -17,6 +17,8 @@ const DEFAULT_PERMISSIONS = {
   editar_mensajes: 0,
   eliminar_mensajes: 0,
   enviar_audios: 0,
+  realizar_llamadas: 0,
+  realizar_videollamadas: 0,
   buscar_mensajes: 0,
   eliminar_cualquier_mensaje: 0,
 };
@@ -994,6 +996,8 @@ const AddUsers = ({ onCancel }) => {
               ["crear_grupos", "Crear grupos", "bi bi-people"],
               ["editar_mensajes", "Editar mensajes", "bi bi-pencil-square"],
               ["enviar_audios", "Grabar audios", "bi bi-mic"],
+              ["realizar_llamadas", "Realizar llamadas", "bi bi-telephone"],
+              ["realizar_videollamadas", "Realizar videollamada", "bi bi-camera-video"],
               ["eliminar_mensajes", "Eliminar sus mensajes", "bi bi-trash"],
               ["buscar_mensajes", "Buscar mensajes", "bi bi-search"],
               ["eliminar_cualquier_mensaje", "Eliminar cualquier mensaje", "bi bi-shield-exclamation"],

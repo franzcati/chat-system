@@ -10,7 +10,7 @@ const ADMIN_PERMISSIONS = [
   'gestionar_permisos_chat','asignar_roles','eliminar_usuarios','gestionar_proyectos_usuario',
 ];
 const CHAT_ROLE_KEYS = [
-  'chat_crear_grupos','chat_enviar_audios','chat_editar_mensajes',
+  'chat_crear_grupos','chat_enviar_audios','chat_realizar_llamadas','chat_realizar_videollamadas','chat_editar_mensajes',
   'chat_eliminar_mensajes','chat_buscar_mensajes','chat_eliminar_cualquier_mensaje',
 ];
 const ROLE_MANAGEMENT_PERMISSIONS = ['gestionar_roles','crear_roles','editar_roles','eliminar_roles'];
@@ -214,6 +214,8 @@ router.put('/manage/:id', requirePermission('editar_roles'), async (req, res) =>
     const chatMap = {
       crear_grupos: permissions.includes('chat_crear_grupos') ? 1 : 0,
       enviar_audios: permissions.includes('chat_enviar_audios') ? 1 : 0,
+      realizar_llamadas: permissions.includes('chat_realizar_llamadas') ? 1 : 0,
+      realizar_videollamadas: permissions.includes('chat_realizar_videollamadas') ? 1 : 0,
       editar_mensajes: permissions.includes('chat_editar_mensajes') ? 1 : 0,
       eliminar_mensajes: permissions.includes('chat_eliminar_mensajes') ? 1 : 0,
       buscar_mensajes: permissions.includes('chat_buscar_mensajes') ? 1 : 0,

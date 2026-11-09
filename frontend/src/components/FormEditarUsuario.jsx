@@ -7,6 +7,8 @@ const DEFAULT_PERMISSIONS = {
   editar_mensajes: 0,
   eliminar_mensajes: 0,
   enviar_audios: 0,
+  realizar_llamadas: 0,
+  realizar_videollamadas: 0,
   buscar_mensajes: 0,
   eliminar_cualquier_mensaje: 0,
 };
@@ -31,6 +33,8 @@ const parsePermissions = (value) => {
     editar_mensajes: Number(parsed.editar_mensajes || 0),
     eliminar_mensajes: Number(parsed.eliminar_mensajes || 0),
     enviar_audios: Number(parsed.enviar_audios || 0),
+    realizar_llamadas: Number(parsed.realizar_llamadas || 0),
+    realizar_videollamadas: Number(parsed.realizar_videollamadas || 0),
     buscar_mensajes: Number(parsed.buscar_mensajes || 0),
     eliminar_cualquier_mensaje: Number(parsed.eliminar_cualquier_mensaje || 0),
   };
@@ -1033,6 +1037,18 @@ const PERMISOS_UI = [
     titulo: "Grabar audios",
     descripcion: "Permite grabar notas de voz",
     icono: "bi bi-mic",
+  },
+  {
+    campo: "realizar_llamadas",
+    titulo: "Realizar llamadas",
+    descripcion: "Permite iniciar llamadas de voz",
+    icono: "bi bi-telephone",
+  },
+  {
+    campo: "realizar_videollamadas",
+    titulo: "Realizar videollamada",
+    descripcion: "Permite iniciar llamadas con cámara",
+    icono: "bi bi-camera-video",
   },
   {
     campo: "eliminar_mensajes",

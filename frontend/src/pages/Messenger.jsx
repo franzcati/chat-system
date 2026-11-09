@@ -7,6 +7,7 @@ import "../css/SharedControls.css";
 import Sidebar from './Sidebar';
 import ChatList from './ChatList';
 import ProfileModal from "../components/ProfileModal";
+import CallManager from "../components/CallManager";
 import socket, { conectarUsuarioSocket, emitirActividadUsuario } from "../socket";
 import { clearAllChatListSnapshots } from "../utils/chatListSnapshot";
 
@@ -46,6 +47,7 @@ const Messenger = () => {
   const [estadosUsuarios, setEstadosUsuarios] = useState({});
   const navigate = useNavigate();
   const selectedChatRef = useRef(null);
+  const callManagerRef = useRef(null);
 
   const isMobileViewport = useCallback(() => (
     typeof window !== "undefined" && window.matchMedia("(max-width: 767px)").matches
@@ -578,6 +580,7 @@ const Messenger = () => {
                 }}
                 onAddToList={(chatToAdd) => setAddToListTarget(chatToAdd)}
                 estadosUsuarios={estadosUsuarios}
+                onStartCall={(payload) => callManagerRef.current?.startCall(payload)}
               />
             </Suspense>
           ) : (
@@ -613,6 +616,8 @@ const Messenger = () => {
       {activeTab === "chat" && selectedChat && (
         <div id="wa-group-info-host" className="wa-group-info-host" aria-live="polite" />
       )}
+
+      <CallManager ref={callManagerRef} user={usuario} />
 
       {/* 🔹 Modal de perfil */}
       {showModal && (

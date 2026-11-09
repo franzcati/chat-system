@@ -478,7 +478,7 @@ const getStickerTextLayout = (item, canvasSize = STICKER_EDITOR_CANVAS_SIZE) => 
 };
 
 
-const ChatBox = ({ chat, user, setChat, onCloseChat, onVerPerfil, onAddToList, estadosUsuarios = {} }) => {
+const ChatBox = ({ chat, user, setChat, onCloseChat, onVerPerfil, onAddToList, estadosUsuarios = {}, onStartCall }) => {
 
   const [messages, setMessages] = useState([]);
   const sharedLinks = useMemo(() => extractSharedLinks(messages), [messages]);
@@ -568,6 +568,13 @@ const ChatBox = ({ chat, user, setChat, onCloseChat, onVerPerfil, onAddToList, e
   const { theme } = useTheme();
   const emojiTheme = theme === "dark" ? "dark" : "light";
   const puedeGrabarAudios = permisoChatActivo(user?.permisos_chat, "enviar_audios");
+  const puedeRealizarLlamadas = permisoChatActivo(user?.permisos_chat, "realizar_llamadas");
+  const puedeRealizarVideollamadas = permisoChatActivo(user?.permisos_chat, "realizar_videollamadas");
+  const puedeIniciarLlamadaGrupo = chat?.tipo !== "grupo" || ["admin", "propietario"].includes(String(chat?.rol || ""));
+  const iniciarLlamada = (kind) => {
+    setMostrarMenuLlamada(false);
+    onStartCall?.({ kind, chat });
+  };
   const acceptAdjuntos = "image/*,video/*,audio/*,.pdf,.doc,.docx,.xls,.xlsx,.zip,.rar,.txt";
 
   useEffect(() => {
@@ -4956,12 +4963,12 @@ const ChatBox = ({ chat, user, setChat, onCloseChat, onVerPerfil, onAddToList, e
                               )}
                               <div>
                                 <strong>{getChatDisplayName(chat)}</strong>
-                                <span>{chat.tipo === "grupo" ? "Selecciona personas" : "Llamada"}</span>
+                                <span>{chat.tipo === "grupo" ? "Llamada grupal" : "Llamada"}</span>
                               </div>
                             </div>
                             <div className="wa-call-menu-actions">
-                              <button type="button"><i className="fa-solid fa-phone" aria-hidden="true" /> Voz</button>
-                              <button type="button"><i className="fa-solid fa-video" aria-hidden="true" /> Video</button>
+                              <button type="button" onClick={() => iniciarLlamada("audio")} disabled={!puedeRealizarLlamadas || !puedeIniciarLlamadaGrupo} title={!puedeRealizarLlamadas ? "No tienes permiso para realizar llamadas" : !puedeIniciarLlamadaGrupo ? "Solo administradores y propietario pueden iniciar llamadas grupales" : "Iniciar llamada de voz"}><i className="fa-solid fa-phone" aria-hidden="true" /> Voz</button>
+                              <button type="button" onClick={() => iniciarLlamada("video")} disabled={!puedeRealizarVideollamadas || !puedeIniciarLlamadaGrupo} title={!puedeRealizarVideollamadas ? "No tienes permiso para realizar videollamadas" : !puedeIniciarLlamadaGrupo ? "Solo administradores y propietario pueden iniciar videollamadas grupales" : "Iniciar videollamada"}><i className="fa-solid fa-video" aria-hidden="true" /> Video</button>
                             </div>
                             <button type="button" className="wa-call-menu-row"><i className="fa-solid fa-link" aria-hidden="true" /> Enviar enlace de llamada</button>
                             <button type="button" className="wa-call-menu-row"><i className="fa-regular fa-calendar" aria-hidden="true" /> Programar llamada</button>

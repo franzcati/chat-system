@@ -500,6 +500,285 @@ function getUsuariosConectados() {
   return usuariosConectados;
 }
 
+
+
+// ========================= CALLS / WEBRTC SIGNALING =========================
+const llamadasActivas = new Map();
+const llamadaPorUsuario = new Map();
+const CALL_MAX_AGE_MS = 6 * 60 * 60 * 1000;
+
+function parseChatPermissions(value) {
+  let parsed = value || {};
+  if (typeof parsed === "string") {
+    try { parsed = JSON.parse(parsed || "{}"); } catch { parsed = {}; }
+  }
+  return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
+}
+
+function permissionOn(value) { return value === 1 || value === "1" || value === true || value === "true"; }
+
+async function getCallUser(userId) {
+  const [rows] = await db.query(
+    `SELECT id, nombre, apellido, url_imagen, background, instancia_id, permisos_chat
+       FROM usuario WHERE id=? AND estado='aprobado' LIMIT 1`,
+    [Number(userId)]
+  );
+  return rows[0] || null;
+}
+
+function publicCallUser(row) {
+  if (!row) return null;
+  return { id: Number(row.id), nombre: `${row.nombre || ""} ${row.apellido || ""}`.trim() || "Usuario", url_imagen: row.url_imagen || null, background: row.background || null };
+}
+
+function userOnline(io, userId) {
+  const room = io.sockets.adapter.rooms.get(`usuario_${Number(userId)}`);
+  return Boolean(room && room.size > 0);
+}
+
+function emitToUser(io, userId, event, payload) { io.to(`usuario_${Number(userId)}`).emit(event, payload); }
+
+function finishCall(io, session, reason = "ended") {
+  if (!session) return;
+  session.members.forEach((member) => {
+    llamadaPorUsuario.delete(String(member));
+    emitToUser(io, member, "call:ended", { callId: session.id, reason });
+  });
+  session.invited.forEach((member) => {
+    llamadaPorUsuario.delete(String(member));
+    emitToUser(io, member, "call:ended", { callId: session.id, reason });
+  });
+  llamadasActivas.delete(session.id);
+}
+
+function makeCallId() { return `call_${Date.now().toString(36)}_${Math.random().toString(36).slice(2,10)}`; }
+
+function setupCallSignaling(io, socket) {
+  socket.on("call:start", async (payload = {}, ack = () => {}) => {
+    try {
+      const callerId = Number(socket.userId);
+      const kind = payload.kind === "video" ? "video" : "audio";
+      const permissionKey = kind === "video" ? "realizar_videollamadas" : "realizar_llamadas";
+      const caller = await getCallUser(callerId);
+      if (!caller) return ack({ ok: false, error: "Usuario no disponible" });
+      const permissions = parseChatPermissions(caller.permisos_chat);
+      if (!permissionOn(permissions[permissionKey])) return ack({ ok: false, error: kind === "video" ? "No tienes permiso para realizar videollamadas" : "No tienes permiso para realizar llamadas" });
+      if (llamadaPorUsuario.has(String(callerId))) return ack({ ok: false, error: "Ya tienes una llamada en curso" });
+
+      let invited = [];
+      let title = "Llamada";
+      const chatType = payload.chatType === "grupo" ? "grupo" : "privado";
+      let groupId = null;
+      if (chatType === "grupo") {
+        groupId = Number(payload.groupId);
+        const [roleRows] = await db.query(`SELECT ug.rol, g.nombre FROM usuario_grupo ug JOIN grupos g ON g.id=ug.grupo_id WHERE ug.grupo_id=? AND ug.usuario_id=? LIMIT 1`, [groupId, callerId]);
+        if (!roleRows.length || !["admin", "propietario"].includes(String(roleRows[0].rol))) return ack({ ok: false, error: "Solo administradores y propietario pueden iniciar llamadas grupales" });
+        title = roleRows[0].nombre || "Llamada grupal";
+        const [memberRows] = await db.query(`SELECT ug.usuario_id AS id FROM usuario_grupo ug JOIN usuario u ON u.id=ug.usuario_id WHERE ug.grupo_id=? AND ug.usuario_id<>? AND u.estado='aprobado' AND u.instancia_id=?`, [groupId, callerId, caller.instancia_id]);
+        invited = memberRows.map((r) => Number(r.id)).filter((id) => userOnline(io, id) && !llamadaPorUsuario.has(String(id))).slice(0, 7);
+        if (!invited.length) return ack({ ok: false, error: "No hay miembros disponibles para la llamada" });
+      } else {
+        const targetId = Number(payload.targetUserId);
+        if (!targetId || targetId === callerId) return ack({ ok: false, error: "Destino de llamada inválido" });
+        const target = await getCallUser(targetId);
+        if (!target || Number(target.instancia_id) !== Number(caller.instancia_id)) return ack({ ok: false, error: "El usuario no está disponible" });
+        if (!userOnline(io, targetId)) return ack({ ok: false, error: "El usuario está desconectado" });
+        if (llamadaPorUsuario.has(String(targetId))) return ack({ ok: false, error: "El usuario está ocupado" });
+        invited = [targetId]; title = publicCallUser(target)?.nombre || "Llamada";
+      }
+
+      const callId = makeCallId();
+      const session = { id: callId, kind, chatType, groupId, title, initiatorId: callerId, invited: new Set(invited), members: new Set([callerId]), screenShares: new Map(), createdAt: Date.now() };
+      llamadasActivas.set(callId, session);
+      llamadaPorUsuario.set(String(callerId), callId);
+      invited.forEach((id) => llamadaPorUsuario.set(String(id), callId));
+      const callerPublic = publicCallUser(caller);
+      const [participantRows] = await db.query(`SELECT id,nombre,apellido,url_imagen,background FROM usuario WHERE id IN (?)`, [[callerId, ...invited]]);
+      const participants = participantRows.map(publicCallUser);
+      invited.forEach((id) => emitToUser(io, id, "call:incoming", { callId, kind, chatType, groupId, title: chatType === "privado" ? callerPublic.nombre : title, caller: callerPublic, initiatorId: callerId, participants }));
+      ack({ ok: true, callId, title, participants });
+    } catch (error) {
+      console.error("❌ Error iniciando llamada:", error);
+      ack({ ok: false, error: "No se pudo iniciar la llamada" });
+    }
+  });
+
+  socket.on("call:accept", async ({ callId } = {}, ack = () => {}) => {
+    const session = llamadasActivas.get(String(callId));
+    const userId = Number(socket.userId);
+    if (!session || !session.invited.has(userId)) return ack({ ok: false, error: "La llamada ya no está disponible" });
+    session.invited.delete(userId);
+    const existing = Array.from(session.members);
+    session.members.add(userId);
+    for (const peerId of existing) {
+      emitToUser(io, peerId, "call:peer-ready", { callId: session.id, peerUserId: userId, shouldOffer: true });
+      emitToUser(io, userId, "call:peer-ready", { callId: session.id, peerUserId: peerId, shouldOffer: false });
+    }
+    if (session.screenShares instanceof Map) {
+      session.screenShares.forEach((share, ownerUserId) => emitToUser(io, userId, "call:screen-available", {
+        callId: session.id,
+        ownerUserId: Number(ownerUserId),
+        sourceType: share.sourceType,
+        label: share.label,
+        streamId: share.streamId,
+      }));
+    }
+    ack({ ok: true });
+  });
+
+  socket.on("call:reject", ({ callId, reason = "rejected" } = {}) => {
+    const session = llamadasActivas.get(String(callId));
+    const userId = Number(socket.userId);
+    if (!session || !session.invited.has(userId)) return;
+    session.invited.delete(userId); llamadaPorUsuario.delete(String(userId));
+    session.members.forEach((member) => emitToUser(io, member, "call:rejected", { callId: session.id, userId, reason }));
+    if (session.chatType === "privado" || (session.invited.size === 0 && session.members.size <= 1)) finishCall(io, session, "rejected");
+  });
+
+  socket.on("call:upgrade-video", async ({ callId } = {}, ack = () => {}) => {
+    try {
+      const session = llamadasActivas.get(String(callId));
+      const userId = Number(socket.userId);
+      if (!session || !session.members.has(userId)) return ack({ ok: false, error: "La llamada ya no está disponible" });
+      if (session.chatType === "grupo" && Number(session.initiatorId) !== userId) {
+        return ack({ ok: false, error: "Solo quien inició la llamada grupal puede cambiarla a videollamada" });
+      }
+
+      const userRow = await getCallUser(userId);
+      const permissions = parseChatPermissions(userRow?.permisos_chat);
+      if (!permissionOn(permissions.realizar_videollamadas)) {
+        return ack({ ok: false, error: "No tienes permiso para realizar videollamadas" });
+      }
+
+      session.kind = "video";
+      const recipients = new Set([...session.members, ...session.invited]);
+      recipients.forEach((member) => emitToUser(io, member, "call:upgraded-video", {
+        callId: session.id,
+        byUserId: userId,
+      }));
+      ack({ ok: true });
+    } catch (error) {
+      console.error("❌ Error cambiando llamada a video:", error);
+      ack({ ok: false, error: "No se pudo cambiar a videollamada" });
+    }
+  });
+
+  socket.on("call:media-state", ({ callId, micMuted = false, deafened = false, cameraEnabled = false } = {}) => {
+    const session = llamadasActivas.get(String(callId));
+    const userId = Number(socket.userId);
+    if (!session || !session.members.has(userId)) return;
+    const payload = {
+      callId: session.id,
+      userId,
+      micMuted: Boolean(micMuted),
+      deafened: Boolean(deafened),
+      cameraEnabled: Boolean(cameraEnabled),
+    };
+    session.members.forEach((member) => {
+      if (Number(member) !== userId) emitToUser(io, member, "call:media-state", payload);
+    });
+  });
+
+
+  socket.on("call:screen-start", ({ callId, sourceType = "applications", label = "Pantalla", streamId = "" } = {}, ack = () => {}) => {
+    const session = llamadasActivas.get(String(callId));
+    const userId = Number(socket.userId);
+    if (!session || !session.members.has(userId)) return ack({ ok: false, error: "La llamada ya no está disponible" });
+    if (!(session.screenShares instanceof Map)) session.screenShares = new Map();
+    session.screenShares.set(userId, { sourceType, label: String(label || "Pantalla").slice(0, 160), streamId: String(streamId || ""), watchers: new Set() });
+    session.members.forEach((member) => emitToUser(io, member, "call:screen-available", {
+      callId: session.id,
+      ownerUserId: userId,
+      sourceType,
+      label: String(label || "Pantalla").slice(0, 160),
+      streamId: String(streamId || ""),
+    }));
+    ack({ ok: true });
+  });
+
+  socket.on("call:screen-watch", ({ callId, ownerUserId, watching = true } = {}, ack = () => {}) => {
+    const session = llamadasActivas.get(String(callId));
+    const viewerUserId = Number(socket.userId);
+    const ownerId = Number(ownerUserId);
+    if (!session || !session.members.has(viewerUserId)) return ack({ ok: false, error: "La llamada ya no está disponible" });
+    const share = session.screenShares instanceof Map ? session.screenShares.get(ownerId) : null;
+    if (!share || !session.members.has(ownerId)) return ack({ ok: false, error: "La transmisión ya no está disponible" });
+    if (!(share.watchers instanceof Set)) share.watchers = new Set();
+    if (watching) share.watchers.add(viewerUserId); else share.watchers.delete(viewerUserId);
+    emitToUser(io, ownerId, "call:screen-viewer", { callId: session.id, viewerUserId, watching: Boolean(watching), count: share.watchers.size });
+    session.members.forEach((member) => emitToUser(io, member, "call:screen-viewer-count", { callId: session.id, ownerUserId: ownerId, count: share.watchers.size }));
+    ack({ ok: true, count: share.watchers.size });
+  });
+
+  socket.on("call:screen-stop", ({ callId } = {}) => {
+    const session = llamadasActivas.get(String(callId));
+    const ownerId = Number(socket.userId);
+    if (!session || !session.members.has(ownerId) || !(session.screenShares instanceof Map)) return;
+    const share = session.screenShares.get(ownerId);
+    if (!share) return;
+    session.screenShares.delete(ownerId);
+    session.members.forEach((member) => emitToUser(io, member, "call:screen-stopped", { callId: session.id, ownerUserId: ownerId }));
+  });
+
+  const relay = (event) => socket.on(event, (payload = {}) => {
+    const session = llamadasActivas.get(String(payload.callId));
+    const fromUserId = Number(socket.userId); const toUserId = Number(payload.toUserId);
+    if (!session || !session.members.has(fromUserId) || !session.members.has(toUserId)) return;
+    const forwarded = { callId: session.id, fromUserId };
+    if (event === "call:offer" || event === "call:answer") forwarded.sdp = payload.sdp;
+    if (event === "call:ice") forwarded.candidate = payload.candidate;
+    emitToUser(io, toUserId, event, forwarded);
+  });
+  relay("call:offer"); relay("call:answer"); relay("call:ice");
+
+  socket.on("call:leave", ({ callId, reason = "hangup" } = {}) => {
+    const session = llamadasActivas.get(String(callId)); const userId = Number(socket.userId);
+    if (!session || (!session.members.has(userId) && !session.invited.has(userId))) return;
+    if (session.screenShares instanceof Map) {
+      if (session.screenShares.has(userId)) {
+        session.screenShares.delete(userId);
+        session.members.forEach((member) => emitToUser(io, member, "call:screen-stopped", { callId: session.id, ownerUserId: userId }));
+      }
+      session.screenShares.forEach((share, ownerId) => {
+        if (share.watchers instanceof Set && share.watchers.delete(userId)) {
+          emitToUser(io, ownerId, "call:screen-viewer", { callId: session.id, viewerUserId: userId, watching: false, count: share.watchers.size });
+          session.members.forEach((member) => emitToUser(io, member, "call:screen-viewer-count", { callId: session.id, ownerUserId: Number(ownerId), count: share.watchers.size }));
+        }
+      });
+    }
+    session.members.delete(userId); session.invited.delete(userId); llamadaPorUsuario.delete(String(userId));
+    session.members.forEach((member) => emitToUser(io, member, "call:participant-left", { callId: session.id, userId, reason }));
+    if (userId === session.initiatorId || session.members.size <= 1) finishCall(io, session, reason);
+  });
+}
+
+function cleanupCallsForUser(io, userId) {
+  const callId = llamadaPorUsuario.get(String(userId));
+  if (!callId) return;
+  const session = llamadasActivas.get(callId);
+  if (!session) { llamadaPorUsuario.delete(String(userId)); return; }
+  if (session.screenShares instanceof Map) {
+    if (session.screenShares.has(Number(userId))) {
+      session.screenShares.delete(Number(userId));
+      session.members.forEach((member) => emitToUser(io, member, "call:screen-stopped", { callId, ownerUserId: Number(userId) }));
+    }
+    session.screenShares.forEach((share, ownerId) => {
+      if (share.watchers instanceof Set && share.watchers.delete(Number(userId))) {
+        emitToUser(io, ownerId, "call:screen-viewer", { callId, viewerUserId: Number(userId), watching: false, count: share.watchers.size });
+      }
+    });
+  }
+  session.members.delete(Number(userId)); session.invited.delete(Number(userId)); llamadaPorUsuario.delete(String(userId));
+  session.members.forEach((member) => emitToUser(io, member, "call:participant-left", { callId, userId: Number(userId), reason: "disconnect" }));
+  if (Number(userId) === session.initiatorId || session.members.size <= 1) finishCall(io, session, "disconnect");
+}
+
+setInterval(() => {
+  const now = Date.now();
+  if (!ioGlobal) return;
+  for (const session of llamadasActivas.values()) if (now - session.createdAt > CALL_MAX_AGE_MS) finishCall(ioGlobal, session, "timeout");
+}, 60000).unref?.();
+
 function initSocket(server) {
   const { Server } = require("socket.io");
 
@@ -740,6 +1019,8 @@ function initSocket(server) {
     socket.on("leaveGrupo", () => {});
 
 
+    setupCallSignaling(io, socket);
+
     // Indicador de escritura tipo WhatsApp.
     // Se envía de forma dirigida y con rate limit para que no se sature cuando hay muchos usuarios conectados.
     socket.on("typing:start", (payload = {}) => iniciarTyping(io, socket, payload));
@@ -751,6 +1032,8 @@ function initSocket(server) {
       detenerTypingDeSocket(io, socket);
 
       if (socket.userId) {
+        const remainingSockets = (socketsPorUsuario.get(String(socket.userId)) || new Set()).size;
+        if (remainingSockets <= 1) cleanupCallsForUser(io, socket.userId);
         quitarSocketDeUsuario(socket.userId, socket.id);
         programarPublicarEstadoUsuarios(io, { immediate: true });
       }

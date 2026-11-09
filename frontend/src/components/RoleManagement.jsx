@@ -16,6 +16,8 @@ const ADMIN_OPTIONS = [
 const CHAT_OPTIONS = [
   ["chat_crear_grupos", "Crear grupos", "Puede crear grupos en los chats.", "bi-people"],
   ["chat_enviar_audios", "Grabar audios", "Puede grabar y enviar mensajes de audio.", "bi-mic"],
+  ["chat_realizar_llamadas", "Realizar llamadas", "Puede iniciar llamadas de voz.", "bi-telephone"],
+  ["chat_realizar_videollamadas", "Realizar videollamada", "Puede iniciar llamadas con cámara.", "bi-camera-video"],
   ["chat_editar_mensajes", "Editar mensajes", "Puede editar sus propios mensajes.", "bi-pencil-square"],
   ["chat_eliminar_mensajes", "Eliminar sus mensajes", "Puede eliminar sus propios mensajes.", "bi-trash3"],
   ["chat_eliminar_cualquier_mensaje", "Eliminar cualquier mensaje", "Puede eliminar mensajes de cualquier usuario.", "bi-shield-exclamation"],

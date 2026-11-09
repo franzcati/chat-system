@@ -20987,3 +20987,64 @@ body.dark .wa-history-message-row.in .wa-history-message-time,
   .wa-sticker-draw-color { width: 20px; height: 20px; min-width: 20px; }
   .wa-sticker-draw-colors, .wa-sticker-draw-sizes { gap: 6px; }
 }
+
+
+/* CALLS V1 - menú compacto */
+.wa-call-menu.qc-call-menu{width:min(360px,calc(100vw - 24px))!important;min-width:320px!important;padding:14px!important;border-radius:18px!important}.qc-call-menu .wa-call-menu-head{gap:11px!important;padding:0 2px 10px!important}.qc-call-menu .wa-call-menu-head img,.qc-call-menu .wa-call-menu-head>div:first-child:not(.wa-group-avatar-composite){width:44px!important;height:44px!important}.qc-call-menu .wa-call-menu-head strong{font-size:16px!important}.qc-call-menu .wa-call-menu-head span{font-size:12px!important}.qc-call-menu .wa-call-menu-actions{gap:7px!important;padding:0 0 11px!important}.qc-call-menu .wa-call-menu-actions button{min-height:42px!important;font-size:12px!important;gap:6px!important}.qc-call-menu .wa-call-menu-actions button:disabled{filter:grayscale(.7);opacity:.42;cursor:not-allowed!important}.qc-call-menu .wa-call-menu-row{min-height:42px!important;padding:0 10px!important;font-size:11px!important;gap:10px!important}
+
+
+/* CALLS V22 - botones más compactos y estado bloqueado */
+.qc-call-menu .wa-call-menu-actions {
+  gap: 8px !important;
+}
+.qc-call-menu .wa-call-menu-actions button {
+  min-height: 42px !important;
+  padding: 0 16px !important;
+  border-radius: 999px !important;
+  font-size: 12px !important;
+  font-weight: 800 !important;
+  gap: 6px !important;
+  max-width: 146px !important;
+  justify-content: center !important;
+}
+.qc-call-menu .wa-call-menu-actions button i {
+  font-size: 13px !important;
+}
+.qc-call-menu .wa-call-menu-actions button:disabled {
+  opacity: .45 !important;
+  filter: grayscale(.35) saturate(.55) !important;
+  cursor: not-allowed !important;
+  box-shadow: none !important;
+}
+
+
+/* CALLS V23 - menú más compacto */
+.wa-call-menu.qc-call-menu {
+  width: min(378px, calc(100vw - 24px)) !important;
+  min-width: 300px !important;
+  padding: 12px !important;
+}
+
+.qc-call-menu .wa-call-menu-head {
+  padding: 0 0 8px !important;
+  gap: 10px !important;
+}
+
+.qc-call-menu .wa-call-menu-actions {
+  display: grid !important;
+  grid-template-columns: 1fr 1fr !important;
+  gap: 8px !important;
+  padding: 0 0 10px !important;
+}
+
+.qc-call-menu .wa-call-menu-actions button {
+  width: 100% !important;
+  max-width: none !important;
+  min-height: 40px !important;
+  padding: 0 12px !important;
+}
+
+.qc-call-menu .wa-call-menu-row {
+  min-height: 40px !important;
+  padding: 0 8px !important;
+}
