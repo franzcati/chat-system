@@ -1890,7 +1890,7 @@ const ChatBox = ({ chat, user, setChat, onCloseChat, onVerPerfil, onAddToList, e
 
     try {
       if (user?.id) {
-        const res = await axios.get(`/api/grupos/usuario/${user.id}`);
+        const res = await axios.get(`/api/grupos/usuario-destinos/${user.id}`);
         const groups = Array.isArray(res.data) ? res.data : [];
         const found = groups.find((g) => Number(g.grupo_id || g.id) === Number(grupoId));
 
@@ -2092,7 +2092,10 @@ const ChatBox = ({ chat, user, setChat, onCloseChat, onVerPerfil, onAddToList, e
 
   const buildForwardTargetFromGroup = (item = {}, section = "groups") => {
     const groupId = Number(item.grupo_id || item.id);
-    const memberCount = Array.isArray(item.miembros) ? item.miembros.length : 0;
+    const memberCount = Number(
+      item.miembros_cantidad ??
+      (Array.isArray(item.miembros) ? item.miembros.length : 0)
+    ) || 0;
 
     return {
       key: `grupo-${groupId}`,
@@ -2113,11 +2116,22 @@ const ChatBox = ({ chat, user, setChat, onCloseChat, onVerPerfil, onAddToList, e
     if (!user?.id) return;
 
     try {
-      const [resChats, resGrupos, resProjectUsers] = await Promise.all([
+      // Carga independiente: un error puntual no vacía todos los destinos.
+      const resultados = await Promise.allSettled([
         axios.get(`/api/chats/${user.id}`),
-        axios.get(`/api/grupos/usuario/${user.id}`),
+        axios.get(`/api/grupos/usuario-destinos/${user.id}`),
         axios.get(`/api/grupos/${user.id}/todos-usuarios`),
       ]);
+      const [resChats, resGrupos, resProjectUsers] = resultados.map((resultado, index) => {
+        if (resultado.status === "fulfilled") return resultado.value;
+        const err = resultado.reason;
+        console.error("Error parcial cargando destinatarios para reenviar:", {
+          fuente: ["chats", "grupos", "usuarios-proyecto"][index],
+          status: err?.response?.status ?? null,
+          code: err?.response?.data?.code ?? null,
+        });
+        return { data: [] };
+      });
 
       const privateRecentMap = new Map();
       (Array.isArray(resChats.data) ? resChats.data : []).forEach((item) => {
