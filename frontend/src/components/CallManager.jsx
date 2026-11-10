@@ -1,5 +1,5 @@
 
-import React, { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
+import React, { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import socket from "../socket";
 import { getAvatarUrl } from "../utils/url";
@@ -49,6 +49,23 @@ function Avatar({ person = {}, className = "", large = false }) {
   );
 }
 
+// Iconos vectoriales integrados: estados claros de iniciar y detener la pantalla.
+function ShareScreenIcon({ sharing = false }) {
+  return sharing ? (
+    <svg className="qc-share-screen-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true" focusable="false">
+      <rect x="2.75" y="4.2" width="18.5" height="13.2" rx="2.15" stroke="currentColor" strokeWidth="2" />
+      <path d="M8.5 8.25l7 5.5M15.5 8.25l-7 5.5" stroke="currentColor" strokeWidth="2.15" strokeLinecap="round" />
+      <path d="M9.2 20h5.6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+    </svg>
+  ) : (
+    <svg className="qc-share-screen-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true" focusable="false">
+      <rect x="2.75" y="4.2" width="18.5" height="13.2" rx="2.15" stroke="currentColor" strokeWidth="2" />
+      <path d="M9.2 20h5.6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+      <path d="M7.5 13.8l7.1-6.8m-4.8.1h4.8v4.8" stroke="currentColor" strokeWidth="2.1" strokeLinejoin="round" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 function RemoteAudioSink({ stream, muted = false, outputDeviceId = "", volume = 1 }) {
   const ref = useRef(null);
   useEffect(() => {
@@ -76,6 +93,7 @@ function MediaTile({
   locallyMuted = false,
   localPreviewVisible = true,
   onSpeakingChange,
+  speakerId,
   onToggleLocalMute,
   onToggleDeafen,
   onTogglePreview,
@@ -123,7 +141,7 @@ function MediaTile({
         else activeFrames = Math.max(0, activeFrames - 1);
         const nextSpeaking = activeFrames > 1;
         setSpeaking(nextSpeaking);
-        onSpeakingChange?.(nextSpeaking);
+        onSpeakingChange?.(speakerId, nextSpeaking);
         rafRef.current = window.requestAnimationFrame(tick);
       };
       rafRef.current = window.requestAnimationFrame(tick);
@@ -138,14 +156,28 @@ function MediaTile({
         audioCtxRef.current = null;
       }
     };
-  }, [stream, onSpeakingChange, mediaState?.micMuted, mediaState?.deafened]);
+  }, [stream, speakerId, onSpeakingChange, mediaState?.micMuted, mediaState?.deafened]);
 
-  useEffect(() => () => onSpeakingChange?.(false), [onSpeakingChange]);
+  useEffect(() => () => onSpeakingChange?.(speakerId, false), [speakerId, onSpeakingChange]);
 
   return (
     <div
       className={`qc-call-tile ${local ? "is-local" : ""} ${showVideo ? "has-video" : "audio-only"} ${speaking ? "is-speaking" : ""} ${screenAvailable ? "has-screen-share" : ""}`}
-      onDoubleClick={screenAvailable ? () => onOpenScreen?.() : undefined}
+      onClick={(event) => {
+        // Los controles del participante conservan sus propias acciones.
+        if (event.target.closest("button, a, .qc-call-participant-menu")) return;
+        if (screenAvailable) onOpenScreen?.();
+        else setMenuOpen((value) => !value);
+      }}
+      onKeyDown={(event) => {
+        if (event.target !== event.currentTarget || !["Enter", " "].includes(event.key)) return;
+        event.preventDefault();
+        if (screenAvailable) onOpenScreen?.();
+        else setMenuOpen((value) => !value);
+      }}
+      role="button"
+      tabIndex={0}
+      aria-label={screenAvailable ? `Ver transmisión de ${local ? "tú" : displayName(person)}` : `Opciones de ${local ? "tu perfil" : displayName(person)}`}
     >
       {showVideo && stream ? (
         <video ref={videoRef} autoPlay playsInline muted />
@@ -208,24 +240,56 @@ function MediaTile({
 }
 
 
-function ScreenShareVideo({ stream, person = {}, local = false, focused = false, onFocus, onStopWatching, viewerCount = 0 }) {
+// Una transmisión anunciada aparece en la cuadrícula sin suscribirse a WebRTC
+// hasta que el espectador pulse "Ver transmisión" (comportamiento tipo Discord).
+function ScreenSharePreview({ person = {}, onWatch, requesting = false }) {
+  return (
+    <div className="qc-screen-preview" aria-label={`Transmisión disponible de ${displayName(person)}`}>
+      <span className="qc-screen-preview-live"><i className="fa-solid fa-display" /> EN VIVO</span>
+      <div className="qc-screen-preview-center">
+        <div className="qc-screen-preview-avatar"><Avatar person={person} /></div>
+        <strong>{displayName(person)} está compartiendo su pantalla</strong>
+        <button type="button" className="qc-screen-preview-watch" onClick={onWatch} disabled={requesting}>
+          <i className={`fa-solid ${requesting ? "fa-circle-notch fa-spin" : "fa-play"}`} />
+          {requesting ? "Conectando…" : "Ver transmisión"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function ScreenShareVideo({ stream, person = {}, local = false, focused = false, onFocus, onStopWatching, onExitFocus, viewerCount = 0 }) {
   const ref = useRef(null);
+  const [playBlocked, setPlayBlocked] = useState(false);
+  const playVideo = useCallback(() => {
+    const el = ref.current;
+    if (!el) return;
+    const result = el.play();
+    if (result?.then) result.then(() => setPlayBlocked(false)).catch(() => setPlayBlocked(true));
+  }, []);
   useEffect(() => {
     const el = ref.current;
     if (!el || !stream) return;
     if (el.srcObject !== stream) el.srcObject = stream;
-    const play = el.play();
-    if (play?.catch) play.catch(() => {});
-  }, [stream]);
+    playVideo();
+  }, [stream, playVideo]);
   return (
-    <div className={`qc-screen-stream ${focused ? "is-focused" : ""}`} onClick={() => onFocus?.()}>
-      <video ref={ref} autoPlay playsInline muted={local} />
+    <div className={`qc-screen-stream ${focused ? "is-focused" : ""} ${onFocus ? "is-interactive" : ""}`} onClick={onFocus ? () => onFocus() : undefined} onKeyDown={onFocus ? (event) => { if (["Enter", " "].includes(event.key) && event.target === event.currentTarget) { event.preventDefault(); onFocus(); } } : undefined} role={onFocus ? "button" : undefined} tabIndex={onFocus ? 0 : undefined} aria-label={onFocus ? (focused ? "Mostrar u ocultar controles" : "Ampliar transmisión") : undefined}>
+      {stream ? <video ref={ref} autoPlay playsInline muted={local} /> : (
+        <div className="qc-screen-stream-loading"><i className="fa-solid fa-circle-notch fa-spin" /> Conectando transmisión…</div>
+      )}
       <div className="qc-screen-stream-top">
         <span className="qc-screen-live-pill">EN VIVO</span>
         <strong>{local ? "Tu transmisión" : displayName(person)}</strong>
       </div>
+      {focused && onExitFocus && (
+        <button type="button" className="qc-screen-exit-focus" onClick={(event) => { event.stopPropagation(); onExitFocus(); }} title="Volver a participantes" aria-label="Volver a participantes">
+          <i className="fa-solid fa-table-cells-large" /><span>Volver a participantes</span>
+        </button>
+      )}
+      {playBlocked && <button className="qc-screen-play-button" type="button" onClick={(event) => { event.stopPropagation(); playVideo(); }}><i className="fa-solid fa-play" /> Reproducir transmisión</button>}
       <div className="qc-screen-stream-bottom">
-        <span><i className="fa-solid fa-eye" /> {viewerCount}</span>
+        <span><i className="fa-solid fa-eye" /> {viewerCount} {viewerCount === 1 ? "espectador" : "espectadores"}</span>
         {!local && onStopWatching && <button type="button" onClick={(e) => { e.stopPropagation(); onStopWatching(); }}>Dejar de ver</button>}
       </div>
     </div>
@@ -264,7 +328,9 @@ const CallManager = forwardRef(function CallManager({ user }, ref) {
   const [remoteScreenStreams, setRemoteScreenStreams] = useState({});
   const [watchedScreens, setWatchedScreens] = useState({});
   const [focusedScreenOwner, setFocusedScreenOwner] = useState(null);
+  const [controlsPinned, setControlsPinned] = useState(false);
   const [screenViewerCounts, setScreenViewerCounts] = useState({});
+  const [requestingScreenOwner, setRequestingScreenOwner] = useState(null);
   const [windowRect, setWindowRect] = useState(() => ({ x: 0, y: 0, width: 700, height: 500 }));
   const [compactRect, setCompactRect] = useState(() => ({ x: 18, y: Math.max(18, (window.innerHeight || 768) - 110), width: Math.min(760, (window.innerWidth || 1000) - 36), height: 78 }));
 
@@ -286,6 +352,9 @@ const CallManager = forwardRef(function CallManager({ user }, ref) {
   const screenSharesRef = useRef({});
   const screenSendersRef = useRef(new Map());
   const mainRemoteStreamIdsRef = useRef(new Map());
+  const pendingScreenViewersRef = useRef(new Set());
+  const speakerActivitySeqRef = useRef(0);
+  const queuedRenegotiationsRef = useRef(new Map());
 
   useEffect(() => { callRef.current = call; }, [call]);
   useEffect(() => { incomingRef.current = incoming; }, [incoming]);
@@ -332,8 +401,24 @@ const CallManager = forwardRef(function CallManager({ user }, ref) {
 
   const renegotiatePeer = async (peerUserId) => {
     const current = callRef.current;
-    const pc = peersRef.current.get(String(peerUserId));
-    if (!current?.callId || !pc) return;
+    const key = String(peerUserId);
+    const pc = peersRef.current.get(key);
+    if (!current?.callId || !pc || pc.signalingState === "closed") return;
+    // La suscripción automática puede llegar durante la oferta inicial.
+    // Esperar al estado stable evita que se pierda la renegociación de pantalla.
+    if (pc.signalingState !== "stable") {
+      if (!queuedRenegotiationsRef.current.has(key)) {
+        const onStable = () => {
+          if (pc.signalingState !== "stable" && pc.signalingState !== "closed") return;
+          pc.removeEventListener("signalingstatechange", onStable);
+          queuedRenegotiationsRef.current.delete(key);
+          if (pc.signalingState === "stable" && peersRef.current.get(key) === pc) renegotiatePeer(peerUserId);
+        };
+        queuedRenegotiationsRef.current.set(key, { pc, listener: onStable });
+        pc.addEventListener("signalingstatechange", onStable);
+      }
+      return;
+    }
     try {
       const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
@@ -357,6 +442,7 @@ const CallManager = forwardRef(function CallManager({ user }, ref) {
       renegotiatePeer(peerId);
     });
     screenSendersRef.current.clear();
+    pendingScreenViewersRef.current.clear();
     if (notify && current?.callId) socket.emit("call:screen-stop", { callId: current.callId });
   };
 
@@ -390,7 +476,8 @@ const CallManager = forwardRef(function CallManager({ user }, ref) {
       screenStreamRef.current = stream;
       setScreenShareActive(true);
       setWatchedScreens((prev) => ({ ...prev, [String(user?.id)]: true }));
-      setFocusedScreenOwner(String(user?.id));
+      // Mantener vista de participantes; pulsar la miniatura para ampliar.
+      setFocusedScreenOwner(null);
       const videoTrack = stream.getVideoTracks()[0];
       label = videoTrack?.label || label;
       videoTrack.addEventListener("ended", () => stopScreenShare(true), { once: true });
@@ -426,8 +513,11 @@ const CallManager = forwardRef(function CallManager({ user }, ref) {
       setFocusedScreenOwner(nextValue ? ownerKey : null);
       return;
     }
-    socket.emit("call:screen-watch", { callId: current.callId, ownerUserId: Number(ownerUserId), watching: nextValue }, (response = {}) => {
-      if (!response.ok) return showStatus(response.error || "No se pudo abrir la transmisión");
+    setRequestingScreenOwner(ownerKey);
+    socket.timeout(8000).emit("call:screen-watch", { callId: current.callId, ownerUserId: Number(ownerUserId), watching: nextValue }, (error, response = {}) => {
+      setRequestingScreenOwner((prev) => prev === ownerKey ? null : prev);
+      if (error || !response.ok) return showStatus(response.error || "No se pudo abrir la transmisión");
+      if (callRef.current?.callId !== current.callId) return;
       setWatchedScreens((prev) => ({ ...prev, [ownerKey]: nextValue }));
       if (nextValue) setFocusedScreenOwner(ownerKey);
       else {
@@ -625,8 +715,14 @@ const CallManager = forwardRef(function CallManager({ user }, ref) {
   const closePeer = (peerUserId) => {
     const key = String(peerUserId);
     const pc = peersRef.current.get(key);
+    const queued = queuedRenegotiationsRef.current.get(key);
+    if (queued) {
+      queued.pc.removeEventListener("signalingstatechange", queued.listener);
+      queuedRenegotiationsRef.current.delete(key);
+    }
     if (pc) { try { pc.close(); } catch {} }
     peersRef.current.delete(key);
+    pendingScreenViewersRef.current.delete(key);
     mainRemoteStreamIdsRef.current.delete(key);
     setRemoteScreenStreams((prev) => { const next = { ...prev }; delete next[key]; return next; });
     setRemoteStreams((prev) => {
@@ -641,10 +737,20 @@ const CallManager = forwardRef(function CallManager({ user }, ref) {
     stopScreenShare(false);
     if (timerRef.current) window.clearInterval(timerRef.current);
     timerRef.current = null;
+    queuedRenegotiationsRef.current.forEach(({ pc, listener }) => pc.removeEventListener("signalingstatechange", listener));
+    queuedRenegotiationsRef.current.clear();
     peersRef.current.forEach((pc) => { try { pc.close(); } catch {} });
     peersRef.current.clear();
+    setRequestingScreenOwner(null);
+    pendingScreenViewersRef.current.clear();
     stopLocalMedia();
     setRemoteStreams({});
+    setRemoteScreenStreams({});
+    setAvailableScreenShares({});
+    screenSharesRef.current = {};
+    setWatchedScreens({});
+    setFocusedScreenOwner(null);
+    setScreenViewerCounts({});
     setMicEnabled(true);
     setCameraEnabled(true);
     setElapsed(0);
@@ -793,6 +899,16 @@ const CallManager = forwardRef(function CallManager({ user }, ref) {
     const stream = localStreamRef.current || await getMedia(current.kind);
     pc = new RTCPeerConnection(ICE_CONFIG);
     stream.getTracks().forEach((track) => pc.addTrack(track, stream));
+    // Un espectador puede solicitar la transmisión justo cuando se está creando el peer.
+    // Añadimos esas pistas antes de la oferta WebRTC para no perder la suscripción.
+    if (pendingScreenViewersRef.current.has(key) && screenStreamRef.current) {
+      const senders = [];
+      screenStreamRef.current.getTracks().forEach((track) => {
+        try { senders.push(pc.addTrack(track, screenStreamRef.current)); } catch {}
+      });
+      if (senders.length) screenSendersRef.current.set(key, senders);
+      pendingScreenViewersRef.current.delete(key);
+    }
     pc.onicecandidate = (event) => {
       if (event.candidate) socket.emit("call:ice", { callId: current.callId, toUserId: Number(peerUserId), candidate: event.candidate });
     };
@@ -1188,6 +1304,7 @@ const CallManager = forwardRef(function CallManager({ user }, ref) {
       setRemoteScreenStreams((prev) => { const next = { ...prev }; delete next[ownerKey]; return next; });
       setWatchedScreens((prev) => { const next = { ...prev }; delete next[ownerKey]; return next; });
       setScreenViewerCounts((prev) => { const next = { ...prev }; delete next[ownerKey]; return next; });
+      setRequestingScreenOwner((prev) => prev === ownerKey ? null : prev);
       setFocusedScreenOwner((prev) => String(prev) === ownerKey ? null : prev);
       if (Number(ownerUserId) === Number(user?.id)) {
         setScreenShareActive(false);
@@ -1201,7 +1318,11 @@ const CallManager = forwardRef(function CallManager({ user }, ref) {
       const viewerKey = String(viewerUserId);
       setScreenViewerCounts((prev) => ({ ...prev, [String(user?.id)]: Number(count) || 0 }));
       const pc = peersRef.current.get(viewerKey);
-      if (!pc) return;
+      if (!pc) {
+        if (watching) pendingScreenViewersRef.current.add(viewerKey);
+        else pendingScreenViewersRef.current.delete(viewerKey);
+        return;
+      }
 
       if (watching) {
         if (!screenSendersRef.current.has(viewerKey)) {
@@ -1284,17 +1405,18 @@ const CallManager = forwardRef(function CallManager({ user }, ref) {
     (call.chatType !== "grupo" || Number(call.initiatorId) === Number(user?.id))
   );
 
-  const handleSpeakingChange = (id, speaking) => {
+  const handleSpeakingChange = useCallback((id, speaking) => {
     const key = String(id);
     setSpeakingUsers((prev) => {
       if (Boolean(prev[key]) === Boolean(speaking)) return prev;
-      return { ...prev, [key]: Boolean(speaking) };
+      // El último que comienza a hablar aparece primero en la fila inferior.
+      return { ...prev, [key]: speaking ? ++speakerActivitySeqRef.current : 0 };
     });
-  };
+  }, []);
 
   const activeSpeakerId = useMemo(() => {
-    const active = Object.entries(speakingUsers).find(([, value]) => value);
-    return active?.[0] || null;
+    const active = Object.entries(speakingUsers).filter(([, order]) => order > 0).sort((a, b) => b[1] - a[1]);
+    return active[0]?.[0] || null;
   }, [speakingUsers]);
 
   const callTiles = useMemo(() => {
@@ -1304,12 +1426,21 @@ const CallManager = forwardRef(function CallManager({ user }, ref) {
       { id: localId, stream: localStream, local: true, person: user, mediaState: { micMuted: !micEnabled, deafened, cameraEnabled } },
       ...Object.entries(remoteStreams).map(([peerId, stream]) => ({ id: String(peerId), stream, local: false, person: personById(peerId), mediaState: participantStates[String(peerId)] || {} })),
     ];
-    return items.sort((a, b) => Number(Boolean(speakingUsers[b.id])) - Number(Boolean(speakingUsers[a.id])));
+    return items.sort((a, b) => (speakingUsers[b.id] || 0) - (speakingUsers[a.id] || 0));
   }, [call, localStream, remoteStreams, user, participants, speakingUsers, participantStates, micEnabled, deafened, cameraEnabled]);
 
   const activeScreenShares = useMemo(() => Object.values(availableScreenShares || {}), [availableScreenShares]);
   const watchedScreenEntries = useMemo(() => activeScreenShares.filter((share) => watchedScreens[String(share.ownerUserId)]), [activeScreenShares, watchedScreens]);
+  // Si una transmisión ya está siendo vista, ocupar el escenario principal.
+  // Esto evita el cuadro redundante "Tu transmisión" encima de las personas.
+  const screenStageOwner = (focusedScreenOwner && availableScreenShares[String(focusedScreenOwner)] && watchedScreens[String(focusedScreenOwner)])
+    ? String(focusedScreenOwner)
+    : null;
   const getScreenStream = (ownerUserId) => Number(ownerUserId) === Number(user?.id) ? screenStreamRef.current : remoteScreenStreams[String(ownerUserId)];
+
+  // La suscripción remota es explícita: primero se anuncia la transmisión,
+  // después el usuario decide si quiere verla. La propia transmisión local
+  // puede verse como miniatura sin abrir el escenario grande.
 
   const callStatus = call?.phase === "ended"
     ? call.endedMessage || "Llamada finalizada"
@@ -1322,12 +1453,14 @@ const CallManager = forwardRef(function CallManager({ user }, ref) {
   const renderCallWindow = () => {
     if (!call) return null;
     const groupClass = call.chatType === "grupo" ? "group-call" : "private-call";
+    const isScreenFocused = Boolean(screenStageOwner);
     return (
       <section
         ref={callWindowRef}
-        className={`qc-call-window ${call.kind === "video" ? "video-call" : "voice-call"} ${groupClass} ${call.phase === "ended" ? "is-ended" : ""} ${minimized ? "is-minimized" : ""} ${popoutHost ? "is-popout" : ""}`}
+        className={`qc-call-window ${isScreenFocused ? "has-focused-screen" : ""} ${controlsPinned ? "controls-pinned" : ""} ${call.kind === "video" ? "video-call" : "voice-call"} ${groupClass} ${call.phase === "ended" ? "is-ended" : ""} ${minimized ? "is-minimized" : ""} ${popoutHost ? "is-popout" : ""}`}
         role="dialog"
         aria-label="Llamada en curso"
+        onMouseLeave={() => setControlsPinned(false)}
         style={popoutHost ? undefined : (minimized ? { left: compactRect.x, top: compactRect.y, width: compactRect.width, height: compactRect.height } : { left: windowRect.x, top: windowRect.y, width: windowRect.width, height: windowRect.height })}
       >
         <header className="qc-call-window-header" onPointerDown={popoutHost ? undefined : (minimized ? beginCompactMove : beginMove)}>
@@ -1356,15 +1489,15 @@ const CallManager = forwardRef(function CallManager({ user }, ref) {
             </div>
             <div className="qc-call-mini-controls">
               <button onClick={toggleMic} disabled={deafened} className={`qc-call-control ${!micEnabled ? "off" : ""}`} title={micEnabled ? "Silenciar micrófono" : "Activar micrófono"}><i className={`fa-solid ${micEnabled ? "fa-microphone" : "fa-microphone-slash"}`} /></button>
-              <button onClick={toggleDeafen} className={`qc-call-control ${deafened ? "off" : ""}`} title={deafened ? "Dejar de ensordecer" : "Ensordecer"}><i className={`fa-solid ${deafened ? "fa-volume-xmark" : "fa-headphones"}`} /></button>
-              <button onClick={() => screenShareActive ? stopScreenShare(true) : setScreenPickerOpen(true)} className={`qc-call-control ${screenShareActive ? "is-sharing" : ""}`} title={screenShareActive ? "Dejar de compartir" : "Compartir pantalla"}><i className="fa-solid fa-display" /></button>
+              <button onClick={toggleDeafen} className={`qc-call-control ${deafened ? "off" : ""}`} aria-label={deafened ? "Dejar de ensordecer" : "Ensordecer"} data-tooltip={deafened ? "Activar sonido" : "Ensordecer"}><i className={`fa-solid ${deafened ? "fa-volume-xmark" : "fa-headphones"}`} /></button>
+              <button onClick={() => screenShareActive ? stopScreenShare(true) : setScreenPickerOpen(true)} className={`qc-call-control qc-call-share-control ${screenShareActive ? "is-sharing" : ""}`} aria-label={screenShareActive ? "Dejar de transmitir pantalla" : "Compartir pantalla"} data-tooltip={screenShareActive ? "Dejar de transmitir" : "Compartir pantalla"}><ShareScreenIcon sharing={screenShareActive} /></button>
               <button onClick={() => setMinimized(false)} className="qc-call-control" title="Maximizar llamada"><i className="fa-solid fa-up-right-and-down-left-from-center" /></button>
               <button onClick={hangup} className="qc-call-control hangup" title="Desconectar"><i className="fa-solid fa-phone-slash" /></button>
             </div>
           </div>
         ) : (
           <>
-            <div className={`qc-call-grid ${call.kind === "audio" ? "is-audio-layout" : ""}`}>
+            <div className={`qc-call-grid ${call.kind === "audio" ? "is-audio-layout" : ""} ${isScreenFocused ? "has-screen-focus" : ""} ${activeScreenShares.length && !isScreenFocused ? "has-screen-available" : ""}`} onClick={(event) => { if (event.target === event.currentTarget) setControlsPinned((value) => !value); }}>
               {call.phase === "ended" ? (
                 <div className="qc-call-ended-state">
                   <div className="qc-call-ended-icon"><i className="fa-solid fa-phone-slash" /></div>
@@ -1380,46 +1513,78 @@ const CallManager = forwardRef(function CallManager({ user }, ref) {
                   </div>
                   <div className="qc-call-waiting-icon-wrap"><div className="qc-call-waiting-icon"><i className={`fa-solid ${call.kind === "video" ? "fa-video" : "fa-phone"}`} /></div></div>
                 </div>
-              ) : focusedScreenOwner && getScreenStream(focusedScreenOwner) ? (
+              ) : isScreenFocused ? (
                 <div className="qc-screen-focus-layout">
                   <ScreenShareVideo
-                    stream={getScreenStream(focusedScreenOwner)}
-                    person={String(focusedScreenOwner) === String(user?.id) ? user : personById(focusedScreenOwner)}
-                    local={String(focusedScreenOwner) === String(user?.id)}
+                    stream={getScreenStream(screenStageOwner)}
+                    person={String(screenStageOwner) === String(user?.id) ? user : personById(screenStageOwner)}
+                    local={String(screenStageOwner) === String(user?.id)}
                     focused
-                    viewerCount={screenViewerCounts[String(focusedScreenOwner)] || 0}
-                    onStopWatching={String(focusedScreenOwner) === String(user?.id) ? null : () => toggleWatchScreen(focusedScreenOwner, false)}
+                    onFocus={() => setControlsPinned((value) => !value)}
+                    onExitFocus={() => setFocusedScreenOwner(null)}
+                    viewerCount={screenViewerCounts[String(screenStageOwner)] || 0}
+                    onStopWatching={String(screenStageOwner) === String(user?.id) ? null : () => toggleWatchScreen(screenStageOwner, false)}
                   />
-                  <div className="qc-screen-focus-strip">
-                    {watchedScreenEntries.filter((share) => String(share.ownerUserId) !== String(focusedScreenOwner)).map((share) => {
-                      const stream = getScreenStream(share.ownerUserId);
-                      if (!stream) return null;
-                      return <ScreenShareVideo key={`share-mini-${share.ownerUserId}`} stream={stream} person={String(share.ownerUserId) === String(user?.id) ? user : personById(share.ownerUserId)} local={String(share.ownerUserId) === String(user?.id)} viewerCount={screenViewerCounts[String(share.ownerUserId)] || 0} onFocus={() => setFocusedScreenOwner(String(share.ownerUserId))} />;
-                    })}
-                    <button type="button" className="qc-screen-back-grid" onClick={() => setFocusedScreenOwner(null)}><i className="fa-solid fa-grip" /> Ver participantes</button>
+                  <div className="qc-screen-focus-strip" aria-label="Participantes de la llamada">
+                    {callTiles.map((tile) => (
+                      <MediaTile
+                        key={`focus-person-${tile.id}`}
+                        stream={tile.stream}
+                        muted={tile.local}
+                        local={tile.local}
+                        videoEnabled={call.kind === "video" && (!tile.local || cameraEnabled)}
+                        person={tile.person}
+                        mediaState={tile.mediaState}
+                        locallyMuted={!tile.local && Boolean(locallyMutedPeers[tile.id])}
+                        localPreviewVisible={localPreviewVisible}
+                        speakerId={tile.id}
+                        onSpeakingChange={handleSpeakingChange}
+                        onToggleLocalMute={() => togglePeerLocalMute(tile.id)}
+                        onToggleDeafen={toggleDeafen}
+                        onTogglePreview={requestToggleLocalPreview}
+                        onOpenPreview={openCameraPreview}
+                        onOpenSettings={openSettings}
+                        screenAvailable={Boolean(availableScreenShares[String(tile.id)])}
+                        onOpenScreen={() => watchedScreens[String(tile.id)] ? setFocusedScreenOwner(String(tile.id)) : toggleWatchScreen(tile.id, true)}
+                      />
+                    ))}
+                    {watchedScreenEntries.filter((share) => String(share.ownerUserId) !== String(screenStageOwner)).map((share) => (
+                      <ScreenShareVideo
+                        key={`share-mini-${share.ownerUserId}`}
+                        stream={getScreenStream(share.ownerUserId)}
+                        person={String(share.ownerUserId) === String(user?.id) ? user : personById(share.ownerUserId)}
+                        local={String(share.ownerUserId) === String(user?.id)}
+                        viewerCount={screenViewerCounts[String(share.ownerUserId)] || 0}
+                        onFocus={() => setFocusedScreenOwner(String(share.ownerUserId))}
+                      />
+                    ))}
                   </div>
                 </div>
               ) : (
                 <>
-                  {activeScreenShares.length > 0 && (
-                    <div className="qc-screen-share-strip">
-                      {activeScreenShares.map((share) => {
-                        const ownerKey = String(share.ownerUserId);
-                        const watching = Boolean(watchedScreens[ownerKey]);
-                        return (
-                          <button key={`share-${ownerKey}`} type="button" className={`qc-screen-share-chip ${watching ? "is-watching" : ""}`} onClick={() => toggleWatchScreen(ownerKey, !watching)}>
-                            <i className="fa-solid fa-display" />
-                            <span><strong>{ownerKey === String(user?.id) ? "Tu transmisión" : displayName(personById(ownerKey))}</strong><small>{watching ? "Viendo transmisión" : "Ver transmisión"}</small></span>
-                            <em>{screenViewerCounts[ownerKey] || 0}</em>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  )}
-                  {watchedScreenEntries.map((share) => {
-                    const stream = getScreenStream(share.ownerUserId);
-                    if (!stream) return null;
-                    return <ScreenShareVideo key={`share-grid-${share.ownerUserId}`} stream={stream} person={String(share.ownerUserId) === String(user?.id) ? user : personById(share.ownerUserId)} local={String(share.ownerUserId) === String(user?.id)} viewerCount={screenViewerCounts[String(share.ownerUserId)] || 0} onFocus={() => setFocusedScreenOwner(String(share.ownerUserId))} onStopWatching={String(share.ownerUserId) === String(user?.id) ? null : () => toggleWatchScreen(share.ownerUserId, false)} />;
+                  {activeScreenShares.map((share) => {
+                    const ownerKey = String(share.ownerUserId);
+                    const local = ownerKey === String(user?.id);
+                    const person = local ? user : personById(share.ownerUserId);
+                    const watching = local || Boolean(watchedScreens[ownerKey]);
+                    return watching ? (
+                      <ScreenShareVideo
+                        key={`share-grid-${ownerKey}`}
+                        stream={getScreenStream(share.ownerUserId)}
+                        person={person}
+                        local={local}
+                        viewerCount={screenViewerCounts[ownerKey] || 0}
+                        onFocus={() => setFocusedScreenOwner(ownerKey)}
+                        onStopWatching={local ? null : () => toggleWatchScreen(share.ownerUserId, false)}
+                      />
+                    ) : (
+                      <ScreenSharePreview
+                        key={`share-preview-${ownerKey}`}
+                        person={person}
+                        requesting={requestingScreenOwner === ownerKey}
+                        onWatch={() => toggleWatchScreen(share.ownerUserId, true)}
+                      />
+                    );
                   })}
                   {callTiles.map((tile) => (
                   <MediaTile
@@ -1432,14 +1597,15 @@ const CallManager = forwardRef(function CallManager({ user }, ref) {
                     mediaState={tile.mediaState}
                     locallyMuted={!tile.local && Boolean(locallyMutedPeers[tile.id])}
                     localPreviewVisible={localPreviewVisible}
-                    onSpeakingChange={(speaking) => handleSpeakingChange(tile.id, speaking)}
+                    speakerId={tile.id}
+                    onSpeakingChange={handleSpeakingChange}
                     onToggleLocalMute={() => togglePeerLocalMute(tile.id)}
                     onToggleDeafen={toggleDeafen}
                     onTogglePreview={requestToggleLocalPreview}
                     onOpenPreview={openCameraPreview}
                     onOpenSettings={openSettings}
                     screenAvailable={Boolean(availableScreenShares[String(tile.id)])}
-                    onOpenScreen={() => toggleWatchScreen(tile.id, true)}
+                    onOpenScreen={() => watchedScreens[String(tile.id)] ? setFocusedScreenOwner(String(tile.id)) : toggleWatchScreen(tile.id, true)}
                   />
                 ))}
                 </>
@@ -1448,16 +1614,16 @@ const CallManager = forwardRef(function CallManager({ user }, ref) {
 
             {call.phase !== "ended" && (
               <footer>
-                <button onClick={toggleMic} disabled={deafened} className={`qc-call-control ${!micEnabled ? "off" : ""}`} title={micEnabled ? "Silenciar" : "Activar micrófono"}><i className={`fa-solid ${micEnabled ? "fa-microphone" : "fa-microphone-slash"}`} /></button>
+                <button onClick={toggleMic} disabled={deafened} className={`qc-call-control ${!micEnabled ? "off" : ""}`} aria-label={micEnabled ? "Silenciar" : "Activar micrófono"} data-tooltip={micEnabled ? "Silenciar" : "Activar micrófono"}><i className={`fa-solid ${micEnabled ? "fa-microphone" : "fa-microphone-slash"}`} /></button>
                 <button onClick={toggleDeafen} className={`qc-call-control ${deafened ? "off" : ""}`} title={deafened ? "Dejar de ensordecer" : "Ensordecer"}><i className={`fa-solid ${deafened ? "fa-volume-xmark" : "fa-headphones"}`} /></button>
                 {call.kind === "audio" && (
                   <button onClick={upgradeToVideo} className="qc-call-control upgrade-video" disabled={!canUpgradeVideo || cameraPending} title={canUpgradeVideo ? "Cambiar a videollamada" : call.chatType === "grupo" && Number(call.initiatorId) !== Number(user?.id) ? "Solo quien inició la llamada grupal puede cambiarla a videollamada" : "No tienes permiso para realizar videollamadas"}><i className="fa-solid fa-video" /></button>
                 )}
                 {call.kind === "video" && (
-                  <button onClick={toggleCamera} disabled={cameraPending} className={`qc-call-control ${!cameraEnabled ? "off" : ""} ${cameraPending ? "is-loading" : ""}`} title={cameraPending ? "Solicitando cámara…" : cameraEnabled ? "Apagar cámara" : "Encender cámara"}><i className={`fa-solid ${cameraEnabled ? "fa-video" : "fa-video-slash"}`} /></button>
+                  <button onClick={toggleCamera} disabled={cameraPending} className={`qc-call-control ${!cameraEnabled ? "off" : ""} ${cameraPending ? "is-loading" : ""}`} aria-label={cameraPending ? "Solicitando cámara…" : cameraEnabled ? "Apagar cámara" : "Encender cámara"} data-tooltip={cameraPending ? "Solicitando cámara…" : cameraEnabled ? "Apagar cámara" : "Encender cámara"}><i className={`fa-solid ${cameraEnabled ? "fa-video" : "fa-video-slash"}`} /></button>
                 )}
-                <button onClick={() => screenShareActive ? stopScreenShare(true) : setScreenPickerOpen(true)} className={`qc-call-control ${screenShareActive ? "is-sharing" : ""}`} title={screenShareActive ? "Dejar de compartir pantalla" : "Compartir pantalla"}><i className="fa-solid fa-display" /></button>
-                <button onClick={hangup} className="qc-call-control hangup" title="Colgar"><i className="fa-solid fa-phone-slash" /></button>
+                <button onClick={() => screenShareActive ? stopScreenShare(true) : setScreenPickerOpen(true)} className={`qc-call-control qc-call-share-control ${screenShareActive ? "is-sharing" : ""}`} aria-label={screenShareActive ? "Dejar de transmitir pantalla" : "Compartir pantalla"} data-tooltip={screenShareActive ? "Dejar de transmitir" : "Compartir pantalla"}><ShareScreenIcon sharing={screenShareActive} /></button>
+                <button onClick={hangup} className="qc-call-control hangup" aria-label="Colgar" data-tooltip="Desconectar"><i className="fa-solid fa-phone-slash" /></button>
               </footer>
             )}
           </>

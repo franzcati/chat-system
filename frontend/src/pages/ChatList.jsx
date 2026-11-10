@@ -10,6 +10,8 @@ import { Star } from "lucide-react";
 import toast from "react-hot-toast";
 import GroupAvatar from "../components/GroupAvatar";
 import { readChatListSnapshot, persistChatListSnapshot } from "../utils/chatListSnapshot";
+import { CHAT_DRAFTS_EVENT, getDraftChatKey, isDraftStorageKey, readUserDrafts } from "../utils/chatDrafts";
+import { stripRichTextSyntax } from "../utils/richText.jsx";
 
 const CHAT_RENDER_BATCH_SIZE = 24;
 
@@ -163,6 +165,22 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat, addToLi
   const [addToListTargetLocal, setAddToListTargetLocal] = useState(null);
   const [showAddToExistingList, setShowAddToExistingList] = useState(false);
   const [typingByChat, setTypingByChat] = useState({});
+  const [chatDrafts, setChatDrafts] = useState(() => readUserDrafts(userId));
+
+  useEffect(() => {
+    setChatDrafts(readUserDrafts(userId));
+    const syncDrafts = (event) => {
+      if (event.type === "storage" && !isDraftStorageKey(userId, event.key)) return;
+      if (event.type === CHAT_DRAFTS_EVENT && event.detail?.userId !== String(userId)) return;
+      setChatDrafts(readUserDrafts(userId));
+    };
+    window.addEventListener(CHAT_DRAFTS_EVENT, syncDrafts);
+    window.addEventListener("storage", syncDrafts);
+    return () => {
+      window.removeEventListener(CHAT_DRAFTS_EVENT, syncDrafts);
+      window.removeEventListener("storage", syncDrafts);
+    };
+  }, [userId]);
   const [isInitialLoading, setIsInitialLoading] = useState(true);
   const [initialLoadError, setInitialLoadError] = useState("");
   const [visibleChatCount, setVisibleChatCount] = useState(CHAT_RENDER_BATCH_SIZE);
@@ -440,6 +458,15 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat, addToLi
   });
 
   const renderChatPreview = (chat) => {
+    const draft = chatDrafts[getDraftChatKey(chat)];
+    if (draft) {
+      return (
+        <span className="wa-preview-line chat-list-preview-line wa-draft-preview" title="Mensaje pendiente de enviar">
+          <strong className="wa-draft-label">Borrador:</strong>
+          <span className="wa-preview-label">{stripRichTextSyntax(draft)}</span>
+        </span>
+      );
+    }
     const preview = getMessagePreview(getChatPreviewSource(chat));
 
     return (
@@ -2467,9 +2494,11 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat, addToLi
               </div>
 
               <div className="wa-chat-list-bottom">
-                {renderReadStatus(chat)}
+                {!chatDrafts[getDraftChatKey(chat)] && renderReadStatus(chat)}
                 <div className="line-clamp wa-chat-list-preview">
-                  {typingPreview ? (
+                  {chatDrafts[getDraftChatKey(chat)] ? (
+                    renderChatPreview(chat)
+                  ) : typingPreview ? (
                     typingPreview
                   ) : chat.eliminado === 1 ? (
                     <span className="fst-italic text-muted d-inline-flex align-items-center gap-1">

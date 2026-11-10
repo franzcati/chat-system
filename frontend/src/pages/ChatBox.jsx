@@ -15,6 +15,7 @@ import { getProfileTitleStyle } from "../utils/profileColor";
 import { renderRichTextInline } from "../utils/richText.jsx";
 import { optimizeImageForChat, formatOptimizationSavings } from "../utils/imageOptimizer";
 import ChatInput from "../components/ChatInput";
+import { getDraftChatKey, readChatDraft, saveChatDraft } from "../utils/chatDrafts";
 import GroupAvatar from "../components/GroupAvatar";
 import "../css/ChatBox.css";
 import "../css/emoji.css";
@@ -496,6 +497,20 @@ const ChatBox = ({ chat, user, setChat, onCloseChat, onVerPerfil, onAddToList, e
   const [activeImageIndex, setActiveImageIndex] = useState(0); // 👈 NUEVO
   const [isDragOver, setIsDragOver] = useState(false);
   const [inputText, setInputText] = useState("");
+  const currentDraftKey = getDraftChatKey(chat);
+  const storedInitialDraft = useMemo(
+    () => readChatDraft(user?.id, currentDraftKey),
+    [user?.id, currentDraftKey]
+  );
+
+  useEffect(() => {
+    setInputText(storedInitialDraft);
+  }, [storedInitialDraft]);
+
+  const handleDraftChange = useCallback((text) => {
+    setInputText(text);
+    saveChatDraft(user?.id, currentDraftKey, text);
+  }, [user?.id, currentDraftKey]);
   const [isRecordingAudio, setIsRecordingAudio] = useState(false);
   const [isAudioPaused, setIsAudioPaused] = useState(false);
   const [recordingSeconds, setRecordingSeconds] = useState(0);
@@ -2682,7 +2697,7 @@ const ChatBox = ({ chat, user, setChat, onCloseChat, onVerPerfil, onAddToList, e
     const replyToType = replyingTo?.reply_to_tipo || replyingTo?.reply_source || "privado";
     const replyToGrupoId = replyingTo?.reply_to_grupo_id || replyingTo?.source_group_id || null;
 
-    if (!hayTexto && !hayImagenes) return;
+    if (!hayTexto && !hayImagenes) return false;
 
     // WhatsApp limpia la barra de respuesta apenas el envío fue aceptado.
     // Guardamos arriba la referencia en replyPayload/replyToId para que el backend
@@ -2951,7 +2966,8 @@ const ChatBox = ({ chat, user, setChat, onCloseChat, onVerPerfil, onAddToList, e
           // el mensaje pero fallar al devolver/armar la cita. En ese caso el socket o una
           // recarga trae el mensaje y mostrar alerta confunde al usuario.
           if (replyToId) {
-            setTimeout(async () => {
+            // La verificación se espera antes de limpiar el editor.
+            await new Promise((resolve) => setTimeout(resolve, 600));
               try {
                 let resVerificacion;
                 if (chat.tipo === "grupo") {
@@ -2981,7 +2997,12 @@ const ChatBox = ({ chat, user, setChat, onCloseChat, onVerPerfil, onAddToList, e
 
                 if (posibleGuardado) {
                   setMessages((prev) => sortAndDedupeMessages([...prev, ...mensajes]));
-                  return;
+                  setPendingImages([]);
+                  const sentChatKey = getDraftChatKey(chat);
+                  if (readChatDraft(user?.id, sentChatKey) === messageText) {
+                    saveChatDraft(user?.id, sentChatKey, "");
+                  }
+                  return true;
                 }
 
                 alert("No se pudo enviar el mensaje. Inténtalo otra vez.");
@@ -2989,23 +3010,31 @@ const ChatBox = ({ chat, user, setChat, onCloseChat, onVerPerfil, onAddToList, e
                 console.warn("⚠️ No se pudo verificar si la respuesta fue guardada:", verifyErr);
                 alert("No se pudo confirmar el envío. Revisa si el mensaje apareció antes de reenviarlo.");
               }
-            }, 600);
-            return;
+            if (replyPayload) setReplyingTo(replyPayload);
+            return false;
           }
 
           alert("No se pudo enviar el mensaje. Inténtalo otra vez.");
+          if (replyPayload) setReplyingTo(replyPayload);
+          return false;
         }
       }
 
-      // 3️⃣ Limpiar previews
+      // Al completar el envío se limpia el editor en ChatInput, pero sólo
+      // si el usuario no escribió otro mensaje mientras esperaba respuesta.
       setPendingImages([]);
       setReplyingTo(null);
-      inputRef.current?.reset();
+      // La conversación pudo cambiar mientras la API respondía; limpiar el
+      // borrador correcto, únicamente si sigue siendo el texto enviado.
+      const sentChatKey = getDraftChatKey(chat);
+      if (hayTexto && readChatDraft(user?.id, sentChatKey) === messageText) {
+        saveChatDraft(user?.id, sentChatKey, "");
+      }
+      return true;
     } catch (err) {
       console.error("❌ Error enviando mensaje:", err);
-      if (replyToId) {
-        setReplyingTo(null);
-      }
+      if (replyPayload) setReplyingTo(replyPayload);
+      return false;
     }
   };
 
@@ -3875,7 +3904,7 @@ const ChatBox = ({ chat, user, setChat, onCloseChat, onVerPerfil, onAddToList, e
       replyPayload,
     });
 
-    inputRef.current?.reset?.();
+    // Enviar un sticker no debe borrar el borrador de texto pendiente.
     setShowStickerPicker(false);
 
     try {
@@ -6320,10 +6349,12 @@ const ChatBox = ({ chat, user, setChat, onCloseChat, onVerPerfil, onAddToList, e
 
                     <div className="wa-input-grow">
                       <ChatInput
+                        key={`${user?.id || "anon"}:${currentDraftKey || "sin-chat"}`}
                         ref={inputRef}
+                        initialValue={storedInitialDraft}
                         onSend={(msg) => handleSendMessage(msg)}
                         onPasteFiles={(files, options) => handleFilesSeleccionados(files, options)}
-                        onValueChange={setInputText}
+                        onValueChange={handleDraftChange}
                         mentionOptions={mentionOptions}
                         placeholder="Escribe un mensaje..."
                         onReply={handleReplyMessage}
@@ -6362,6 +6393,7 @@ const ChatBox = ({ chat, user, setChat, onCloseChat, onVerPerfil, onAddToList, e
                             }
                           >
                             <LazyEmojiPicker
+                              fixChatScroll
                               onEmojiSelect={(emoji) => handleEmojiClick({ emoji: emoji.native })}
                               previewPosition="none"
                               navPosition="top"

@@ -900,6 +900,7 @@ const ChatInput = forwardRef(({
   const savedSelectionRangeRef = useRef(null);
   const blurTimerRef = useRef(null);
   const lastInitialValueRef = useRef(undefined);
+  const sendingRef = useRef(false);
 
   const syncValueFromEditor = () => {
     const editor = editorRef.current;
@@ -1103,12 +1104,21 @@ const ChatInput = forwardRef(({
     setEditorHtmlFromValue("");
   };
 
-  const sendCurrentValue = () => {
+  const sendCurrentValue = async () => {
+    if (sendingRef.current) return;
     const currentValue = syncValueFromEditor();
-    if (typeof onSend === "function") {
-      onSend(currentValue);
+    sendingRef.current = true;
+    try {
+      // onSend puede devolver false si el servidor rechazó el mensaje.
+      const success = typeof onSend === "function" ? await onSend(currentValue) : true;
+      if (success === false) return;
+      // Si escribió otro texto mientras se enviaba, NO borrar ese nuevo borrador.
+      if (editorToMessageValue(editorRef.current) === currentValue) clearInput();
+    } catch (error) {
+      console.error("No se pudo confirmar el envío:", error);
+    } finally {
+      sendingRef.current = false;
     }
-    clearInput();
   };
 
   const insertMention = (option) => {

@@ -21048,3 +21048,65 @@ body.dark .wa-history-message-row.in .wa-history-message-time,
   min-height: 40px !important;
   padding: 0 8px !important;
 }
+
+
+/* QuickChat — selector de emojis: scroll y categorías navegables */
+.wa-media-picker-shell.is-emoji .wa-media-picker-content.emoji {
+  display: flex !important;
+  flex-direction: column !important;
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+  overflow: hidden !important;
+  pointer-events: auto !important;
+}
+.wa-media-picker-shell.is-emoji em-emoji-picker {
+  display: block !important;
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+  height: 100% !important;
+  max-height: 100% !important;
+  overflow: hidden !important;
+  pointer-events: auto !important;
+  touch-action: pan-y !important;
+  overscroll-behavior-y: contain !important;
+}
+.wa-media-picker-shell.is-emoji {
+  pointer-events: auto !important;
+  overscroll-behavior: contain;
+}
+.wa-draft-preview {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+  min-width: 0;
+  max-width: 100%;
+}
+.wa-draft-preview .wa-draft-label {
+  flex-shrink: 0;
+  color: #d57642;
+  font-weight: 700;
+}
+.wa-draft-preview .wa-preview-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+:root[data-theme="dark"] .wa-draft-preview .wa-draft-label {
+  color: #ffa169;
+}
+
+.wa-media-picker-content.emoji .wa-emoji-mart-scroll-host {
+  display: flex !important;
+  flex: 1 1 auto !important;
+  flex-direction: column !important;
+  height: 100% !important;
+  min-height: 0 !important;
+  width: 100% !important;
+  overflow: hidden !important;
+}
+.wa-media-picker-content.emoji .wa-emoji-mart-scroll-host > em-emoji-picker {
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+  max-height: 100% !important;
+}

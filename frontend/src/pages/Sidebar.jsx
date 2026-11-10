@@ -6,6 +6,7 @@ import { getAvatarUrl } from "../utils/url";
 import { useTheme } from "../context/ThemeContext.jsx";
 import socket from "../socket";
 import { clearAllChatListSnapshots } from "../utils/chatListSnapshot";
+import { clearUserDrafts } from "../utils/chatDrafts";
 
 const Sidebar = ({ usuario, active, setActive, onUsuarioUpdate, unreadTotal = 0, estadosUsuarios = {} }) => {
   const [showModal, setShowModal] = useState(false);
@@ -180,6 +181,7 @@ const Sidebar = ({ usuario, active, setActive, onUsuarioUpdate, unreadTotal = 0,
 
     try {
       clearAllChatListSnapshots();
+      clearUserDrafts(usuario?.id);
       localStorage.removeItem("usuario");
       socket.disconnect();
     } catch (error) {

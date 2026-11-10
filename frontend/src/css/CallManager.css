@@ -1529,3 +1529,536 @@
   .qc-screen-source-card { min-height: 210px; }
   .qc-screen-source-preview { min-height: 130px; }
 }
+
+/* CALLS V29 — escenario de pantalla compartida + participantes persistentes.
+   Solo afecta la llamada cuando hay una transmisión enfocada. */
+.qc-call-grid.has-screen-focus {
+  display: flex;
+  flex-direction: column;
+  grid-template-columns: none;
+  grid-auto-rows: auto;
+  padding: 10px;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.qc-screen-focus-layout {
+  flex: 1 1 auto;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr) clamp(90px, 23%, 124px);
+  gap: 10px;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.qc-screen-focus-layout > .qc-screen-stream {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  min-width: 0;
+  cursor: default;
+  border-radius: 13px;
+}
+
+.qc-screen-focus-layout > .qc-screen-stream video {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  max-height: 100%;
+  object-fit: contain;
+  object-position: center;
+  background: #030711;
+}
+
+.qc-screen-focus-strip {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: stretch;
+  justify-content: flex-start;
+  gap: 9px;
+  width: 100%;
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  padding: 1px 2px 5px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
+  scrollbar-color: #5575ac transparent;
+}
+
+.qc-screen-focus-strip > .qc-call-tile {
+  position: relative;
+  flex: 0 0 clamp(112px, 20%, 170px);
+  width: clamp(112px, 20%, 170px);
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  border-radius: 12px;
+  transform: none;
+}
+
+.qc-screen-focus-strip .qc-call-audio-stage { padding: 10px 8px 22px; }
+.qc-screen-focus-strip .qc-call-avatar-wrap,
+.group-call .qc-screen-focus-strip .qc-call-avatar-wrap {
+  width: clamp(40px, 45%, 70px);
+  height: clamp(40px, 45%, 70px);
+}
+.qc-screen-focus-strip .qc-call-avatar-wrap span { font-size: 19px; }
+.qc-screen-focus-strip .qc-call-tile-name {
+  bottom: 5px;
+  max-width: calc(100% - 12px);
+  padding: 3px 7px;
+  font-size: 10px;
+}
+.qc-screen-focus-strip .qc-call-live-badge { top: 6px; left: 6px; padding: 3px 5px; font-size: 9px; }
+.qc-screen-focus-strip .qc-call-participant-flags { top: 6px; right: 6px; }
+.qc-screen-focus-strip .qc-call-tile-more { top: 5px; right: 5px; }
+
+.qc-screen-focus-strip > .qc-screen-stream {
+  flex: 0 0 170px;
+  width: 170px;
+  min-height: 0;
+  height: 100%;
+  border-radius: 12px;
+}
+.qc-screen-focus-strip > .qc-screen-stream video {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  max-height: 100%;
+  object-fit: contain;
+}
+.qc-screen-focus-strip > .qc-screen-stream .qc-screen-stream-top strong { display: none; }
+
+.qc-screen-focus-strip > .qc-screen-back-grid {
+  flex: 0 0 92px;
+  width: 92px;
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  border: 1px solid rgba(111, 148, 225, .22);
+  border-radius: 12px;
+  background: #152b50;
+  font-size: 10px;
+  font-weight: 700;
+}
+.qc-screen-focus-strip > .qc-screen-back-grid i { font-size: 19px; }
+
+.qc-screen-stream-loading {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  color: #b8c9e9;
+  font-size: 13px;
+  background: #050b17;
+}
+.qc-screen-play-button {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  z-index: 4;
+  transform: translate(-50%, -50%);
+  border: 1px solid rgba(177, 203, 255, .38);
+  border-radius: 11px;
+  padding: 10px 15px;
+  background: #253f72;
+  color: #fff;
+  cursor: pointer;
+}
+.qc-screen-stream-top, .qc-screen-stream-bottom { z-index: 2; }
+.qc-screen-stream-top { min-width: 0; max-width: calc(100% - 20px); }
+.qc-screen-stream-top strong { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.qc-screen-stream-bottom span { padding: 5px 8px; border-radius: 7px; background: rgba(0, 0, 0, .65); }
+
+/* Pantalla + X roja: es distinto del botón para empezar a compartir. */
+.qc-call-control.is-sharing { position: relative; }
+.qc-call-control .qc-call-stop-share-x {
+  position: absolute;
+  top: 5px;
+  right: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  border: 1px solid #fff;
+  border-radius: 50%;
+  background: #ef3557;
+  color: #fff;
+  font-size: 9px;
+  line-height: 1;
+}
+
+/* Los controles permanecen accesibles; hover solo añade feedback visual. */
+.qc-call-window.has-focused-screen footer {
+  flex: 0 0 70px;
+  visibility: visible;
+  opacity: 1;
+}
+.qc-call-window:fullscreen .qc-screen-focus-layout,
+.qc-call-window.is-popout .qc-screen-focus-layout { grid-template-rows: minmax(0, 1fr) clamp(112px, 20%, 162px); }
+.qc-call-window:fullscreen .qc-screen-focus-strip > .qc-call-tile,
+.qc-call-window.is-popout .qc-screen-focus-strip > .qc-call-tile { flex-basis: clamp(160px, 16%, 230px); width: clamp(160px, 16%, 230px); }
+
+@media (max-width: 550px) {
+  .qc-call-grid.has-screen-focus { padding: 6px; }
+  .qc-screen-focus-layout { grid-template-rows: minmax(0, 1fr) 88px; gap: 6px; }
+  .qc-screen-focus-strip { gap: 6px; }
+  .qc-screen-focus-strip > .qc-call-tile { flex-basis: 110px; width: 110px; }
+  .qc-screen-focus-strip > .qc-screen-back-grid { flex-basis: 74px; width: 74px; }
+  .qc-screen-focus-layout > .qc-screen-stream { border-radius: 9px; }
+  .qc-call-window.has-focused-screen footer { gap: 8px; }
+  .qc-call-window.has-focused-screen footer .qc-call-control { width: 42px; height: 42px; flex-basis: 42px; }
+}
+
+/* CALLS V30 — controles contextuales, estilo Discord (sin dependencias nuevas).
+   El espacio inferior se conserva para evitar saltos de diseño mientras aparecen los iconos. */
+.qc-call-window:not(.is-minimized):not(.is-ended) footer {
+  position: relative;
+  flex: 0 0 69px;
+  min-height: 69px;
+  gap: 10px;
+  border-top: 0;
+  background: #031126;
+  isolation: isolate;
+  overflow: visible;
+}
+.qc-call-window:not(.is-minimized):not(.is-ended) footer::before {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  left: 50%;
+  top: 5px;
+  bottom: 6px;
+  width: min(382px, calc(100% - 14px));
+  border: 1px solid rgba(174, 190, 226, .12);
+  border-radius: 19px;
+  background: rgba(27, 31, 43, .91);
+  box-shadow: 0 13px 30px rgba(0, 0, 0, .25), inset 0 1px 0 rgba(255, 255, 255, .055);
+  opacity: 0;
+  transform: translateX(-50%) translateY(12px) scale(.96);
+  transition: opacity .24s ease, transform .32s cubic-bezier(.2,.85,.25,1);
+  pointer-events: none;
+}
+.qc-call-window:not(.is-minimized):not(.is-ended) footer > .qc-call-control {
+  position: relative;
+  width: 43px;
+  height: 43px;
+  flex: 0 0 43px;
+  border-radius: 14px;
+  color: #f7f9ff;
+  background: #343843;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .075);
+  opacity: 0;
+  filter: blur(2px);
+  transform: translateY(15px) scale(.87);
+  pointer-events: none;
+  transition:
+    opacity .2s ease,
+    filter .2s ease,
+    transform .33s cubic-bezier(.2,.9,.25,1.3),
+    background-color .16s ease,
+    box-shadow .16s ease;
+}
+.qc-call-window:not(.is-minimized):not(.is-ended):is(:hover, :has(:focus-visible), .controls-pinned) footer::before {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0) scale(1);
+}
+.qc-call-window:not(.is-minimized):not(.is-ended):is(:hover, :has(:focus-visible), .controls-pinned) footer > .qc-call-control {
+  opacity: 1;
+  filter: blur(0);
+  transform: translateY(0) scale(1);
+  pointer-events: auto;
+}
+.qc-call-window:not(.is-minimized):not(.is-ended):is(:hover, :has(:focus-visible), .controls-pinned) footer > .qc-call-control:nth-child(2) { transition-delay: 25ms; }
+.qc-call-window:not(.is-minimized):not(.is-ended):is(:hover, :has(:focus-visible), .controls-pinned) footer > .qc-call-control:nth-child(3) { transition-delay: 50ms; }
+.qc-call-window:not(.is-minimized):not(.is-ended):is(:hover, :has(:focus-visible), .controls-pinned) footer > .qc-call-control:nth-child(4) { transition-delay: 75ms; }
+.qc-call-window:not(.is-minimized):not(.is-ended):is(:hover, :has(:focus-visible), .controls-pinned) footer > .qc-call-control:nth-child(5) { transition-delay: 100ms; }
+.qc-call-window:not(.is-minimized):not(.is-ended) footer > .qc-call-control:hover {
+  background: #444958;
+  opacity: 1;
+  filter: none;
+  transform: translateY(-4px) scale(1.08);
+  box-shadow: 0 9px 16px rgba(0, 0, 0, .3), inset 0 1px 0 rgba(255,255,255,.12);
+}
+.qc-call-window:not(.is-minimized):not(.is-ended) footer > .qc-call-control:active {
+  transform: translateY(0) scale(.9);
+  filter: brightness(.92);
+  transition-duration: .08s;
+}
+.qc-call-window:not(.is-minimized):not(.is-ended) footer > .qc-call-control.off { background: #515663; }
+.qc-call-window:not(.is-minimized):not(.is-ended) footer > .qc-call-control.hangup {
+  width: 48px;
+  height: 45px;
+  flex-basis: 48px;
+  border-radius: 15px;
+  background: #dc374c;
+}
+.qc-call-window:not(.is-minimized):not(.is-ended) footer > .qc-call-control.hangup:hover { background: #f0465b; }
+
+/* Estado visual de compartir pantalla: pantalla con flecha / pantalla con X. */
+.qc-call-share-control { position: relative; }
+.qc-call-share-control .qc-share-screen-icon { display: block; width: 24px; height: 24px; flex: none; }
+.qc-call-window:not(.is-minimized):not(.is-ended) footer > .qc-call-share-control.is-sharing,
+.qc-call-window.is-minimized .qc-call-share-control.is-sharing {
+  background: #287f59;
+  color: #0d3023;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.15), 0 5px 12px rgba(19,88,64,.24);
+}
+.qc-call-window:not(.is-minimized):not(.is-ended) footer > .qc-call-share-control.is-sharing:hover,
+.qc-call-window.is-minimized .qc-call-share-control.is-sharing:hover { background: #32996e; }
+.qc-call-control[data-tooltip]::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  z-index: 15;
+  left: 50%;
+  bottom: calc(100% + 12px);
+  transform: translate(-50%, 5px) scale(.95);
+  width: max-content;
+  max-width: 200px;
+  border-radius: 7px;
+  padding: 7px 10px;
+  background: #202127;
+  color: #f4f4f5;
+  box-shadow: 0 8px 18px rgba(0,0,0,.28);
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+  line-height: 1.2;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .14s ease, transform .17s ease;
+}
+.qc-call-control[data-tooltip]:is(:hover,:focus-visible)::after {
+  opacity: 1;
+  transform: translate(-50%,0) scale(1);
+}
+
+/* Ya no se renderizan la tarjeta superior redundante ni la tarjeta Cuadrícula. */
+.qc-call-window:not(.is-minimized) .qc-call-grid.has-screen-focus .qc-screen-focus-layout { min-width: 0; }
+.qc-call-tile { cursor: pointer; transition: border-color .18s ease, box-shadow .2s ease, translate .2s cubic-bezier(.2,.8,.2,1); }
+.qc-call-tile:hover {
+  border-color: rgba(137,170,245,.58);
+  box-shadow: 0 0 0 1px rgba(130,167,250,.12), 0 9px 22px rgba(0,0,0,.20);
+  translate: 0 -2px;
+}
+.qc-call-tile:active { translate: 0 0; }
+.qc-call-tile:focus-visible,
+.qc-screen-stream.is-interactive:focus-visible,
+.qc-call-control:focus-visible {
+  outline: 2px solid #87b4ff;
+  outline-offset: 2px;
+}
+.qc-screen-stream.is-interactive { cursor: pointer; }
+.qc-screen-stream.is-interactive:hover { border-color: rgba(129,166,251,.5); }
+.qc-screen-focus-strip .qc-call-tile { cursor: pointer; }
+
+/* Conserva el diseño usable con pantalla táctil, teclado y movimiento reducido. */
+@media (hover: none), (pointer: coarse) {
+  .qc-call-window:not(.is-minimized):not(.is-ended) footer::before {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0) scale(1);
+  }
+  .qc-call-window:not(.is-minimized):not(.is-ended) footer > .qc-call-control {
+    opacity: 1;
+    filter: none;
+    transform: none;
+    pointer-events: auto;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .qc-call-window footer::before,
+  .qc-call-window footer > .qc-call-control,
+  .qc-call-tile,
+  .qc-call-control[data-tooltip]::after { transition: none !important; }
+}
+
+
+/* CALLS V31 — modo claro coherente, controles sin cápsula y vista previa de transmisión. */
+.qc-call-grid.has-screen-available:not(.has-screen-focus) {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-auto-rows: minmax(130px, 1fr);
+  align-content: stretch;
+}
+.qc-call-grid.has-screen-available:not(.has-screen-focus) > :last-child:nth-child(odd):not(:first-child) {
+  grid-column: 1 / -1;
+  width: calc(50% - 5px);
+  justify-self: center;
+}
+.qc-call-grid.has-screen-available:not(.has-screen-focus) > .qc-screen-stream,
+.qc-call-grid.has-screen-available:not(.has-screen-focus) > .qc-screen-preview {
+  min-height: 0;
+  height: 100%;
+}
+.qc-call-grid.has-screen-available:not(.has-screen-focus) > .qc-screen-stream video {
+  min-height: 0;
+  height: 100%;
+}
+.qc-screen-preview {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 150px;
+  overflow: hidden;
+  border-radius: 15px;
+  border: 1px solid rgba(116, 152, 233, .3);
+  background: radial-gradient(circle at 50% 15%, rgba(86, 105, 171, .25), transparent 65%), #111b2e;
+  color: #f9fbff;
+  isolation: isolate;
+}
+.qc-screen-preview-live {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  display: inline-flex;
+  gap: 5px;
+  align-items: center;
+  padding: 5px 7px;
+  border-radius: 6px;
+  background: #e33253;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 800;
+}
+.qc-screen-preview-center {
+  width: min(100%, 280px);
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 35px 14px 16px;
+  text-align: center;
+}
+.qc-screen-preview-avatar,
+.qc-screen-preview-avatar img,
+.qc-screen-preview-avatar .qc-call-default-avatar {
+  display: block;
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+.qc-screen-preview-avatar .qc-call-default-avatar { display: grid; place-items: center; font-size: 19px; }
+.qc-screen-preview-center strong {
+  font-size: 12px;
+  line-height: 1.35;
+  font-weight: 650;
+}
+.qc-screen-preview-watch {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 36px;
+  border: 1px solid rgba(213, 223, 247, .28);
+  border-radius: 8px;
+  background: rgba(37, 47, 68, .94);
+  color: white;
+  padding: 7px 15px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 750;
+  transition: background .2s ease, transform .2s ease;
+}
+.qc-screen-preview-watch:hover { background: #3b4a68; transform: translateY(-2px); }
+.qc-screen-preview-watch:disabled { cursor: wait; opacity: .7; transform: none; }
+.qc-screen-preview-watch:focus-visible { outline: 2px solid #94b8ff; outline-offset: 3px; }
+.qc-screen-exit-focus {
+  position: absolute;
+  z-index: 7;
+  top: 9px;
+  right: 9px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 30px;
+  border: 1px solid rgba(255,255,255,.25);
+  border-radius: 8px;
+  padding: 5px 10px;
+  color: #f6f7fc;
+  background: rgba(16, 24, 40, .83);
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 650;
+  transition: background .18s ease, transform .18s ease;
+}
+.qc-screen-exit-focus:hover { background: rgba(48,65,99,.95); transform: translateY(-1px); }
+.qc-screen-exit-focus:focus-visible { outline: 2px solid #9ab9ff; outline-offset: 2px; }
+/* V30 ya gestiona mostrar/ocultar, V31 solo cambia aspecto. */
+.qc-call-window:not(.is-minimized):not(.is-ended) footer {
+  background: #031126;
+  border-top: 1px solid rgba(105,136,206,.12);
+}
+.qc-call-window:not(.is-minimized):not(.is-ended) footer::before { display: none; }
+.qc-call-window:not(.is-minimized):not(.is-ended) footer > .qc-call-control {
+  background: #4b5363;
+  color: #f7f9ff;
+  box-shadow: none;
+  border-radius: 13px;
+}
+.qc-call-window:not(.is-minimized):not(.is-ended) footer > .qc-call-control:hover {
+  background: #606a7a;
+  box-shadow: 0 7px 15px rgba(0,0,0,.17);
+}
+.qc-call-window:not(.is-minimized):not(.is-ended) footer > .qc-call-control.off { background: #687282; }
+.qc-call-window:not(.is-minimized):not(.is-ended) footer > .qc-call-control.hangup { background: #e93952; }
+.qc-call-window:not(.is-minimized):not(.is-ended) footer > .qc-call-control.hangup:hover { background: #fa4a62; }
+.qc-call-window:not(.is-minimized):not(.is-ended) footer > .qc-call-share-control.is-sharing,
+.qc-call-window.is-minimized .qc-call-share-control.is-sharing {
+  background: #5569f8;
+  color: #fff;
+  box-shadow: 0 0 0 2px rgba(113,130,255,.16);
+}
+.qc-call-window:not(.is-minimized):not(.is-ended) footer > .qc-call-share-control.is-sharing:hover,
+.qc-call-window.is-minimized .qc-call-share-control.is-sharing:hover { background: #697afd; }
+/* El tema claro debe incluir TODO el pie, no solo la cabecera y el escenario. */
+:root[data-theme="light"] .qc-call-window:not(.is-minimized):not(.is-ended) footer {
+  background: #edf4fc;
+  border-top: 1px solid #c9daf1;
+}
+:root[data-theme="light"] .qc-call-window:not(.is-minimized):not(.is-ended) footer > .qc-call-control {
+  background: #68768c;
+  color: #fff;
+  box-shadow: none;
+}
+:root[data-theme="light"] .qc-call-window:not(.is-minimized):not(.is-ended) footer > .qc-call-control:hover { background: #53647e; }
+:root[data-theme="light"] .qc-call-window:not(.is-minimized):not(.is-ended) footer > .qc-call-control.off { background: #8c98a9; }
+:root[data-theme="light"] .qc-call-window:not(.is-minimized):not(.is-ended) footer > .qc-call-control.hangup { background: #e93952; }
+:root[data-theme="light"] .qc-call-window:not(.is-minimized):not(.is-ended) footer > .qc-call-control.hangup:hover { background: #fa4a62; }
+:root[data-theme="light"] .qc-call-window:not(.is-minimized):not(.is-ended) footer > .qc-call-share-control.is-sharing { background: #5569f8; color: #fff; }
+:root[data-theme="light"] .qc-call-window:not(.is-minimized):not(.is-ended) footer > .qc-call-share-control.is-sharing:hover { background: #697afd; }
+:root[data-theme="light"] .qc-screen-preview {
+  background: radial-gradient(circle at 50% 20%, #dce9ff, #e9f2fd 70%);
+  color: #233f69;
+  border-color: rgba(76,116,188,.22);
+}
+:root[data-theme="light"] .qc-screen-preview-watch { background: #52627c; color: #fff; }
+:root[data-theme="light"] .qc-screen-preview-watch:hover { background: #374d70; }
+@media (max-width: 560px) {
+  .qc-call-grid.has-screen-available:not(.has-screen-focus) { grid-template-columns: repeat(2, minmax(0,1fr)); gap: 7px; }
+  .qc-screen-exit-focus span { display: none; }
+  .qc-screen-exit-focus { padding: 6px 9px; }
+  .qc-screen-preview-center { padding-inline: 8px; }
+  .qc-screen-preview-avatar { width: 36px; height: 36px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .qc-screen-preview-watch, .qc-screen-exit-focus { transition: none; }
+}

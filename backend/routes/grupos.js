@@ -405,6 +405,58 @@ router.post(
 });
 
 // =======================
+// Destinos de reenvío: únicamente datos de grupos que necesita el selector.
+// Evita cargar los archivos, mensajes fijados, leídos y miembros completos.
+// =======================
+router.get(
+  "/usuario-destinos/:userId",
+  requireSelfParam("userId"),
+  async (req, res) => {
+    const userId = Number(req.auth.userId);
+
+    if (!Number.isInteger(userId) || userId <= 0) {
+      return res.status(400).json({ error: "Usuario inválido" });
+    }
+
+    try {
+      const [grupos] = await db.query(
+        `SELECT
+           g.id AS grupo_id,
+           g.nombre,
+           g.imagen_url,
+           g.fecha_creacion,
+           ultimo.fecha_envio,
+           (SELECT COUNT(*)
+              FROM usuario_grupo miembros
+             WHERE miembros.grupo_id = g.id) AS miembros_cantidad
+         FROM usuario_grupo ug
+         INNER JOIN grupos g ON g.id = ug.grupo_id
+         LEFT JOIN mensajes_grupo ultimo ON ultimo.id = (
+           SELECT MAX(mg.id)
+             FROM mensajes_grupo mg
+            WHERE mg.grupo_id = g.id
+         )
+         WHERE ug.usuario_id = ?
+         ORDER BY ultimo.id IS NULL, ultimo.id DESC, g.fecha_creacion DESC`,
+        [userId]
+      );
+
+      const vistos = new Set();
+      res.json(grupos.filter((grupo) => {
+        // Protege el selector frente a relaciones históricas duplicadas.
+        if (vistos.has(grupo.grupo_id)) return false;
+        vistos.add(grupo.grupo_id);
+        grupo.imagen_url = toAbsoluteUploadUrl(grupo.imagen_url, req);
+        return true;
+      }));
+    } catch (err) {
+      console.error("❌ Error obteniendo destinos de grupos para reenviar:", err);
+      res.status(500).json({ error: "No se pudieron obtener los grupos para reenviar" });
+    }
+  }
+);
+
+// =======================
 // Obtener los grupos de un usuario con último mensaje + archivos + favoritos + admins
 // =======================
 // Resumen liviano para la lista inicial de chats.
