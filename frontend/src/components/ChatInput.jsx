@@ -1352,8 +1352,12 @@ const ChatInput = forwardRef(({
   const applyFormat = (actionKey) => {
     const editor = editorRef.current;
     if (!editor) return;
+    // Al pulsar la barra flotante puede perderse el rango de selección.
+    // Restauramos la última selección del editor antes de aplicar el formato.
+    if (!isSelectionInside(editor) || !getSelectedText(editor).trim()) {
+      restoreSavedSelectionRange();
+    }
     editor.focus();
-
     if (!isSelectionInside(editor) || !getSelectedText(editor).trim()) return;
 
     const currentFormats = getSelectionActiveFormats();
@@ -1365,7 +1369,15 @@ const ChatInput = forwardRef(({
     }
 
     if (actionKey === "bold") document.execCommand("bold", false);
-    else if (actionKey === "italic") document.execCommand("italic", false);
+    else if (actionKey === "italic") {
+      // Usar <em> garantiza que el serializador produzca _texto_ y que
+      // la cursiva se vea tanto antes como después de enviar el mensaje.
+      if (currentFormats.has("italic")) {
+        if (!unwrapNearestTag(["EM", "I"])) document.execCommand("italic", false);
+      } else {
+        wrapSelectionWithTag("em");
+      }
+    }
     else if (actionKey === "underline") document.execCommand("underline", false);
     else if (actionKey === "strike") document.execCommand("strikeThrough", false);
     else if (actionKey === "code") {

@@ -2975,22 +2975,24 @@ const Message = ({
               {mensajeData.eliminado ? (
                 <div className={`wa-deleted-message fst-italic text-muted d-flex align-items-center ${eliminadoPorAdministrador ? "is-admin-deleted" : ""}`}>
                   {eliminadoPorAdministrador ? (
-                    <i className="bi bi-shield-lock me-2" aria-hidden="true" />
+                    <i className="bi bi-shield-lock" aria-hidden="true" />
                   ) : (
                     <svg
                       xmlns="http://www.w3.org/2000/svg"
                       width="14"
                       height="14"
                       fill="currentColor"
-                      className="me-2"
+                      className="wa-deleted-icon"
                       viewBox="0 0 24 24"
                     >
                       <path d="M12 17a2 2 0 1 0 0-4 2 2 0 0 0 0 4Zm6-7h-1V7a5 5 0 0 0-10 0v3H6a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-9a2 2 0 0 0-2-2Zm-3 0H9V7a3 3 0 0 1 6 0v3Z" />
                     </svg>
                   )}
-                  {eliminadoPorAdministrador
-                    ? "Este mensaje fue eliminado por un administrador"
-                    : "Se eliminó este mensaje"}
+                  <span className="wa-deleted-message-label">
+                    {eliminadoPorAdministrador
+                      ? "Este mensaje fue eliminado por un administrador"
+                      : "Se eliminó este mensaje"}
+                  </span>
                 </div>
               ) : (
                 (() => {

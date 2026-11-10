@@ -373,6 +373,35 @@ const Messenger = () => {
   useEffect(() => {
     if (!usuario?.id) return;
 
+    let cancelled = false;
+    let lastRefreshAt = 0;
+    let requestSequence = 0;
+    const refreshPermissionsFromSession = async ({ force = false } = {}) => {
+      const now = Date.now();
+      if (!force && now - lastRefreshAt < 5000) return;
+      lastRefreshAt = now;
+      const sequence = ++requestSequence;
+      try {
+        const response = await fetch("/api/usuario/session", {
+          credentials: "include",
+          cache: "no-store",
+        });
+        if (!response.ok) return;
+        const data = await response.json();
+        const latest = data?.usuario;
+        if (cancelled || sequence !== requestSequence || Number(latest?.id) !== Number(usuario.id)) return;
+        actualizarUsuarioLocal({
+          usuarioId: latest.id,
+          rol_id: latest.rol_id,
+          rol_permisos: latest.rol_permisos,
+          permisos_chat: latest.permisos_chat,
+        });
+      } catch (error) {
+        // Un fallo de red no debe interrumpir un chat activo.
+        logDev("No fue posible actualizar los permisos de sesión:", error);
+      }
+    };
+
     const actualizarUsuarioLocal = (payload = {}) => {
       if (Number(payload.usuarioId) !== Number(usuario.id)) return;
 
@@ -400,12 +429,20 @@ const Messenger = () => {
 
     const handlePermisosChatActualizados = (payload = {}) => {
       actualizarUsuarioLocal(payload);
+      void refreshPermissionsFromSession({ force: true });
       logDev("🔐 Permisos de chat actualizados en tiempo real:", payload.permisos_chat);
     };
 
     const handleRolUsuarioActualizado = (payload = {}) => {
       actualizarUsuarioLocal(payload);
+      void refreshPermissionsFromSession({ force: true });
       logDev("👤 Rol/permisos de rol actualizados en tiempo real:", payload);
+    };
+
+    const handleSocketConnected = () => { void refreshPermissionsFromSession({ force: true }); };
+    const handleWindowFocus = () => { void refreshPermissionsFromSession(); };
+    const handleVisibility = () => {
+      if (document.visibilityState === "visible") void refreshPermissionsFromSession();
     };
 
     const handleCuentaDesactivada = (payload = {}) => {
@@ -433,11 +470,19 @@ const Messenger = () => {
     socket.on("permisosChatActualizados", handlePermisosChatActualizados);
     socket.on("rolUsuarioActualizado", handleRolUsuarioActualizado);
     socket.on("cuentaDesactivada", handleCuentaDesactivada);
+    socket.on("connect", handleSocketConnected);
+    window.addEventListener("focus", handleWindowFocus);
+    document.addEventListener("visibilitychange", handleVisibility);
+    void refreshPermissionsFromSession({ force: true });
 
     return () => {
+      cancelled = true;
       socket.off("permisosChatActualizados", handlePermisosChatActualizados);
       socket.off("rolUsuarioActualizado", handleRolUsuarioActualizado);
       socket.off("cuentaDesactivada", handleCuentaDesactivada);
+      socket.off("connect", handleSocketConnected);
+      window.removeEventListener("focus", handleWindowFocus);
+      document.removeEventListener("visibilitychange", handleVisibility);
     };
   }, [usuario?.id, navigate]);
 

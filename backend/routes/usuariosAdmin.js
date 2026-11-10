@@ -12,6 +12,8 @@ const {
   resolveInstance,
 } = require("../middleware/resolveInstance");
 
+const { notifyUpdatedUserPermissions } = require("../utils/notifyUpdatedUserPermissions");
+
 const {
   getActorPolicy,
   getActorProjectIds,
@@ -1400,6 +1402,10 @@ router.put(
       await connection.commit();
       transactionStarted = false;
 
+      if (roleEnabled || permissionsEnabled) {
+        await notifyUpdatedUserPermissions(req, pool, userIds, instanciaId);
+      }
+
       return res.json({
         code: "USER_ADMIN_BATCH_UPDATED",
         mensaje: `${userIds.length} usuario${userIds.length === 1 ? "" : "s"} actualizado${userIds.length === 1 ? "" : "s"} correctamente`,
@@ -2087,6 +2093,10 @@ router.put(
 
       await connection.commit();
       transactionStarted = false;
+
+      // La ruta administrativa también debe avisar al usuario editado.
+      // Antes sólo /api/usuarios/:id notificaba cambios en tiempo real.
+      await notifyUpdatedUserPermissions(req, pool, [usuarioId], instanciaId);
 
       return res.json({
         code: "USER_ADMIN_UPDATED",

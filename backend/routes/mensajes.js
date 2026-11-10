@@ -514,6 +514,63 @@ async function usuarioPuedeEliminarCualquierMensaje(usuarioId) {
 }
 
 
+// Buscar mensajes de un chat privado. Comparte el permiso buscar_mensajes
+// con la búsqueda grupal y respeta la conversación y el portal autenticados.
+router.get(
+  "/buscar",
+  requirePrivatePairQuery,
+  async (req, res) => {
+    const actorId = Number(req.auth?.userId);
+    try {
+      const permisos = await obtenerPermisosChatUsuario(actorId);
+      if (![1, "1", true, "true"].includes(permisos.buscar_mensajes)) {
+        return res.status(403).json({ error: "No tienes permiso para buscar mensajes" });
+      }
+
+      const query = String(req.query.q || "").trim();
+      const parsedLimit = Number.parseInt(req.query.limit, 10);
+      const limit = Number.isFinite(parsedLimit)
+        ? Math.min(Math.max(parsedLimit, 1), 80)
+        : 40;
+      if (!query) return res.json({ mensajes: [] });
+      if (query.length > 200) {
+        return res.status(400).json({ error: "La búsqueda es demasiado larga" });
+      }
+
+      const usuario1 = Number(req.query.usuario1);
+      const usuario2 = Number(req.query.usuario2);
+      const like = `%${query}%`;
+      const [rows] = await db.query(
+        `SELECT
+           m.id, m.usuario_envia_id, m.usuario_recibe_id,
+           m.mensaje, m.fecha_envio, m.editado, m.eliminado,
+           ma.archivo_url, ma.tipo_archivo, ma.nombre_archivo, ma.tamano,
+           u.nombre, u.apellido, u.url_imagen, u.background, u.correo
+         FROM mensajes m
+         JOIN usuario u ON u.id = m.usuario_envia_id
+         LEFT JOIN mensajes_archivos ma
+           ON ma.sender_id = m.usuario_envia_id
+          AND ma.receiver_id = m.usuario_recibe_id
+          AND ma.archivo_url = m.mensaje
+         WHERE (
+           (m.usuario_envia_id = ? AND m.usuario_recibe_id = ?)
+           OR (m.usuario_envia_id = ? AND m.usuario_recibe_id = ?)
+         )
+           AND COALESCE(m.eliminado, 0) = 0
+           AND (m.mensaje LIKE ? OR ma.nombre_archivo LIKE ?)
+         ORDER BY m.id DESC
+         LIMIT ?`,
+        [usuario1, usuario2, usuario2, usuario1, like, like, limit]
+      );
+
+      return res.json({ mensajes: rows });
+    } catch (err) {
+      console.error("❌ Error al buscar mensajes privados:", err);
+      return res.status(500).json({ error: "Error al buscar mensajes privados" });
+    }
+  }
+);
+
 router.get(
   "/contexto/:mensajeId",
   requirePrivatePairQuery,

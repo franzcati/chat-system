@@ -1,8 +1,9 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import toast from "react-hot-toast";
 import { getAvatarUrl } from "../utils/url";
 import GroupAvatar from "./GroupAvatar";
 import VerArchivos from "./VerArchivos";
+import { GroupSearchView } from "./VerInfoGrupo";
 
 const BASE_URL = "";
 
@@ -147,7 +148,8 @@ const VerInfoContacto = ({
   user,
   visible,
   onClose,
-  onBuscarEnChat,
+  onJumpToMessage,
+  searchRequestToken,
   mostrarVerArchivos,
   setMostrarVerArchivos,
   onEnviarMensaje,
@@ -156,9 +158,95 @@ const VerInfoContacto = ({
   presence,
   pinnedCount = 0,
 }) => {
+  const ultimoTokenBusqueda = useRef(null);
   const [info, setInfo] = useState(null);
   const [loading, setLoading] = useState(false);
   const [mostrarTodosGrupos, setMostrarTodosGrupos] = useState(false);
+  const [modoBusqueda, setModoBusqueda] = useState(false);
+  const [textoBusqueda, setTextoBusqueda] = useState("");
+  const [resultadosBusqueda, setResultadosBusqueda] = useState([]);
+  const [buscandoMensajes, setBuscandoMensajes] = useState(false);
+  const [errorBusqueda, setErrorBusqueda] = useState("");
+  const puedeBuscarMensajes = [1, "1", true, "true"].includes(user?.permisos_chat?.buscar_mensajes);
+
+  const abrirBusquedaPrivada = () => {
+    if (!puedeBuscarMensajes) {
+      toast.error("No tienes permiso para buscar mensajes");
+      return;
+    }
+    setMostrarVerArchivos?.(false);
+    setModoBusqueda(true);
+    setTextoBusqueda("");
+    setResultadosBusqueda([]);
+    setErrorBusqueda("");
+  };
+
+  const cerrarBusquedaPrivada = () => {
+    setModoBusqueda(false);
+    setTextoBusqueda("");
+    setResultadosBusqueda([]);
+    setErrorBusqueda("");
+    setBuscandoMensajes(false);
+  };
+
+  useEffect(() => {
+    cerrarBusquedaPrivada();
+  }, [chat?.usuario_id]);
+
+  useEffect(() => {
+    if (!visible || !searchRequestToken || ultimoTokenBusqueda.current === searchRequestToken) return;
+    ultimoTokenBusqueda.current = searchRequestToken;
+    abrirBusquedaPrivada();
+  }, [visible, searchRequestToken]);
+
+  useEffect(() => {
+    if (!visible || !modoBusqueda || !user?.id || !chat?.usuario_id) return;
+    const query = textoBusqueda.trim();
+    if (!query) {
+      setResultadosBusqueda([]);
+      setErrorBusqueda("");
+      setBuscandoMensajes(false);
+      return;
+    }
+
+    const controller = new AbortController();
+    setResultadosBusqueda([]);
+    setBuscandoMensajes(true);
+    setErrorBusqueda("");
+    const timer = setTimeout(async () => {
+      try {
+        const params = new URLSearchParams({
+          usuario1: String(user.id),
+          usuario2: String(chat.usuario_id),
+          q: query,
+          limit: "40",
+        });
+        const response = await fetch(`${BASE_URL}/api/mensajes/buscar?${params}`, {
+          signal: controller.signal,
+        });
+        const result = await response.json();
+        if (controller.signal.aborted) return;
+        if (!response.ok) {
+          setResultadosBusqueda([]);
+          setErrorBusqueda(result.error || "No se pudo buscar");
+          return;
+        }
+        setResultadosBusqueda(Array.isArray(result.mensajes) ? result.mensajes : []);
+      } catch (error) {
+        if (!controller.signal.aborted) {
+          console.error("❌ Error buscando mensajes privados:", error);
+          setErrorBusqueda("Error al buscar mensajes");
+        }
+      } finally {
+        if (!controller.signal.aborted) setBuscandoMensajes(false);
+      }
+    }, 250);
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
+  }, [visible, modoBusqueda, textoBusqueda, user?.id, chat?.usuario_id]);
+
 
   useEffect(() => {
     setMostrarTodosGrupos(false);
@@ -257,21 +345,40 @@ const VerInfoContacto = ({
         ) : (
           <>
             <div className="wa-group-info-topbar wa-contact-info-topbar">
-              <button type="button" className="wa-info-icon-btn" onClick={onClose} title="Cerrar" aria-label="Cerrar info. del contacto">
-                <i className="fa-solid fa-xmark" aria-hidden="true" />
-              </button>
-              <span>Info. del contacto</span>
-              <button
-                type="button"
-                className="wa-info-icon-btn ms-auto"
-                onClick={handleEditContact}
-                title="Editar contacto"
-                aria-label="Editar contacto"
-              >
-                <i className="fa-solid fa-pen" aria-hidden="true" />
-              </button>
+              {modoBusqueda ? (
+                <button type="button" className="wa-info-icon-btn" onClick={cerrarBusquedaPrivada} title="Volver" aria-label="Volver a información del contacto">
+                  <i className="fa-solid fa-arrow-left" aria-hidden="true" />
+                </button>
+              ) : (
+                <button type="button" className="wa-info-icon-btn" onClick={onClose} title="Cerrar" aria-label="Cerrar info. del contacto">
+                  <i className="fa-solid fa-xmark" aria-hidden="true" />
+                </button>
+              )}
+              <span>{modoBusqueda ? "Buscar mensajes" : "Info. del contacto"}</span>
+              {!modoBusqueda && (
+                <button
+                  type="button"
+                  className="wa-info-icon-btn ms-auto"
+                  onClick={handleEditContact}
+                  title="Editar contacto"
+                  aria-label="Editar contacto"
+                >
+                  <i className="fa-solid fa-pen" aria-hidden="true" />
+                </button>
+              )}
             </div>
 
+            {modoBusqueda ? (
+              <GroupSearchView
+                chat={chat}
+                value={textoBusqueda}
+                onChange={setTextoBusqueda}
+                results={resultadosBusqueda}
+                loading={buscandoMensajes}
+                error={errorBusqueda}
+                onSelect={onJumpToMessage}
+              />
+            ) : (
             <div className="wa-group-info-scroll wa-contact-info-scroll">
               <section className={`wa-contact-profile-hero ${contacto?.perfil_cartel ? "has-cover" : "is-default-cover"}`}>
                 <ContactCover contacto={contacto} />
@@ -307,7 +414,7 @@ const VerInfoContacto = ({
                   <i className="fa-solid fa-message" aria-hidden="true" />
                   <span>Mensaje</span>
                 </button>
-                <button type="button" className="wa-contact-action-btn is-search" onClick={onBuscarEnChat} title="Buscar en el chat">
+                <button type="button" className="wa-contact-action-btn is-search" onClick={abrirBusquedaPrivada} title="Buscar en el chat">
                   <i className="fa-solid fa-magnifying-glass" aria-hidden="true" />
                   <span>Buscar</span>
                 </button>
@@ -422,6 +529,7 @@ const VerInfoContacto = ({
                 </button>
               </section>
             </div>
+            )}
           </>
         )}
       </div>

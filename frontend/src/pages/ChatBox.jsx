@@ -597,6 +597,7 @@ const ChatBox = ({ chat, user, setChat, onCloseChat, onVerPerfil, onAddToList, e
     setMostrarVerArchivos(false);
     setMostrarInfoContacto(false);
     setContactoInfoArchivos([]);
+    setSearchRequestToken(null);
   }, [chat?.tipo, chat?.grupo_id, chat?.usuario_id]);
 
   const replyTitleStyle = useMemo(
@@ -4192,9 +4193,15 @@ const ChatBox = ({ chat, user, setChat, onCloseChat, onVerPerfil, onAddToList, e
   };
 
   const handleBuscarEnChat = () => {
-    if (chat?.tipo !== "grupo") return;
+    if (!chat) return;
     setMostrarVerArchivos(false);
-    setMostrarInfoGrupo(true);
+    if (chat.tipo === "grupo") {
+      setMostrarInfoContacto(false);
+      setMostrarInfoGrupo(true);
+    } else {
+      setMostrarInfoGrupo(false);
+      setMostrarInfoContacto(true);
+    }
     setSearchRequestToken(Date.now());
   };
 
@@ -4219,6 +4226,12 @@ const ChatBox = ({ chat, user, setChat, onCloseChat, onVerPerfil, onAddToList, e
 
     return cargarContextoMensajeGrupo(chat.grupo_id, mensajeId);
   }, [chat?.grupo_id, cargarContextoMensajeGrupo]);
+
+  const handleJumpToPrivateSearchMessage = useCallback(async (mensajeId) => {
+    if (!chat?.usuario_id || !mensajeId) return false;
+    if (scrollToMessage(mensajeId)) return true;
+    return cargarContextoMensajePrivado(mensajeId);
+  }, [chat?.usuario_id, cargarContextoMensajePrivado]);
 
   const handlePinnedMessageClick = useCallback(async (mensajeId) => {
     if (!mensajeId) return false;
@@ -6709,10 +6722,8 @@ const ChatBox = ({ chat, user, setChat, onCloseChat, onVerPerfil, onAddToList, e
               setMostrarInfoContacto(false);
               setMostrarVerArchivos(false);
             }}
-            onBuscarEnChat={() => {
-              setMostrarInfoContacto(false);
-              handleBuscarEnChat();
-            }}
+            onJumpToMessage={handleJumpToPrivateSearchMessage}
+            searchRequestToken={searchRequestToken}
             mostrarVerArchivos={mostrarVerArchivos}
             setMostrarVerArchivos={setMostrarVerArchivos}
             onEnviarMensaje={() => setMostrarInfoContacto(false)}

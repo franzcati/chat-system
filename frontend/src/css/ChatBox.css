@@ -21110,3 +21110,59 @@ body.dark .wa-history-message-row.in .wa-history-message-time,
   min-height: 0 !important;
   max-height: 100% !important;
 }
+
+
+/* ============================================================
+   FIX V32: mensajes eliminados y cursiva en el editor / burbuja
+   ============================================================ */
+.wa-messenger-root.active-tab-chat .message-text.message-deleted-bubble {
+  box-sizing: border-box !important;
+  max-width: min(390px, 100%) !important;
+  min-width: 0 !important;
+  padding: 9px 12px 7px !important;
+}
+
+.wa-messenger-root.active-tab-chat .message-text.message-deleted-bubble .wa-deleted-message {
+  display: flex !important;
+  align-items: flex-start !important;
+  gap: 7px !important;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  white-space: normal !important;
+  overflow-wrap: anywhere !important;
+  word-break: normal !important;
+  line-height: 1.45 !important;
+  font-style: normal;
+}
+
+.wa-messenger-root.active-tab-chat .message-text.message-deleted-bubble .wa-deleted-message-label {
+  display: block;
+  min-width: 0;
+  flex: 1 1 auto;
+  white-space: normal !important;
+  overflow-wrap: anywhere !important;
+}
+
+.wa-messenger-root.active-tab-chat .message-text.message-deleted-bubble .wa-deleted-message > i,
+.wa-messenger-root.active-tab-chat .message-text.message-deleted-bubble .wa-deleted-message > svg {
+  flex: 0 0 14px;
+  width: 14px;
+  height: 14px;
+  margin: 2px 0 0 !important;
+}
+
+.wa-messenger-root.active-tab-chat .message-text.message-deleted-bubble .message-footer {
+  max-width: 100%;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.wa-rich-editor em,
+.wa-rich-editor .wa-rich-italic,
+.wa-rich-message em,
+.wa-rich-message .wa-rich-italic,
+.wa-rich-html-message em,
+.wa-rich-html-message .wa-rich-italic {
+  font-style: italic !important;
+}

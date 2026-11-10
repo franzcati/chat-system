@@ -1059,7 +1059,7 @@ const formatSearchDate = (value) => {
   return date.toLocaleDateString([], { day: "2-digit", month: "2-digit", year: "numeric" });
 };
 
-const GroupSearchView = ({ chat, value, onChange, results, loading, error, onSelect }) => {
+export const GroupSearchView = ({ chat, value, onChange, results, loading, error, onSelect }) => {
   const groupName = chat?.usuario_nombre || chat?.nombre || "este grupo";
 
   return (
