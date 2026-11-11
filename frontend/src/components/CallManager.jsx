@@ -36,6 +36,7 @@ const buildIceServers = () => {
 const ICE_CONFIG = { iceServers: buildIceServers(), iceCandidatePoolSize: 10 };
 const displayName = (person = {}) => String(person.nombre_completo || person.nombre || person.usuario_nombre || person.name || "Usuario").trim();
 const initials = (person = {}) => displayName(person).split(/\s+/).slice(0, 2).map((part) => part.charAt(0).toUpperCase()).join("") || "U";
+const inviteAvatarStyle = (person = {}) => ({ background: person?.background || person?.avatar_bg || "#5f7394" });
 
 function Avatar({ person = {}, className = "", large = false }) {
   const avatar = person?.url_imagen ? getAvatarUrl(person.url_imagen) : "";
@@ -46,6 +47,19 @@ function Avatar({ person = {}, className = "", large = false }) {
     <span className={`qc-call-default-avatar ${large ? "is-large" : ""} ${className}`.trim()} aria-label={displayName(person)}>
       <i className="fa-solid fa-user" />
     </span>
+  );
+}
+
+function InviteAvatar({ person = {} }) {
+  const avatar = person?.url_imagen ? getAvatarUrl(person.url_imagen) : "";
+  return (
+    <div className="qc-call-invite-avatar" aria-hidden="true">
+      {avatar ? (
+        <img src={avatar} alt="" draggable={false} />
+      ) : (
+        <span style={inviteAvatarStyle(person)}>{initials(person)}</span>
+      )}
+    </div>
   );
 }
 
@@ -314,6 +328,14 @@ const CallManager = forwardRef(function CallManager({ user }, ref) {
   const [confirmHidePreview, setConfirmHidePreview] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [inviteOpen, setInviteOpen] = useState(false);
+  const [inviteLoading, setInviteLoading] = useState(false);
+  const [inviteSending, setInviteSending] = useState(false);
+  const [inviteSearch, setInviteSearch] = useState("");
+  const [inviteCandidates, setInviteCandidates] = useState([]);
+  const [inviteCapacity, setInviteCapacity] = useState(0);
+  const [inviteSelected, setInviteSelected] = useState([]);
+  const [inviteError, setInviteError] = useState("");
   const [devices, setDevices] = useState({ audioinput: [], audiooutput: [], videoinput: [] });
   const [selectedDevices, setSelectedDevices] = useState({ audioinput: "", audiooutput: "", videoinput: "" });
   const [speakerVolume, setSpeakerVolume] = useState(1);
@@ -763,6 +785,12 @@ const CallManager = forwardRef(function CallManager({ user }, ref) {
     setLocalPreviewVisible(true);
     setPreviewOpen(false);
     setSettingsOpen(false);
+    setInviteOpen(false);
+    setInviteSelected([]);
+    setInviteCandidates([]);
+    setInviteError("");
+    setInviteLoading(false);
+    setInviteSending(false);
     setConfirmHidePreview(false);
     setMinimized(false);
     if (previewStreamRef.current) { previewStreamRef.current.getTracks().forEach((track) => track.stop()); previewStreamRef.current = null; }
@@ -987,20 +1015,85 @@ const CallManager = forwardRef(function CallManager({ user }, ref) {
         title: response.title || displayName(chat),
         participants: response.participants || [],
         initiatorId: Number(user?.id),
-        phase: "ringing",
+        canInvite: payload.chatType === "grupo" ? Boolean(response.canInvite) : true,
+        // El creador de una reunión grupal entra inmediatamente: así puede
+        // invitar participantes aunque todavía nadie haya contestado.
+        phase: payload.chatType === "grupo" ? "connected" : "ringing",
       };
       setCall(next);
       callRef.current = next;
-      startRingtone("outgoing");
-      window.setTimeout(() => {
-        const active = callRef.current;
-        if (active?.callId === response.callId && active.phase === "ringing") {
-          socket.emit("call:leave", { callId: response.callId, reason: "timeout" });
-          finishCall("La llamada no fue contestada");
-        }
-      }, CALL_TIMEOUT_MS);
+      if (payload.chatType === "grupo") {
+        stopRingtone();
+        startTimer();
+        emitMediaState();
+      } else {
+        startRingtone("outgoing");
+        window.setTimeout(() => {
+          const active = callRef.current;
+          if (active?.callId === response.callId && active.phase === "ringing") {
+            socket.emit("call:leave", { callId: response.callId, reason: "timeout" });
+            finishCall("La llamada no fue contestada");
+          }
+        }, CALL_TIMEOUT_MS);
+      }
     });
     return true;
+  };
+
+  // Cargar desde el servidor los usuarios elegibles; nunca usar el catálogo
+  // general del frontend porque podría exponer usuarios de otros proyectos.
+  const loadInviteCandidates = (currentCall = callRef.current) => {
+    if (!currentCall?.callId || currentCall.phase !== "connected") return;
+    setInviteLoading(true);
+    setInviteError("");
+    socket.timeout(10000).emit("call:invite-candidates", { callId: currentCall.callId }, (error, response = {}) => {
+      if (callRef.current?.callId !== currentCall.callId) return;
+      setInviteLoading(false);
+      if (error || !response.ok) {
+        setInviteError(response.error || "No se pudo obtener la lista de contactos");
+        return;
+      }
+      setInviteCandidates(Array.isArray(response.candidates) ? response.candidates : []);
+      setInviteCapacity(Math.max(0, Number(response.capacity) || 0));
+    });
+  };
+
+  const openInviteDialog = () => {
+    const current = callRef.current;
+    if (!current || current.phase !== "connected" || !current.canInvite) return;
+    setInviteOpen(true);
+    setInviteSearch("");
+    setInviteSelected([]);
+    setInviteCandidates([]);
+    loadInviteCandidates(current);
+  };
+
+  const sendCallInvites = async () => {
+    const current = callRef.current;
+    if (!current?.callId || !inviteSelected.length || inviteSending) return;
+    setInviteSending(true);
+    setInviteError("");
+    let sent = 0;
+    const errors = [];
+    for (const id of inviteSelected.slice(0, inviteCapacity)) {
+      const result = await new Promise(resolve => socket.timeout(10000).emit(
+        "call:invite", { callId: current.callId, targetUserId: Number(id) },
+        (error, response = {}) => resolve(error ? { ok: false, error: "No respondió el servidor" } : response)
+      ));
+      if (callRef.current?.callId !== current.callId) break;
+      if (result?.ok) sent += 1;
+      else errors.push(result?.error || "Invitación rechazada");
+    }
+    setInviteSending(false);
+    if (sent) showStatus(`${sent} ${sent === 1 ? "invitación enviada" : "invitaciones enviadas"}`, 3500);
+    if (errors.length) {
+      setInviteError(errors[0]);
+      setInviteSelected([]);
+      loadInviteCandidates(current);
+    } else {
+      setInviteOpen(false);
+      setInviteSelected([]);
+    }
   };
 
   useImperativeHandle(ref, () => ({ startCall }), [user]);
@@ -1016,7 +1109,7 @@ const CallManager = forwardRef(function CallManager({ user }, ref) {
     }
     stopRingtone();
     resetWindowRect();
-    const next = { ...current, phase: "connecting" };
+    const next = { ...current, phase: "connecting", canInvite: Boolean(current.canInvite) };
     setCall(next);
     callRef.current = next;
     setIncoming(null);
@@ -1236,6 +1329,14 @@ const CallManager = forwardRef(function CallManager({ user }, ref) {
       catch (error) { console.warn("ICE candidate rechazado:", error); }
     };
 
+    const onParticipants = ({ callId, participants: updated }) => {
+      const current = callRef.current;
+      if (current?.callId !== callId || !Array.isArray(updated)) return;
+      const next = { ...current, participants: updated };
+      callRef.current = next;
+      setCall(next);
+    };
+
     const onParticipantLeft = ({ callId, userId: leftId }) => {
       if (callRef.current?.callId !== callId) return;
       closePeer(leftId);
@@ -1259,10 +1360,12 @@ const CallManager = forwardRef(function CallManager({ user }, ref) {
 
     const onRejected = ({ callId, userId: rejectedId, reason }) => {
       if (callRef.current?.callId !== callId) return;
-      if (callRef.current.chatType === "privado") {
+      // En llamadas ampliadas un rechazo no termina la conversación activa.
+      if (callRef.current.chatType === "privado" && callRef.current.phase !== "connected") {
         finishCall(reason === "busy" ? "El usuario está ocupado" : "Llamada rechazada");
       } else {
         closePeer(rejectedId);
+        showStatus(reason === "timeout" ? "La invitación expiró" : "El invitado no pudo unirse");
       }
     };
 
@@ -1355,6 +1458,7 @@ const CallManager = forwardRef(function CallManager({ user }, ref) {
     socket.on("call:answer", onAnswer);
     socket.on("call:ice", onIce);
     socket.on("call:participant-left", onParticipantLeft);
+    socket.on("call:participants", onParticipants);
     socket.on("call:media-state", onMediaState);
     socket.on("call:screen-available", onScreenAvailable);
     socket.on("call:screen-stopped", onScreenStopped);
@@ -1371,6 +1475,7 @@ const CallManager = forwardRef(function CallManager({ user }, ref) {
       socket.off("call:answer", onAnswer);
       socket.off("call:ice", onIce);
       socket.off("call:participant-left", onParticipantLeft);
+      socket.off("call:participants", onParticipants);
       socket.off("call:media-state", onMediaState);
       socket.off("call:screen-available", onScreenAvailable);
       socket.off("call:screen-stopped", onScreenStopped);
@@ -1398,6 +1503,17 @@ const CallManager = forwardRef(function CallManager({ user }, ref) {
   const personById = (id) => participants.find((item) => Number(item.id) === Number(id)) || { nombre: "Usuario" };
   const remotePeople = participants.filter((item) => Number(item.id) !== Number(user?.id));
   const primaryRemotePerson = remotePeople[0] || incoming?.caller || { nombre: call?.title || "Usuario" };
+
+  const canInviteCall = Boolean(call && call.phase === "connected" && call.canInvite);
+  const filteredInviteCandidates = useMemo(() => {
+    const search = inviteSearch.trim().toLocaleLowerCase();
+    return inviteCandidates
+      .filter(person => !search || displayName(person).toLocaleLowerCase().includes(search))
+      .sort((a, b) => {
+        if (Boolean(b.online) !== Boolean(a.online)) return Number(Boolean(b.online)) - Number(Boolean(a.online));
+        return displayName(a).localeCompare(displayName(b), "es", { sensitivity: "base" });
+      });
+  }, [inviteCandidates, inviteSearch]);
 
   const canUpgradeVideo = Boolean(
     call &&
@@ -1490,6 +1606,7 @@ const CallManager = forwardRef(function CallManager({ user }, ref) {
             <div className="qc-call-mini-controls">
               <button onClick={toggleMic} disabled={deafened} className={`qc-call-control ${!micEnabled ? "off" : ""}`} title={micEnabled ? "Silenciar micrófono" : "Activar micrófono"}><i className={`fa-solid ${micEnabled ? "fa-microphone" : "fa-microphone-slash"}`} /></button>
               <button onClick={toggleDeafen} className={`qc-call-control ${deafened ? "off" : ""}`} aria-label={deafened ? "Dejar de ensordecer" : "Ensordecer"} data-tooltip={deafened ? "Activar sonido" : "Ensordecer"}><i className={`fa-solid ${deafened ? "fa-volume-xmark" : "fa-headphones"}`} /></button>
+              {canInviteCall && <button type="button" onClick={openInviteDialog} className="qc-call-control qc-call-add-people" aria-label="Añadir participantes" data-tooltip="Añadir participantes"><i className="fa-solid fa-user-plus" /></button>}
               <button onClick={() => screenShareActive ? stopScreenShare(true) : setScreenPickerOpen(true)} className={`qc-call-control qc-call-share-control ${screenShareActive ? "is-sharing" : ""}`} aria-label={screenShareActive ? "Dejar de transmitir pantalla" : "Compartir pantalla"} data-tooltip={screenShareActive ? "Dejar de transmitir" : "Compartir pantalla"}><ShareScreenIcon sharing={screenShareActive} /></button>
               <button onClick={() => setMinimized(false)} className="qc-call-control" title="Maximizar llamada"><i className="fa-solid fa-up-right-and-down-left-from-center" /></button>
               <button onClick={hangup} className="qc-call-control hangup" title="Desconectar"><i className="fa-solid fa-phone-slash" /></button>
@@ -1622,6 +1739,7 @@ const CallManager = forwardRef(function CallManager({ user }, ref) {
                 {call.kind === "video" && (
                   <button onClick={toggleCamera} disabled={cameraPending} className={`qc-call-control ${!cameraEnabled ? "off" : ""} ${cameraPending ? "is-loading" : ""}`} aria-label={cameraPending ? "Solicitando cámara…" : cameraEnabled ? "Apagar cámara" : "Encender cámara"} data-tooltip={cameraPending ? "Solicitando cámara…" : cameraEnabled ? "Apagar cámara" : "Encender cámara"}><i className={`fa-solid ${cameraEnabled ? "fa-video" : "fa-video-slash"}`} /></button>
                 )}
+                {canInviteCall && <button type="button" onClick={openInviteDialog} className="qc-call-control qc-call-add-people" aria-label="Añadir participantes" data-tooltip="Añadir participantes"><i className="fa-solid fa-user-plus" /></button>}
                 <button onClick={() => screenShareActive ? stopScreenShare(true) : setScreenPickerOpen(true)} className={`qc-call-control qc-call-share-control ${screenShareActive ? "is-sharing" : ""}`} aria-label={screenShareActive ? "Dejar de transmitir pantalla" : "Compartir pantalla"} data-tooltip={screenShareActive ? "Dejar de transmitir" : "Compartir pantalla"}><ShareScreenIcon sharing={screenShareActive} /></button>
                 <button onClick={hangup} className="qc-call-control hangup" aria-label="Colgar" data-tooltip="Desconectar"><i className="fa-solid fa-phone-slash" /></button>
               </footer>
@@ -1634,6 +1752,94 @@ const CallManager = forwardRef(function CallManager({ user }, ref) {
       </section>
     );
   };
+
+  const renderInviteDialog = () => (
+        <div className="qc-call-modal-backdrop qc-call-invite-backdrop" role="presentation" onMouseDown={(event) => {
+          if (event.target === event.currentTarget && !inviteSending) setInviteOpen(false);
+        }}>
+          <section className="qc-call-dialog qc-call-invite-dialog" role="dialog" aria-modal="true" aria-label="Añadir participantes a llamada" onMouseDown={(event) => event.stopPropagation()}>
+            <header className="qc-call-invite-header">
+              <div className="qc-call-invite-heading">
+                <span className="qc-call-invite-heading-icon" aria-hidden="true"><i className="fa-solid fa-user-plus" /></span>
+                <div>
+                  <h3>Añadir participantes</h3>
+                  <p>{call.chatType === "grupo" ? "Busca y selecciona miembros para sumarlos a esta llamada grupal." : "Busca y selecciona usuarios de tus proyectos compartidos para sumarlos a la llamada."}</p>
+                </div>
+              </div>
+              <button type="button" className="qc-call-dialog-close qc-call-invite-close" onClick={() => !inviteSending && setInviteOpen(false)} aria-label="Cerrar"><i className="fa-solid fa-xmark" /></button>
+            </header>
+
+            <div className="qc-call-invite-search-wrap">
+              <label className="qc-call-invite-search">
+                <i className="fa-solid fa-magnifying-glass" />
+                <input autoFocus type="search" value={inviteSearch} onChange={event => setInviteSearch(event.target.value)} placeholder="Buscar un participante…" aria-label="Buscar usuarios" />
+              </label>
+            </div>
+
+            <div className="qc-call-invite-list-shell">
+              <div className="qc-call-invite-list-label">Contactos</div>
+              <div className="qc-call-invite-list" role="list" aria-label="Usuarios disponibles">
+                {inviteLoading ? (
+                  <div className="qc-call-invite-empty" role="status"><i className="fa-solid fa-circle-notch fa-spin" /> Cargando contactos…</div>
+                ) : filteredInviteCandidates.length ? (
+                  filteredInviteCandidates.map(person => {
+                    const selected = inviteSelected.includes(Number(person.id));
+                    const disabled = !person.online || (!selected && inviteSelected.length >= inviteCapacity) || inviteSending;
+                    const statusText = person.online ? "Disponible" : "Desconectado";
+                    return (
+                      <div
+                        key={person.id}
+                        className={`qc-call-invite-item${selected ? " is-selected" : ""}${disabled ? " is-disabled" : ""}${person.online ? " is-online" : " is-offline"}`}
+                        role="listitem"
+                        title={!person.online ? "El usuario está desconectado" : "Añadir a la llamada"}
+                        onClick={() => {
+                          if (disabled) return;
+                          setInviteSelected(prev => selected ? prev.filter(id => id !== Number(person.id)) : [...prev, Number(person.id)]);
+                        }}
+                      >
+                        <label className="qc-call-invite-check-wrap" onClick={(event) => event.stopPropagation()}>
+                          <input
+                            type="checkbox"
+                            className="qc-call-invite-check-input"
+                            checked={selected}
+                            disabled={disabled}
+                            onChange={() => setInviteSelected(prev => selected ? prev.filter(id => id !== Number(person.id)) : [...prev, Number(person.id)])}
+                            aria-label={`Seleccionar a ${displayName(person)}`}
+                          />
+                          <span className="qc-call-invite-check-ui" aria-hidden="true"><i className="fa-solid fa-check" /></span>
+                        </label>
+                        <InviteAvatar person={person} />
+                        <div className="qc-call-invite-person">
+                          <strong>{displayName(person)}</strong>
+                          <small className={person.online ? "is-online" : "is-offline"}>{person.online && <i aria-hidden="true" />}{statusText}</small>
+                        </div>
+                        {selected ? <span className="qc-call-invite-member-badge is-selected">Seleccionado</span> : !person.online ? <span className="qc-call-invite-member-badge">Desconectado</span> : null}
+                      </div>
+                    );
+                  })
+                ) : (
+                  <div className="qc-call-invite-empty">No se encontraron contactos para esta llamada.</div>
+                )}
+              </div>
+            </div>
+            {inviteError && <div className="qc-call-invite-error" role="alert"><i className="fa-solid fa-circle-exclamation" /> <span>{inviteError}</span></div>}
+            <div className="qc-call-invite-helper-row">
+              <div className="qc-call-invite-helper-copy">
+                <i className="fa-solid fa-circle-info" aria-hidden="true" />
+                <span>{call.chatType === "grupo" ? "Solo los administradores y el propietario pueden añadir miembros a la llamada grupal." : "Solo aparecen usuarios de tus proyectos compartidos. Recibirán una llamada entrante y podrán aceptar o rechazar."}</span>
+              </div>
+              <strong>{inviteSelected.length} seleccionados · {inviteCapacity} {inviteCapacity === 1 ? "lugar" : "lugares"}</strong>
+            </div>
+            <footer className="qc-call-invite-footer">
+              <button type="button" className="qc-call-invite-cancel" disabled={inviteSending} onClick={() => setInviteOpen(false)}>Cancelar</button>
+              <button type="button" className="qc-call-invite-submit" disabled={inviteSending || inviteLoading || inviteSelected.length === 0 || inviteCapacity <= 0} onClick={sendCallInvites}>
+                {inviteSending ? <span className="qc-call-invite-submit-loading" aria-hidden="true" /> : <i className="fa-solid fa-user-plus" aria-hidden="true" />}
+                <span>{inviteSending ? "Invitando…" : "Añadir seleccionados"}</span>
+              </button>
+            </footer>
+          </section>
+        </div>
+  );
 
   return (
     <>
@@ -1649,6 +1855,10 @@ const CallManager = forwardRef(function CallManager({ user }, ref) {
         />
       ))}
 
+
+      {inviteOpen && call?.phase !== "ended" && (popoutHost?.ownerDocument
+        ? createPortal(renderInviteDialog(), popoutHost.ownerDocument.body)
+        : renderInviteDialog())}
 
       {screenPickerOpen && (
         <div className="qc-call-modal-backdrop">
@@ -1748,7 +1958,7 @@ const CallManager = forwardRef(function CallManager({ user }, ref) {
           <section className={`qc-incoming-call-card ${incoming.phase === "ended" ? "is-ended" : ""}`} role="dialog" aria-modal="true" aria-label="Llamada entrante">
             <div className="qc-incoming-call-badge">
               <i className={`fa-solid ${incoming.kind === "video" ? "fa-video" : "fa-phone"}`} />
-              {incoming.kind === "video" ? "Videollamada entrante" : "Llamada entrante"}
+              {incoming.addedToCall ? "Invitación a llamada en curso" : incoming.kind === "video" ? "Videollamada entrante" : "Llamada entrante"}
             </div>
 
             <div className="qc-incoming-call-avatar-ring">
@@ -1764,7 +1974,7 @@ const CallManager = forwardRef(function CallManager({ user }, ref) {
                   ? incoming.endedMessage || "Llamada finalizada"
                   : incoming.silenced
                     ? "Llamada silenciada"
-                    : "Te está llamando…"}
+                    : incoming.addedToCall ? `${displayName(incoming.invitedBy || incoming.caller)} te añadió a la llamada` : "Te está llamando…"}
               </span>
             </div>
 

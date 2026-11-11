@@ -2062,3 +2062,507 @@
 @media (prefers-reduced-motion: reduce) {
   .qc-screen-preview-watch, .qc-screen-exit-focus { transition: none; }
 }
+
+/* Invitaciones a llamada en curso: modal compacto, compatible con ambos temas. */
+.qc-call-add-people { color: #f0f5ff; }
+.qc-call-invite-dialog { width: min(510px, calc(100vw - 28px)); }
+.qc-call-invite-dialog h3 { display: flex; align-items: center; gap: 11px; }
+.qc-call-invite-dialog h3 > i { font-size: 18px; color: #93a7ff; }
+.qc-call-invite-search {
+  display: flex; align-items: center; gap: 10px;
+  padding: 0 13px; border-radius: 11px;
+  color: #a5b8d9; background: #151e2d;
+  border: 1px solid #3c516f; margin-bottom: 10px;
+}
+.qc-call-invite-search:focus-within { border-color: #6d90ff; box-shadow: 0 0 0 3px rgba(109,144,255,.15); }
+.qc-call-invite-search input {
+  min-width: 0; width: 100%; height: 43px; background: transparent;
+  border: none; outline: none; color: inherit; font: inherit;
+}
+.qc-call-invite-search input::placeholder { color: #8fa1be; }
+.qc-call-invite-count { color: #9bacc7; font-size: 12px; margin: 10px 0; }
+.qc-call-invite-list {
+  display: flex; flex-direction: column; gap: 4px;
+  max-height: min(300px, 38vh); min-height: 95px;
+  padding: 4px; overflow-y: auto; overscroll-behavior: contain;
+  border-radius: 13px; background: rgba(0,0,0,.12);
+}
+.qc-call-invite-item {
+  display: flex; align-items: center; gap: 11px;
+  border-radius: 10px; padding: 8px 10px;
+  cursor: pointer; transition: background .15s ease, transform .15s ease;
+}
+.qc-call-invite-item:hover:not(.is-disabled) { background: rgba(118,153,228,.18); transform: translateX(2px); }
+.qc-call-invite-item.is-disabled { opacity: .46; cursor: not-allowed; }
+.qc-call-invite-item input { width: 17px; height: 17px; accent-color: #677dff; cursor: inherit; flex: 0 0 auto; }
+.qc-call-invite-item img, .qc-call-invite-item .qc-call-default-avatar {
+  width: 40px; height: 40px; border-radius: 50%; object-fit: cover; flex: 0 0 auto;
+}
+.qc-call-invite-person { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.qc-call-invite-person strong { font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.qc-call-invite-person small { font-size: 11px; color: #a9b7cc; }
+.qc-call-invite-check { color: #87c8ff; }
+.qc-call-invite-empty { padding: 28px 10px; text-align: center; font-size: 13px; color: #afbad0; }
+.qc-call-invite-error { margin-top: 10px; color: #ffbac6; font-size: 12px; line-height: 1.4; }
+.qc-call-invite-dialog .qc-call-dialog-actions button:disabled { opacity: .45; cursor: not-allowed; }
+:root[data-theme="light"] .qc-call-invite-search { color: #17365f; background: #ecf3fd; border-color: #c9d8ed; }
+:root[data-theme="light"] .qc-call-invite-search input::placeholder { color: #7588a4; }
+:root[data-theme="light"] .qc-call-invite-count { color: #617594; }
+:root[data-theme="light"] .qc-call-invite-list { background: #edf3fb; }
+:root[data-theme="light"] .qc-call-invite-item:hover:not(.is-disabled) { background: #dae8fd; }
+:root[data-theme="light"] .qc-call-invite-person small, :root[data-theme="light"] .qc-call-invite-empty { color: #71839c; }
+:root[data-theme="light"] .qc-call-invite-error { color: #b71c39; }
+@media (max-width: 520px) {
+  .qc-call-invite-dialog { padding: 18px; }
+  .qc-call-invite-list { max-height: 36vh; }
+}
+@media (prefers-reduced-motion: reduce) { .qc-call-invite-item { transition: none; } }
+
+/* CALLS V34 — modal de invitación con el mismo lenguaje visual del sistema de chat */
+.qc-call-invite-backdrop {
+  --ci-blue: var(--qc-chat-blue, #1498ff);
+  --ci-violet: var(--qc-chat-violet, #7347ff);
+  --ci-gradient: var(--qc-chat-gradient, linear-gradient(135deg, #16a7ff 0%, #2671ff 52%, #7b46ff 100%));
+  --ci-panel: #f9fcff;
+  --ci-panel-soft: #f3f8ff;
+  --ci-row: rgba(255, 255, 255, .95);
+  --ci-row-hover: #f6faff;
+  --ci-row-selected: linear-gradient(90deg, rgba(28, 137, 255, .085), rgba(116, 71, 255, .055));
+  --ci-border: rgba(91, 139, 205, .25);
+  --ci-border-strong: rgba(45, 126, 255, .48);
+  --ci-divider: rgba(100, 137, 188, .15);
+  --ci-text: #0c1a3b;
+  --ci-muted: #66799d;
+  --ci-muted-2: #93a2bc;
+  --ci-shadow: 0 24px 70px rgba(25, 58, 107, .18);
+}
+
+:root[data-theme="dark"] .qc-call-invite-backdrop {
+  --ci-panel: #0c1730;
+  --ci-panel-soft: #10203e;
+  --ci-row: rgba(12, 22, 42, .96);
+  --ci-row-hover: rgba(25, 42, 76, .96);
+  --ci-row-selected: linear-gradient(90deg, rgba(28, 137, 255, .16), rgba(116, 71, 255, .12));
+  --ci-border: rgba(81, 118, 179, .24);
+  --ci-border-strong: rgba(72, 130, 255, .45);
+  --ci-divider: rgba(115, 149, 208, .12);
+  --ci-text: #eaf3ff;
+  --ci-muted: #9fb2d2;
+  --ci-muted-2: #7f97bc;
+  --ci-shadow: 0 28px 80px rgba(0, 0, 0, .45);
+}
+
+.qc-call-invite-dialog {
+  width: min(520px, calc(100vw - 28px));
+  height: min(820px, calc(100vh - 28px));
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 0;
+  color: var(--ci-text);
+  background:
+    radial-gradient(circle at 12% 0%, rgba(25, 152, 255, .08), transparent 25%),
+    radial-gradient(circle at 88% 0%, rgba(116, 71, 255, .075), transparent 28%),
+    var(--ci-panel);
+  border: 1px solid var(--ci-border-strong);
+  border-radius: 24px;
+  box-shadow: var(--ci-shadow);
+}
+
+.qc-call-invite-header {
+  flex: 0 0 auto;
+  min-height: 86px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 17px 18px 10px;
+}
+
+.qc-call-invite-heading {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 13px;
+}
+
+.qc-call-invite-heading-icon {
+  width: 48px;
+  height: 48px;
+  min-width: 48px;
+  display: grid;
+  place-items: center;
+  border-radius: 15px;
+  color: #fff;
+  background: var(--ci-gradient);
+  border: 1px solid rgba(74, 141, 255, .36);
+  box-shadow: 0 9px 24px rgba(43, 108, 239, .18);
+  font-size: 1.12rem;
+}
+
+.qc-call-invite-heading h3 {
+  margin: 0;
+  color: var(--ci-text);
+  font-size: 1.10rem;
+  line-height: 1.2;
+  font-weight: 850;
+  letter-spacing: -.025em;
+}
+
+.qc-call-invite-heading p {
+  margin: 5px 0 0;
+  color: var(--ci-muted);
+  font-size: .72rem;
+  line-height: 1.35;
+  font-weight: 600;
+}
+
+.qc-call-invite-close {
+  width: 38px;
+  height: 38px;
+  min-width: 38px;
+  border-radius: 12px;
+  color: var(--ci-muted);
+}
+
+.qc-call-invite-close:hover:not(:disabled) {
+  color: var(--ci-blue);
+  background: rgba(36, 119, 255, .09);
+  border-color: rgba(53, 125, 255, .19);
+  transform: translateY(-1px);
+}
+
+.qc-call-invite-search-wrap {
+  flex: 0 0 auto;
+  padding: 4px 18px 14px;
+}
+
+.qc-call-invite-search {
+  height: 48px;
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 0 15px;
+  color: var(--ci-muted);
+  background: var(--ci-panel-soft);
+  border: 1px solid var(--ci-border);
+  border-radius: 15px;
+  transition: border-color .16s ease, box-shadow .16s ease, background .16s ease;
+}
+
+.qc-call-invite-search:focus-within {
+  color: var(--ci-blue);
+  background: var(--ci-row);
+  border-color: var(--ci-border-strong);
+  box-shadow: 0 0 0 3px rgba(38, 113, 255, .09);
+}
+
+.qc-call-invite-search input {
+  width: 100%;
+  min-width: 0;
+  height: 100%;
+  color: var(--ci-text);
+  background: transparent;
+  border: 0;
+  outline: 0;
+  box-shadow: none;
+  font: inherit;
+  font-size: .78rem;
+  font-weight: 620;
+}
+
+.qc-call-invite-search input::placeholder { color: var(--ci-muted-2); opacity: 1; }
+
+.qc-call-invite-list-shell {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  margin: 0 18px;
+  overflow: hidden;
+  background: var(--ci-row);
+  border: 1px solid var(--ci-border);
+  border-radius: 18px;
+}
+
+.qc-call-invite-list-label {
+  flex: 0 0 auto;
+  padding: 11px 14px 8px;
+  color: var(--ci-muted);
+  font-size: .69rem;
+  font-weight: 760;
+  letter-spacing: .01em;
+}
+
+.qc-call-invite-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 0 8px 8px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(80, 124, 181, .34) transparent;
+  background: transparent;
+}
+
+.qc-call-invite-list::-webkit-scrollbar { width: 7px; }
+.qc-call-invite-list::-webkit-scrollbar-thumb { border-radius: 999px; background: rgba(80, 124, 181, .30); }
+
+.qc-call-invite-item {
+  min-height: 57px;
+  display: grid;
+  grid-template-columns: 28px 42px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 10px;
+  color: var(--ci-text);
+  background: transparent;
+  border-bottom: 1px solid var(--ci-divider);
+  border-radius: 11px;
+  cursor: pointer;
+  transition: background .14s ease, border-color .14s ease;
+}
+
+.qc-call-invite-item:last-child { border-bottom-color: transparent; }
+.qc-call-invite-item:not(.is-disabled):hover { background: var(--ci-row-hover); }
+.qc-call-invite-item.is-selected { background: var(--ci-row-selected); }
+.qc-call-invite-item.is-disabled { cursor: not-allowed; opacity: .68; }
+
+.qc-call-invite-check-wrap {
+  width: 26px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  margin: 0;
+  cursor: inherit;
+}
+
+.qc-call-invite-check-input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.qc-call-invite-check-ui {
+  width: 20px;
+  height: 20px;
+  display: grid;
+  place-items: center;
+  border-radius: 7px;
+  border: 1.5px solid rgba(86, 118, 171, .42);
+  background: rgba(0, 0, 0, .06);
+  color: transparent;
+  transition: background .14s ease, border-color .14s ease, color .14s ease, transform .14s ease;
+}
+
+.qc-call-invite-check-ui i { font-size: 11px; }
+.qc-call-invite-check-input:checked + .qc-call-invite-check-ui {
+  color: #fff;
+  background: var(--ci-gradient);
+  border-color: transparent;
+}
+
+.qc-call-invite-avatar,
+.qc-call-invite-avatar img,
+.qc-call-invite-avatar span {
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+}
+
+.qc-call-invite-avatar {
+  position: relative;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  flex: 0 0 auto;
+}
+
+.qc-call-invite-avatar img {
+  object-fit: cover;
+  display: block;
+}
+
+.qc-call-invite-avatar span {
+  display: grid;
+  place-items: center;
+  color: #fff;
+  font-size: .84rem;
+  font-weight: 800;
+  letter-spacing: .01em;
+}
+
+.qc-call-invite-person {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  gap: 2px;
+}
+
+.qc-call-invite-person strong {
+  font-size: .84rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.qc-call-invite-person small {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: .72rem;
+  color: var(--ci-muted);
+}
+
+.qc-call-invite-person small i {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #14cc7c;
+  box-shadow: 0 0 0 3px rgba(20, 204, 124, .16);
+}
+
+.qc-call-invite-person small.is-offline { color: var(--ci-muted-2); }
+.qc-call-invite-person small.is-offline i { display: none; }
+
+.qc-call-invite-member-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 24px;
+  padding: 0 10px;
+  border-radius: 999px;
+  color: var(--ci-muted);
+  background: rgba(128, 149, 188, .12);
+  border: 1px solid rgba(128, 149, 188, .18);
+  font-size: .67rem;
+  font-weight: 760;
+}
+
+.qc-call-invite-member-badge.is-selected {
+  color: #fff;
+  background: var(--ci-gradient);
+  border-color: transparent;
+}
+
+.qc-call-invite-empty {
+  min-height: 160px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 28px 12px;
+  text-align: center;
+  font-size: .82rem;
+  color: var(--ci-muted);
+}
+
+.qc-call-invite-error {
+  margin: 12px 18px 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #c62d52;
+  background: rgba(236, 75, 111, .08);
+  border: 1px solid rgba(236, 75, 111, .14);
+  border-radius: 12px;
+  padding: 10px 12px;
+  font-size: .76rem;
+  line-height: 1.4;
+}
+
+.qc-call-invite-helper-row {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 12px 18px 0;
+}
+
+.qc-call-invite-helper-copy {
+  min-width: 0;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  color: var(--ci-muted);
+  font-size: .70rem;
+  font-weight: 650;
+  line-height: 1.35;
+}
+
+.qc-call-invite-helper-row > strong {
+  flex: 0 0 auto;
+  color: var(--ci-muted);
+  font-size: .72rem;
+  font-weight: 800;
+}
+
+.qc-call-invite-footer {
+  flex: 0 0 auto;
+  display: grid;
+  grid-template-columns: 1fr 1.25fr;
+  gap: 10px;
+  padding: 12px 18px 18px;
+}
+
+.qc-call-invite-cancel,
+.qc-call-invite-submit {
+  min-height: 48px;
+  border-radius: 14px;
+  font-size: .82rem;
+  font-weight: 800;
+  transition: transform .16s ease, opacity .16s ease, box-shadow .16s ease, background .16s ease;
+}
+
+.qc-call-invite-cancel {
+  border: 1px solid var(--ci-border-strong);
+  color: var(--ci-text);
+  background: transparent;
+}
+
+.qc-call-invite-submit {
+  border: 0;
+  color: #fff;
+  background: var(--ci-gradient);
+  box-shadow: 0 14px 30px rgba(58, 106, 228, .22);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+}
+
+.qc-call-invite-cancel:hover:not(:disabled),
+.qc-call-invite-submit:hover:not(:disabled) { transform: translateY(-1px); }
+.qc-call-invite-cancel:disabled,
+.qc-call-invite-submit:disabled { opacity: .5; cursor: not-allowed; transform: none; box-shadow: none; }
+
+.qc-call-invite-submit-loading {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid rgba(255,255,255,.45);
+  border-top-color: #fff;
+  animation: qc-call-spin .8s linear infinite;
+}
+
+@keyframes qc-call-spin { to { transform: rotate(360deg); } }
+
+@media (max-width: 640px) {
+  .qc-call-invite-dialog {
+    width: min(100vw - 16px, 520px);
+    height: min(100vh - 16px, 820px);
+  }
+  .qc-call-invite-helper-row,
+  .qc-call-invite-footer {
+    grid-template-columns: 1fr;
+    display: grid;
+  }
+  .qc-call-invite-helper-row { display: flex; flex-direction: column; align-items: flex-start; }
+  .qc-call-invite-item {
+    grid-template-columns: 28px 42px minmax(0, 1fr);
+  }
+  .qc-call-invite-member-badge { display: none; }
+}

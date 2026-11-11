@@ -553,6 +553,105 @@ function finishCall(io, session, reason = "ended") {
 
 function makeCallId() { return `call_${Date.now().toString(36)}_${Math.random().toString(36).slice(2,10)}`; }
 
+// En WebRTC mesh, cada participante mantiene una conexión por interlocutor.
+// Limitar el aforo evita invitar más personas de las que soporta la sala.
+const CALL_MAX_PARTICIPANTS = 8;
+const CALL_INVITATION_TIMEOUT_MS = 45000;
+
+async function getCallInviteCandidates(io, session, inviterId) {
+  const inviter = await getCallUser(inviterId);
+  if (!inviter) return { error: "Tu cuenta no está disponible" };
+  if (Number(inviter.instancia_id) !== Number(session.instanceId)) {
+    return { error: "La llamada pertenece a otra instancia" };
+  }
+
+  let rows;
+  if (session.chatType === "grupo") {
+    const [roles] = await db.query(
+      `SELECT rol FROM usuario_grupo WHERE grupo_id=? AND usuario_id=? LIMIT 1`,
+      [session.groupId, inviterId]
+    );
+    if (!["admin", "propietario"].includes(String(roles[0]?.rol || ""))) {
+      return { error: "Solo administradores y propietario pueden añadir miembros a la llamada grupal" };
+    }
+    [rows] = await db.query(
+      `SELECT u.id,u.nombre,u.apellido,u.url_imagen,u.background,ug.rol
+         FROM usuario_grupo ug
+         JOIN usuario u ON u.id=ug.usuario_id
+        WHERE ug.grupo_id=? AND u.estado='aprobado' AND u.instancia_id=?
+        ORDER BY u.nombre,u.apellido,u.id`,
+      [session.groupId, session.instanceId]
+    );
+  } else {
+    if (Number(session.initiatorId) !== Number(inviterId)) {
+      return { error: "Solo quien inició la llamada privada puede añadir participantes" };
+    }
+    // Misma regla de visibilidad que /api/grupos/:id/todos-usuarios:
+    // cuenta aprobada, misma instancia y al menos un proyecto compartido.
+    [rows] = await db.query(
+      `SELECT DISTINCT u.id,u.nombre,u.apellido,u.url_imagen,u.background
+         FROM usuario u
+         JOIN usuario_proyecto up ON up.usuario_id=u.id
+        WHERE up.proyecto_id IN
+              (SELECT proyecto_id FROM usuario_proyecto WHERE usuario_id=?)
+          AND u.instancia_id=? AND u.estado='aprobado'
+        ORDER BY u.nombre,u.apellido,u.id`,
+      [inviterId, session.instanceId]
+    );
+  }
+  const excluded = new Set([...session.members, ...session.invited].map(Number));
+  const candidates = rows
+    .filter(row => !excluded.has(Number(row.id)))
+    .map((row) => {
+      const online = userOnline(io, row.id);
+      return {
+        ...publicCallUser(row),
+        online,
+        estado: online ? "Disponible" : "Desconectado",
+        canInvite: session.chatType === "grupo" && ["admin", "propietario"].includes(String(row.rol || "")),
+      };
+    })
+    .sort((a, b) => {
+      if (Boolean(b.online) !== Boolean(a.online)) return Number(Boolean(b.online)) - Number(Boolean(a.online));
+      return String(a.nombre || "").localeCompare(String(b.nombre || ""), "es", { sensitivity: "base" });
+    });
+
+  return { candidates };
+}
+
+async function getCallParticipants(session) {
+  const ids = [...new Set([...session.members, ...session.invited])];
+  if (!ids.length) return [];
+  const [rows] = await db.query(
+    `SELECT id,nombre,apellido,url_imagen,background FROM usuario WHERE id IN (?)`, [ids]
+  );
+  return rows.map(publicCallUser);
+}
+
+function windowlessInviteTimeout(io, callId, targetId) {
+  const timer = setTimeout(async () => {
+    const session = llamadasActivas.get(callId);
+    if (!session || !session.invited.has(targetId)) return;
+    session.invited.delete(targetId);
+    llamadaPorUsuario.delete(String(targetId));
+    emitToUser(io, targetId, "call:ended", { callId, reason: "timeout" });
+    session.members.forEach(member => emitToUser(io, member, "call:rejected", {
+      callId, userId: targetId, reason: "timeout",
+    }));
+    try { await broadcastCallParticipants(io, session); } catch (error) { console.error("Error sincronizando participantes:", error); }
+  }, CALL_INVITATION_TIMEOUT_MS);
+  timer.unref?.();
+}
+
+async function broadcastCallParticipants(io, session) {
+  const participants = await getCallParticipants(session);
+  session.members.forEach(member => emitToUser(io, member, "call:participants", {
+    callId: session.id, participants,
+  }));
+  return participants;
+}
+
+
 function setupCallSignaling(io, socket) {
   socket.on("call:start", async (payload = {}, ack = () => {}) => {
     try {
@@ -567,6 +666,7 @@ function setupCallSignaling(io, socket) {
 
       let invited = [];
       let title = "Llamada";
+      let groupMemberRoles = new Map();
       const chatType = payload.chatType === "grupo" ? "grupo" : "privado";
       let groupId = null;
       if (chatType === "grupo") {
@@ -574,9 +674,12 @@ function setupCallSignaling(io, socket) {
         const [roleRows] = await db.query(`SELECT ug.rol, g.nombre FROM usuario_grupo ug JOIN grupos g ON g.id=ug.grupo_id WHERE ug.grupo_id=? AND ug.usuario_id=? LIMIT 1`, [groupId, callerId]);
         if (!roleRows.length || !["admin", "propietario"].includes(String(roleRows[0].rol))) return ack({ ok: false, error: "Solo administradores y propietario pueden iniciar llamadas grupales" });
         title = roleRows[0].nombre || "Llamada grupal";
-        const [memberRows] = await db.query(`SELECT ug.usuario_id AS id FROM usuario_grupo ug JOIN usuario u ON u.id=ug.usuario_id WHERE ug.grupo_id=? AND ug.usuario_id<>? AND u.estado='aprobado' AND u.instancia_id=?`, [groupId, callerId, caller.instancia_id]);
-        invited = memberRows.map((r) => Number(r.id)).filter((id) => userOnline(io, id) && !llamadaPorUsuario.has(String(id))).slice(0, 7);
-        if (!invited.length) return ack({ ok: false, error: "No hay miembros disponibles para la llamada" });
+        const [memberRows] = await db.query(`SELECT ug.usuario_id AS id, ug.rol FROM usuario_grupo ug JOIN usuario u ON u.id=ug.usuario_id WHERE ug.grupo_id=? AND ug.usuario_id<>? AND u.estado='aprobado' AND u.instancia_id=?`, [groupId, callerId, caller.instancia_id]);
+        groupMemberRoles = new Map(memberRows.map(row => [Number(row.id), String(row.rol)]));
+        // La reunión grupal puede empezar con el organizador solamente.
+        // Si hay usuarios conectados, se les llama al crearla; si no,
+        // el propietario/admin podrá abrir el selector y añadirlos después.
+        invited = memberRows.map((r) => Number(r.id)).filter((id) => userOnline(io, id) && !llamadaPorUsuario.has(String(id))).slice(0, CALL_MAX_PARTICIPANTS - 1);
       } else {
         const targetId = Number(payload.targetUserId);
         if (!targetId || targetId === callerId) return ack({ ok: false, error: "Destino de llamada inválido" });
@@ -588,18 +691,89 @@ function setupCallSignaling(io, socket) {
       }
 
       const callId = makeCallId();
-      const session = { id: callId, kind, chatType, groupId, title, initiatorId: callerId, invited: new Set(invited), members: new Set([callerId]), screenShares: new Map(), createdAt: Date.now() };
+      const session = { id: callId, kind, chatType, groupId, title, instanceId: Number(caller.instancia_id), initiatorId: callerId, invited: new Set(invited), members: new Set([callerId]), screenShares: new Map(), createdAt: Date.now() };
       llamadasActivas.set(callId, session);
       llamadaPorUsuario.set(String(callerId), callId);
       invited.forEach((id) => llamadaPorUsuario.set(String(id), callId));
       const callerPublic = publicCallUser(caller);
       const [participantRows] = await db.query(`SELECT id,nombre,apellido,url_imagen,background FROM usuario WHERE id IN (?)`, [[callerId, ...invited]]);
       const participants = participantRows.map(publicCallUser);
-      invited.forEach((id) => emitToUser(io, id, "call:incoming", { callId, kind, chatType, groupId, title: chatType === "privado" ? callerPublic.nombre : title, caller: callerPublic, initiatorId: callerId, participants }));
-      ack({ ok: true, callId, title, participants });
+      // Cada invitado ve el botón solo si tiene rol de administración del grupo.
+      invited.forEach((id) => emitToUser(io, id, "call:incoming", {
+        callId, kind, chatType, groupId, title: chatType === "privado" ? callerPublic.nombre : title,
+        caller: callerPublic, initiatorId: callerId, participants,
+        canInvite: chatType === "grupo" && ["admin", "propietario"].includes(groupMemberRoles.get(id)),
+      }));
+      ack({ ok: true, callId, title, participants, invitedCount: invited.length, canInvite: true });
+      invited.forEach(id => windowlessInviteTimeout(io, callId, id));
     } catch (error) {
       console.error("❌ Error iniciando llamada:", error);
       ack({ ok: false, error: "No se pudo iniciar la llamada" });
+    }
+  });
+
+  // Los candidatos proceden exclusivamente del servidor. No se permite
+  // enumerar usuarios de otros proyectos, instancias o grupos por Socket.IO.
+  socket.on("call:invite-candidates", async ({ callId } = {}, ack = () => {}) => {
+    try {
+      const session = llamadasActivas.get(String(callId));
+      const inviterId = Number(socket.userId);
+      if (!session || !session.members.has(inviterId)) {
+        return ack({ ok: false, error: "La llamada ya no está disponible" });
+      }
+      const result = await getCallInviteCandidates(io, session, inviterId);
+      if (result.error) return ack({ ok: false, error: result.error });
+      ack({ ok: true, candidates: result.candidates, capacity: CALL_MAX_PARTICIPANTS - session.members.size - session.invited.size });
+    } catch (error) {
+      console.error("Error consultando candidatos de llamada:", error);
+      ack({ ok: false, error: "No se pudieron cargar los contactos" });
+    }
+  });
+
+  socket.on("call:invite", async ({ callId, targetUserId } = {}, ack = () => {}) => {
+    try {
+      const session = llamadasActivas.get(String(callId));
+      const inviterId = Number(socket.userId);
+      const targetId = Number(targetUserId);
+      if (!session || !session.members.has(inviterId)) return ack({ ok: false, error: "Llamada no disponible" });
+      if (!Number.isSafeInteger(targetId) || targetId <= 0 || targetId === inviterId) {
+        return ack({ ok: false, error: "Usuario inválido" });
+      }
+      const inviter = await getCallUser(inviterId);
+      const key = session.kind === "video" ? "realizar_videollamadas" : "realizar_llamadas";
+      if (!permissionOn(parseChatPermissions(inviter?.permisos_chat)[key])) {
+        return ack({ ok: false, error: "No tienes permiso para invitar a esta llamada" });
+      }
+      const result = await getCallInviteCandidates(io, session, inviterId);
+      if (result.error) return ack({ ok: false, error: result.error });
+      const candidate = result.candidates.find(person => Number(person.id) === targetId);
+      if (!candidate) return ack({ ok: false, error: "No puedes invitar a este usuario o ya participa" });
+      if (!candidate.online) return ack({ ok: false, error: "El usuario está desconectado" });
+      if (llamadaPorUsuario.has(String(targetId))) return ack({ ok: false, error: "El usuario está ocupado" });
+      if (session.members.size + session.invited.size >= CALL_MAX_PARTICIPANTS) {
+        return ack({ ok: false, error: "La llamada ha alcanzado el máximo de participantes" });
+      }
+      session.invited.add(targetId);
+      llamadaPorUsuario.set(String(targetId), session.id);
+      const inviterPublic = publicCallUser(inviter);
+      let participants;
+      try { participants = await broadcastCallParticipants(io, session); }
+      catch (error) {
+        session.invited.delete(targetId);
+        llamadaPorUsuario.delete(String(targetId));
+        throw error;
+      }
+      emitToUser(io, targetId, "call:incoming", {
+        callId: session.id, kind: session.kind, chatType: session.chatType,
+        groupId: session.groupId, title: session.title,
+        caller: inviterPublic, invitedBy: inviterPublic, addedToCall: true,
+        initiatorId: session.initiatorId, participants, canInvite: Boolean(candidate.canInvite),
+      });
+      ack({ ok: true, invited: candidate });
+      windowlessInviteTimeout(io, session.id, targetId);
+    } catch (error) {
+      console.error("Error invitando a llamada:", error);
+      ack({ ok: false, error: "No se pudo enviar la invitación" });
     }
   });
 
@@ -614,6 +788,8 @@ function setupCallSignaling(io, socket) {
       emitToUser(io, peerId, "call:peer-ready", { callId: session.id, peerUserId: userId, shouldOffer: true });
       emitToUser(io, userId, "call:peer-ready", { callId: session.id, peerUserId: peerId, shouldOffer: false });
     }
+    try { await broadcastCallParticipants(io, session); }
+    catch (error) { console.error("Error sincronizando participantes:", error); }
     if (session.screenShares instanceof Map) {
       session.screenShares.forEach((share, ownerUserId) => emitToUser(io, userId, "call:screen-available", {
         callId: session.id,
@@ -626,13 +802,18 @@ function setupCallSignaling(io, socket) {
     ack({ ok: true });
   });
 
-  socket.on("call:reject", ({ callId, reason = "rejected" } = {}) => {
+  socket.on("call:reject", async ({ callId, reason = "rejected" } = {}) => {
     const session = llamadasActivas.get(String(callId));
     const userId = Number(socket.userId);
     if (!session || !session.invited.has(userId)) return;
     session.invited.delete(userId); llamadaPorUsuario.delete(String(userId));
     session.members.forEach((member) => emitToUser(io, member, "call:rejected", { callId: session.id, userId, reason }));
-    if (session.chatType === "privado" || (session.invited.size === 0 && session.members.size <= 1)) finishCall(io, session, "rejected");
+    // Rechazar una invitación adicional no debe colgar a quienes ya conversan.
+    // En privado, rechazar la única invitación termina la llamada inicial.
+    // En grupo, el organizador conserva la reunión abierta para poder invitar
+    // otros miembros aunque todas las llamadas iniciales sean rechazadas.
+    if (session.chatType === "privado" && session.invited.size === 0 && session.members.size <= 1) finishCall(io, session, "rejected");
+    else { try { await broadcastCallParticipants(io, session); } catch (error) { console.error("Error sincronizando participantes:", error); } }
   });
 
   socket.on("call:upgrade-video", async ({ callId } = {}, ack = () => {}) => {
@@ -748,7 +929,13 @@ function setupCallSignaling(io, socket) {
     }
     session.members.delete(userId); session.invited.delete(userId); llamadaPorUsuario.delete(String(userId));
     session.members.forEach((member) => emitToUser(io, member, "call:participant-left", { callId: session.id, userId, reason }));
-    if (userId === session.initiatorId || session.members.size <= 1) finishCall(io, session, reason);
+    // En reuniones grupales, la salida del organizador no cuelga al resto.
+    // Se cierra cuando se retira el último participante conectado.
+    if (session.chatType === "grupo" ? session.members.size === 0 : (userId === session.initiatorId || (session.members.size <= 1 && session.invited.size === 0))) {
+      finishCall(io, session, reason);
+    } else {
+      broadcastCallParticipants(io, session).catch(error => console.error("Error sincronizando participantes:", error));
+    }
   });
 }
 
@@ -770,7 +957,11 @@ function cleanupCallsForUser(io, userId) {
   }
   session.members.delete(Number(userId)); session.invited.delete(Number(userId)); llamadaPorUsuario.delete(String(userId));
   session.members.forEach((member) => emitToUser(io, member, "call:participant-left", { callId, userId: Number(userId), reason: "disconnect" }));
-  if (Number(userId) === session.initiatorId || session.members.size <= 1) finishCall(io, session, "disconnect");
+  if (session.chatType === "grupo" ? session.members.size === 0 : (Number(userId) === session.initiatorId || session.members.size <= 1)) {
+    finishCall(io, session, "disconnect");
+  } else {
+    broadcastCallParticipants(io, session).catch(error => console.error("Error sincronizando participantes:", error));
+  }
 }
 
 setInterval(() => {

@@ -659,6 +659,11 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat, addToLi
       return {
         tipo: "grupo",
         grupo_id: g.grupo_id,
+        // Los permisos de llamada grupal se basan en el rol del usuario
+        // dentro del grupo. La API usuario-resumen ya lo proporciona,
+        // pero antes el adaptador lo descartaba y bloqueaba incluso a admins.
+        rol: g.rol || (Number(g.propietario_id) === Number(currentUserId) ? "propietario" : "miembro"),
+        propietario_id: g.propietario_id ?? null,
         user_id: currentUserId,
         usuario_id: g.grupo_id,
         usuario_nombre: g.nombre,
