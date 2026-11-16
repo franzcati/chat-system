@@ -4,7 +4,9 @@ const express = require('express');
 const cors = require('cors');
 const app = express();
 
-app.set("trust proxy", "loopback");
+// Configura solo las redes del proxy de confianza; nunca se aceptan cabeceras
+// X-Forwarded-For de conexiones directas no confiables.
+app.set("trust proxy", process.env.TRUST_PROXY || "loopback");
 
 const defaultAllowedOrigins = [
   "http://quickchat.click",
@@ -86,6 +88,7 @@ app.use('/api/usuario', require('./routes/usuario'));
 
 // MFA / AUTENTICACION EN DOS PASOS
 app.use('/api/mfa', require('./routes/mfa'));
+app.use('/api/security', require('./routes/securityCenter'));
 
 //BUSQUEDA DE CHAT
 const chats = require('./routes/chats');

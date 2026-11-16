@@ -1,6 +1,7 @@
 const db = require("../db");
 const {
   verifyAuthSession,
+  verifyStoredSession,
 } = require("./sessionAuth");
 const {
   resolvePortalFromRequest,
@@ -10,6 +11,7 @@ async function authenticateSocket(socket) {
   const request = socket.request;
 
   const session = verifyAuthSession(request);
+  const stored = await verifyStoredSession(session);
   const portal =
     resolvePortalFromRequest(request);
 
@@ -74,7 +76,7 @@ async function authenticateSocket(socket) {
 
   if (
     Number(user.instancia_id) !==
-    instanceId
+    instanceId || Number(stored.instancia_id) !== instanceId
   ) {
     const error = new Error(
       "La sesion no pertenece a este portal"
@@ -91,6 +93,7 @@ async function authenticateSocket(socket) {
     host: portal.host,
     issuedAt: session.issuedAt,
     expiresAt: session.expiresAt,
+    sessionId: session.sessionId,
   };
 }
 

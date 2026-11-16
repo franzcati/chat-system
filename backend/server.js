@@ -1,6 +1,8 @@
 
-require('dotenv').config(); // <- Primero
+require('dotenv').config({ path: require('node:path').join(__dirname, '.env') }); // <- Primero
 const db = require("./db"); // 👈 agrega esto
+const { startAlertWorker } = require('./utils/securityCenter');
+const { startTelegramCommands } = require('./utils/telegramCommands');
 const { logDev } = require('./utils/logger');
 const app = require('./app');
 const sequelize = require('./config/database');
@@ -65,6 +67,8 @@ async function startServer() {
       logDev(`🚀 Servidor corriendo en puerto ${PORT}`);
       logDev(`🌐 Accesible desde chatvista.click`);
     });
+    startAlertWorker();
+    startTelegramCommands();
 
     // 🔁 Limpieza automática de mensajes fijados expirados (cada hora)
     setInterval(async () => {

@@ -106,6 +106,7 @@ export default function FormEditarUsuario({
       : Number(editando?.correo_gestionado_proyecto || 0),
 
     rol_id: Number(editando?.rol_id || 4),
+    max_credenciales_2fa: Number(editando?.max_credenciales_2fa ?? 1),
   }));
 
   const tienePermiso = (permiso) => {
@@ -438,6 +439,11 @@ export default function FormEditarUsuario({
       );
       return;
     }
+    if (!esNuevo && tienePermiso("gestionar_credenciales_2fa") &&
+      (!Number.isInteger(form.max_credenciales_2fa) || form.max_credenciales_2fa < 1 || form.max_credenciales_2fa > 100)) {
+      setFormError("El límite de credenciales 2FA debe estar entre 1 y 100.");
+      return;
+    }
 
     const proyectos = [...new Set(
       form.proyectos.map(Number).filter(Boolean)
@@ -461,6 +467,8 @@ export default function FormEditarUsuario({
       proyectos,
       correo_gestionado_proyecto:
         Number(form.correo_gestionado_proyecto),
+      ...(!esNuevo && tienePermiso("gestionar_credenciales_2fa")
+        ? { max_credenciales_2fa: form.max_credenciales_2fa } : {}),
     };
 
     setSaving(true);
@@ -876,6 +884,27 @@ export default function FormEditarUsuario({
           })}
         </div>
       </section>
+
+      {editando?.id && tienePermiso("gestionar_credenciales_2fa") && (
+        <section className="qc-user-admin-section">
+          <div className="qc-user-admin-section-head">
+            <span className="qc-user-admin-section-icon"><i className="bi bi-key" /></span>
+            <div>
+              <h4>Credenciales del CRM</h4>
+              <p>Todos pueden registrar una credencial. Define cuántas puede mantener este usuario.</p>
+            </div>
+          </div>
+          <div className="qc-user-admin-grid">
+            <label className="qc-user-admin-field">
+              <span>Máximo de credenciales 2FA</span>
+              <input type="number" min="1" max="100" step="1"
+                value={form.max_credenciales_2fa}
+                onChange={(e) => setForm((prev) => ({ ...prev, max_credenciales_2fa: Number(e.target.value) }))} />
+              <small>Por defecto: 1. Reducir el límite no borra las credenciales existentes.</small>
+            </label>
+          </div>
+        </section>
+      )}
 
       {editando?.id &&
         tienePermiso("gestionar_mfa") && (

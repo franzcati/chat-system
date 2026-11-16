@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const pool = require('../db');
-const { setAuthSession, clearAuthSession, verifyAuthSession } = require("../utils/sessionAuth");
+const { setAuthSession, clearAuthSession, verifyAuthSession, revokeSession } = require("../utils/sessionAuth");
 const { requireAuth } = require("../middleware/requireAuth");
 const {
   resolveInstance,
@@ -143,7 +143,11 @@ router.get(
 // CERRAR SESIÓN
 router.post('/logout', async (req, res) => {
   let actorUserId = null;
-  try { actorUserId = verifyAuthSession(req).userId; } catch {}
+  try {
+    const session = verifyAuthSession(req);
+    actorUserId = session.userId;
+    await revokeSession(session.sessionId);
+  } catch {}
   clearAuthSession(req, res);
   req.auditHandled = true;
   await writeAudit(req, {
@@ -202,6 +206,9 @@ router.post(
     const usuarioContrasena = rows.find((row) => contrasenasCoinciden(row.contrasena, contrasena));
 
     if (!usuarioContrasena) {
+      await pool.query(`INSERT INTO security_events (instancia_id,usuario_id,event_type,result,ip,user_agent)
+        VALUES (?,?,'LOGIN_FAILED','failed',?,?)`,
+        [req.instanciaActual.id,rows[0]?.id || null,String(req.ip || '').slice(0,64),String(req.headers['user-agent'] || '').slice(0,500)]).catch(() => {});
       await auditMfa(pool, req, {
         event: 'LOGIN_PASSWORD_FAILED',
         targetUserId: rows[0]?.id || null,
@@ -297,7 +304,7 @@ router.post(
             metadata: { trusted_device_id: Number(trustedDevice.id) },
           });
 
-          setAuthSession(req, res, usuario.id);
+          await setAuthSession(req, res, usuario.id);
           req.auditHandled = true;
           await writeAudit(req, { category: 'seguridad', event: 'LOGIN', action: 'Inicio de sesión en dispositivo confiable', actorUserId: usuario.id, targetUserId: usuario.id, result: 'exitoso' });
 
@@ -347,7 +354,7 @@ router.post(
 
     const usuario = await prepararUsuarioRespuesta(usuarioContrasena);
 
-    setAuthSession(req, res, usuario.id);
+    await setAuthSession(req, res, usuario.id);
     req.auditHandled = true;
     await writeAudit(req, { category: 'seguridad', event: 'LOGIN', action: 'Inicio de sesión', actorUserId: usuario.id, targetUserId: usuario.id, result: 'exitoso' });
 

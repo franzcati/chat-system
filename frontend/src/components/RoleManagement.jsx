@@ -42,6 +42,13 @@ const AUDIT_OPTIONS = [
   ["exportar_registros", "Exportar registros", "Puede exportar reportes CSV.", "bi-download"],
 ];
 
+const SECURITY_OPTIONS = [
+  ["gestionar_credenciales_2fa", "Gestionar credenciales", "Asigna accesos y suspende credenciales.", "bi-lock"],
+  ["gestionar_horarios_2fa", "Horarios y límites", "Configura jornadas, excepciones y límites.", "bi-clock"],
+  ["gestionar_alertas_2fa", "Alertas de Telegram", "Configura avisos y el resumen diario.", "bi-bell"],
+  ["ver_auditoria_seguridad", "Auditoría de seguridad", "Consulta eventos y sesiones.", "bi-activity"],
+];
+
 const initials = (name) => String(name || "R").trim().charAt(0).toUpperCase();
 const title = (value) => String(value || "").trim().toLowerCase().replace(/(^|\s)\S/g, (m) => m.toUpperCase());
 const roleDescription = (role) => role.descripcion || "Rol del sistema con permisos configurables.";
@@ -128,6 +135,7 @@ export default function RoleManagement({ usuarioLogueado, onBackToChat }) {
           assign: (json.assignable_role_ids || []).length > 0,
           chat: CHAT_OPTIONS.some(([key]) => (json.permissions || []).includes(key)),
           audit: AUDIT_OPTIONS.some(([key]) => (json.permissions || []).includes(key)),
+          security: SECURITY_OPTIONS.some(([key]) => (json.permissions || []).includes(key)),
         },
       });
     } catch (error) { alert(error.message); }
@@ -157,6 +165,11 @@ export default function RoleManagement({ usuarioLogueado, onBackToChat }) {
       if (!enabled && section === "audit") {
         const permissions = new Set(next.permissions || prev.permissions);
         AUDIT_OPTIONS.forEach(([key]) => permissions.delete(key));
+        next.permissions = permissions;
+      }
+      if (!enabled && section === "security") {
+        const permissions = new Set(next.permissions || prev.permissions);
+        SECURITY_OPTIONS.forEach(([key]) => permissions.delete(key));
         next.permissions = permissions;
       }
       if (!enabled && section === "assign") next.assignableRoleIds = new Set();
@@ -256,6 +269,11 @@ export default function RoleManagement({ usuarioLogueado, onBackToChat }) {
             <section className="qc-role-config-card">
               <div className="qc-role-config-head"><Toggle checked={form.sections.audit} onChange={(v) => setSectionEnabled("audit", v)} disabled={viewOnly || isAdmin} /><span className="qc-role-section-icon"><i className="bi bi-file-earmark-text" /></span><div><h3>Registros y auditoría</h3><p>Controla el acceso al historial, seguridad, blacklist y exportación.</p></div></div>
               <div className="qc-role-options-grid four">{AUDIT_OPTIONS.map(([key,label,desc,icon]) => <CheckCard key={key} checked={form.permissions.has(key)} onChange={(v) => togglePermission(key, v)} icon={icon} label={label} description={desc} disabled={viewOnly || isAdmin || !form.sections.audit} />)}</div>
+            </section>
+
+            <section className="qc-role-config-card">
+              <div className="qc-role-config-head"><Toggle checked={form.sections.security} onChange={(v) => setSectionEnabled("security", v)} disabled={viewOnly || isAdmin} /><span className="qc-role-section-icon"><i className="bi bi-lock" /></span><div><h3>Centro de Seguridad</h3><p>Controla el registro, la consulta y la administración de códigos 2FA.</p></div></div>
+              <div className="qc-role-options-grid three">{SECURITY_OPTIONS.map(([key,label,desc,icon]) => <CheckCard key={key} checked={form.permissions.has(key)} onChange={(v) => togglePermission(key,v)} icon={icon} label={label} description={desc} disabled={viewOnly || isAdmin || !form.sections.security} />)}</div>
             </section>
 
             {canEdit && !viewOnly && <section className="qc-role-config-card qc-role-extra-card"><div><h3>Permisos de Gestión de Roles</h3><p>Controla quién puede administrar esta misma sección.</p></div><div className="qc-role-inline-checks">{ROLE_ADMIN_OPTIONS.map(([key,label]) => <label key={key}><input type="checkbox" checked={form.permissions.has(key)} onChange={(e)=>togglePermission(key,e.target.checked)} disabled={isAdmin}/><span>{label}</span></label>)}</div></section>}

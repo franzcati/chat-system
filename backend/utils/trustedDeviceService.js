@@ -106,6 +106,34 @@ async function createTrustedDevice(pool, req, res, userId) {
 
   setTrustedCookie(res, userId, token);
 
+  // El alta de otro dispositivo de confianza nunca revoca los anteriores.
+  // El evento se guarda una sola vez por dispositivo y el envío queda en cola.
+  try {
+    const { policyFor, queueAlert, escapeTelegram, sourceIp } = require("./securityCenter");
+    const [users] = await pool.query(
+      "SELECT instancia_id,nombre,apellido,correo FROM usuario WHERE id=? LIMIT 1", [userId]
+    );
+    if (users[0]?.instancia_id) {
+      const instanceId = users[0].instancia_id;
+      const [count] = await pool.query(`SELECT COUNT(*) n FROM usuario_mfa_dispositivos
+        WHERE usuario_id=? AND revoked_at IS NULL AND expires_at>UTC_TIMESTAMP()`, [userId]);
+      const total = Number(count[0].n);
+      const policy = await policyFor(pool, instanceId);
+      if (total > 1 && policy.alert_multiple_devices) {
+        const ip = safeHeader(sourceIp(req), 64);
+        const [evt] = await pool.query(`INSERT INTO security_events
+          (instancia_id,usuario_id,event_type,result,ip,user_agent,detail_json)
+          VALUES (?,?,'TRUSTED_DEVICE_ADDED','ok',?,?,?)`,
+          [instanceId,userId,ip,userAgent,JSON.stringify({ device_id: result.insertId, device_name: name, trusted_count: total })]);
+        const user = `${users[0].nombre || ''} ${users[0].apellido || ''}`.trim();
+        await queueAlert(pool, instanceId, evt.insertId, `trusted-device:${userId}:${result.insertId}`,
+          `⚠️ CHATVISTA · Otro dispositivo de confianza\nUsuario: ${escapeTelegram(user)} (${escapeTelegram(users[0].correo)})\nDispositivos de confianza: ${total}\nNuevo dispositivo: ${escapeTelegram(name)}\nIP: ${escapeTelegram(ip)}\nNavegador: ${escapeTelegram(userAgent)}\nFecha: ${new Date().toISOString()}`);
+      }
+    }
+  } catch (error) {
+    console.error("No se pudo registrar la alerta de dispositivo de confianza:", error.message);
+  }
+
   return {
     id: Number(result.insertId),
     nombre: name,

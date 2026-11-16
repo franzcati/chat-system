@@ -1,10 +1,9 @@
 const pool = require('../db');
 
-const SENSITIVE_KEYS = /(password|contrasena|contraseña|secret|token|otp|recovery|cookie|authorization)/i;
+const SENSITIVE_KEYS = /(password|contrasena|contraseña|secret|token|otp|recovery|cookie|authorization|manual_key|qr_data_url|code|codigo|código|clave|uri)/i;
 
 function getRequestIp(req) {
-  const forwarded = String(req?.headers?.['x-forwarded-for'] || '').split(',')[0].trim();
-  return forwarded || req?.ip || req?.socket?.remoteAddress || null;
+  return req?.ip || req?.socket?.remoteAddress || null;
 }
 
 function getDeviceLabel(userAgent) {
@@ -120,8 +119,9 @@ function classifyMutation(req, statusCode) {
   const url = String(req.originalUrl || '').split('?')[0];
   const successful = statusCode >= 200 && statusCode < 400;
   const result = successful ? 'exitoso' : 'fallido';
-  const body = sanitize(req.body || {});
-  const response = sanitize(req.res?.locals?.auditResponse || null);
+  const protectedRoute = url.startsWith('/api/mfa') || url.startsWith('/api/security');
+  const body = protectedRoute ? '[OMITIDO]' : sanitize(req.body || {});
+  const response = protectedRoute ? '[OMITIDO]' : sanitize(req.res?.locals?.auditResponse || null);
   const metadata = { method, url, body, response };
 
   const make = (category, event, action, extra = {}) => ({ category, event, action, result, metadata, ...extra });
@@ -210,7 +210,7 @@ function collectTextForBlacklist(value, out = [], depth = 0) {
 function auditRequestLifecycle(req, res, next) {
   const started = Date.now();
   const shouldCapture = ['POST','PUT','PATCH','DELETE'].includes(String(req.method || '').toUpperCase());
-  if (shouldCapture) {
+  if (shouldCapture && !String(req.originalUrl || '').startsWith('/api/mfa') && !String(req.originalUrl || '').startsWith('/api/security')) {
     res.locals = res.locals || {};
     const originalJson = res.json.bind(res);
     res.json = (body) => {

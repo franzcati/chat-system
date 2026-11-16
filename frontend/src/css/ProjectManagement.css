@@ -2586,3 +2586,23 @@
 :root[data-theme="dark"] .pm2-type-grid button.selected {
   box-shadow: inset 0 0 0 1px rgba(87, 192, 255, .25), 0 8px 18px rgba(0, 92, 180, .12) !important;
 }
+
+/* El hover conserva el contraste de la fila, incluso si ya está seleccionada. */
+:root:not([data-theme="dark"]) .pmm-candidate:hover:not(:disabled) {
+  background: #edf5ff !important;
+  border-color: #8abaff !important;
+  color: #203656 !important;
+  transform: none;
+}
+:root:not([data-theme="dark"]) .pmm-candidate.selected:hover:not(:disabled) {
+  background: #dcecff !important;
+}
+:root[data-theme="dark"] .pmm-candidate:hover:not(:disabled) {
+  background: #0a315d !important;
+  border-color: #368ae0 !important;
+  color: #edf6ff !important;
+  transform: none;
+}
+:root[data-theme="dark"] .pmm-candidate.selected:hover:not(:disabled) {
+  background: #104374 !important;
+}

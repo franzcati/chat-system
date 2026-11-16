@@ -1,6 +1,7 @@
 const pool = require("../db");
 const {
   verifyAuthSession,
+  verifyStoredSession,
   clearAuthSession,
 } = require("../utils/sessionAuth");
 
@@ -75,7 +76,9 @@ async function cargarUsuarioAutenticado(userId) {
 async function requireAuth(req, res, next) {
   try {
     const session = verifyAuthSession(req);
+    const stored = await verifyStoredSession(session);
     const usuario = await cargarUsuarioAutenticado(session.userId);
+    if (Number(stored.instancia_id) !== usuario.instancia_id) throw Object.assign(new Error("Instancia inválida"), { code: "SESSION_INVALID" });
 
     req.auth = {
       userId: usuario.id,
@@ -84,6 +87,8 @@ async function requireAuth(req, res, next) {
       session: {
         issuedAt: session.issuedAt,
         expiresAt: session.expiresAt,
+        id: session.sessionId,
+        deviceHash: stored.device_hash,
       },
     };
 

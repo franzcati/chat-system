@@ -18,6 +18,10 @@ const AUDIT_ROLE_KEYS = [
   'ver_registros','ver_registros_admin','ver_registros_chat','ver_registros_grupo',
   'ver_registros_seguridad','ver_blacklist','gestionar_blacklist','exportar_registros',
 ];
+const SECURITY_ROLE_KEYS = [
+  'consultar_2fa','registrar_credenciales_2fa','gestionar_credenciales_2fa',
+  'gestionar_horarios_2fa','gestionar_alertas_2fa','ver_auditoria_seguridad',
+];
 
 const toInt = (v) => {
   const n = Number.parseInt(v, 10);
@@ -178,10 +182,10 @@ router.put('/manage/:id', requirePermission('editar_roles'), async (req, res) =>
 
     let permissions = normalizeList(req.body?.permissions);
     if (isAdmin) {
-      const mandatory = [...ADMIN_PERMISSIONS, ...CHAT_ROLE_KEYS, ...AUDIT_ROLE_KEYS, 'gestionar_roles','crear_roles','editar_roles','eliminar_roles','crear_proyectos','editar_proyectos','eliminar_proyectos','gestionar_mfa'];
+      const mandatory = [...ADMIN_PERMISSIONS, ...CHAT_ROLE_KEYS, ...AUDIT_ROLE_KEYS, ...SECURITY_ROLE_KEYS, 'gestionar_roles','crear_roles','editar_roles','eliminar_roles','crear_proyectos','editar_proyectos','eliminar_proyectos','gestionar_mfa'];
       permissions = [...new Set([...permissions, ...mandatory])];
     }
-    const allowedPrefixes = new Set([...ADMIN_PERMISSIONS, ...CHAT_ROLE_KEYS, ...AUDIT_ROLE_KEYS, 'gestionar_roles','crear_roles','editar_roles','eliminar_roles','crear_proyectos','editar_proyectos','eliminar_proyectos','gestionar_mfa']);
+    const allowedPrefixes = new Set([...ADMIN_PERMISSIONS, ...CHAT_ROLE_KEYS, ...AUDIT_ROLE_KEYS, ...SECURITY_ROLE_KEYS, 'gestionar_roles','crear_roles','editar_roles','eliminar_roles','crear_proyectos','editar_proyectos','eliminar_proyectos','gestionar_mfa']);
     permissions = permissions.filter((p) => allowedPrefixes.has(p));
     // Un editor no administrador nunca puede conceder capacidades que él mismo no posee.
     if (!actorPolicy.isAdmin) {
@@ -202,7 +206,7 @@ router.put('/manage/:id', requirePermission('editar_roles'), async (req, res) =>
     }
 
     await connection.query(`UPDATE roles SET descripcion=?, alcance_admin=?, estado=? WHERE id=?`, [descripcion || null, alcance, estado, roleId]);
-    await connection.query(`DELETE FROM roles_permisos WHERE rol_id=? AND permiso IN (?)`, [roleId, [...ADMIN_PERMISSIONS, ...CHAT_ROLE_KEYS, ...AUDIT_ROLE_KEYS, 'gestionar_roles','crear_roles','editar_roles','eliminar_roles','crear_proyectos','editar_proyectos','eliminar_proyectos','gestionar_mfa']]);
+    await connection.query(`DELETE FROM roles_permisos WHERE rol_id=? AND permiso IN (?)`, [roleId, [...ADMIN_PERMISSIONS, ...CHAT_ROLE_KEYS, ...AUDIT_ROLE_KEYS, ...SECURITY_ROLE_KEYS, 'gestionar_roles','crear_roles','editar_roles','eliminar_roles','crear_proyectos','editar_proyectos','eliminar_proyectos','gestionar_mfa']]);
     for (const permission of permissions) {
       await connection.query(`INSERT IGNORE INTO roles_permisos (rol_id, permiso) VALUES (?, ?)`, [roleId, permission]);
     }

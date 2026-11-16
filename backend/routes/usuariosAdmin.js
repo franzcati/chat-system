@@ -383,6 +383,8 @@ router.get("/", requireAnyPermission(["ver_usuarios","crear_usuarios","editar_us
          u.instancia_id,
          u.proyecto_principal_id,
          u.correo_gestionado_proyecto,
+         (SELECT sul.max_credentials FROM security_user_limits sul
+          WHERE sul.instancia_id=u.instancia_id AND sul.usuario_id=u.id LIMIT 1) AS max_credenciales_2fa,
 
          pp.nombre AS proyecto_principal_nombre,
          pp.dominio AS proyecto_principal_dominio,
@@ -439,6 +441,7 @@ router.get("/", requireAnyPermission(["ver_usuarios","crear_usuarios","editar_us
 
     const usuarios = rows.map((row) => ({
       ...row,
+      max_credenciales_2fa: Number(row.max_credenciales_2fa ?? 1),
 
       id: Number(row.id),
 
@@ -550,6 +553,8 @@ router.get("/:id", requireAnyPermission(["ver_usuarios","editar_usuarios"]), asy
          u.instancia_id,
          u.proyecto_principal_id,
          u.correo_gestionado_proyecto,
+         (SELECT sul.max_credentials FROM security_user_limits sul
+          WHERE sul.instancia_id=u.instancia_id AND sul.usuario_id=u.id LIMIT 1) AS max_credenciales_2fa,
 
          pp.nombre AS proyecto_principal_nombre,
          pp.dominio AS proyecto_principal_dominio
@@ -612,6 +617,7 @@ router.get("/:id", requireAnyPermission(["ver_usuarios","editar_usuarios"]), asy
     return res.json({
       usuario: {
         ...usuario,
+        max_credenciales_2fa: Number(usuario.max_credenciales_2fa ?? 1),
 
         id: Number(usuario.id),
 
@@ -1462,6 +1468,15 @@ router.put(
     if (!(await ensureManageUser(req, res, usuarioId))) return;
 
     const actorPermissions = new Set(req.auth?.permisos || []);
+    const requestedCredentialLimit = req.body?.max_credenciales_2fa;
+    if (requestedCredentialLimit !== undefined) {
+      if (!actorPermissions.has("gestionar_credenciales_2fa")) {
+        return res.status(403).json({ code: "PERMISSION_DENIED", error: "No tienes permiso para cambiar el límite de credenciales 2FA" });
+      }
+      if (!Number.isInteger(requestedCredentialLimit) || requestedCredentialLimit < 1 || requestedCredentialLimit > 100) {
+        return res.status(400).json({ code: "INVALID_CREDENTIAL_LIMIT", error: "El límite de credenciales debe estar entre 1 y 100" });
+      }
+    }
     const requestedRoleId = req.body?.rol_id !== undefined ? parsePositiveInt(req.body.rol_id) : null;
     if (req.body?.rol_id !== undefined) {
       if (!actorPermissions.has("asignar_roles")) return res.status(403).json({ code: "PERMISSION_DENIED", error: "No tienes permiso para asignar roles" });
@@ -2091,6 +2106,11 @@ router.put(
         }
       }
 
+      if (requestedCredentialLimit !== undefined) {
+        await connection.query(`INSERT INTO security_user_limits (instancia_id,usuario_id,max_credentials)
+          VALUES (?,?,?) ON DUPLICATE KEY UPDATE max_credentials=VALUES(max_credentials)`,
+          [instanciaId, usuarioId, requestedCredentialLimit]);
+      }
       await connection.commit();
       transactionStarted = false;
 

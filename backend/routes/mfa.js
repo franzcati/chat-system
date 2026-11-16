@@ -586,7 +586,7 @@ router.post("/setup/verify", async (req, res) => {
       metadata: { trusted_device_id: Number(trustedDevice?.id || 0) || null },
     });
 
-    setAuthSession(req, res, userId);
+    await setAuthSession(req, res, userId);
 
     return res.json({
       mensaje: "Google Authenticator activado correctamente.",
@@ -694,7 +694,7 @@ router.post("/verify-login", async (req, res) => {
       metadata: { trusted_device_id: Number(trustedDevice?.id || 0) || null },
     });
 
-    setAuthSession(req, res, userId);
+    await setAuthSession(req, res, userId);
 
     return res.json({
       mensaje: "Verificación de seguridad correcta.",
@@ -1267,7 +1267,7 @@ router.post("/email/enroll/verify", async (req, res) => {
       metadata: { trusted_device_id: Number(trustedDevice?.id || 0) || null },
     });
 
-    setAuthSession(req, res, userId);
+    await setAuthSession(req, res, userId);
 
     return res.json({
       mensaje:
@@ -1437,7 +1437,7 @@ router.post("/email/login/verify", async (req, res) => {
       metadata: { trusted_device_id: Number(trustedDevice?.id || 0) || null },
     });
 
-    setAuthSession(req, res, userId);
+    await setAuthSession(req, res, userId);
 
     return res.json({
       mensaje: "Código por correo correcto.",
@@ -1962,7 +1962,7 @@ router.post("/recovery/verify-login", async (req, res) => {
       metadata: { trusted_device_id: Number(trustedDevice?.id || 0) || null },
     });
 
-    setAuthSession(req, res, userId);
+    await setAuthSession(req, res, userId);
 
     return res.json({
       mensaje: "Código de recuperación correcto.",
@@ -2142,6 +2142,11 @@ router.post("/admin/users/:userId/reset", ...protectedMfa, async (req, res) => {
         [targetUserId]
       );
 
+      await connection.query(
+        `UPDATE security_sessions SET revoked_at=UTC_TIMESTAMP(3)
+         WHERE usuario_id=? AND revoked_at IS NULL`, [targetUserId]
+      );
+
       await connection.commit();
     } catch (error) {
       try { await connection.rollback(); } catch {}
@@ -2149,6 +2154,9 @@ router.post("/admin/users/:userId/reset", ...protectedMfa, async (req, res) => {
     } finally {
       connection.release();
     }
+
+    const io = req.app.get("io");
+    if (io) io.in(`usuario_${targetUserId}`).disconnectSockets(true);
 
     // Si el administrador se restablece a sí mismo, invalida también su cookie actual.
     if (targetUserId === admin.actorUserId) {
@@ -2162,6 +2170,18 @@ router.post("/admin/users/:userId/reset", ...protectedMfa, async (req, res) => {
       method: "admin",
       success: true,
     });
+    try {
+      const { policyFor, queueAlert } = require('../utils/securityCenter');
+      const policy = await policyFor(pool, req.instanciaActual.id);
+      if (policy.telegram_chat_id) {
+        const [evt] = await pool.query(`INSERT INTO security_events
+          (instancia_id,usuario_id,event_type,result,ip,user_agent,detail_json)
+          VALUES (?,?,'MFA_ADMIN_RESET','ok',?,?,?)`,
+          [req.instanciaActual.id,admin.actorUserId,String(req.ip || '').slice(0,64),String(req.headers['user-agent'] || '').slice(0,500),JSON.stringify({ targetUserId })]);
+        await queueAlert(pool,req.instanciaActual.id,evt.insertId,`mfa-reset:${evt.insertId}`,
+          `🔐 CHATVISTA · MFA restablecido\nAdministrador: ${admin.actorUserId}\nUsuario: ${targetUserId}\nFecha: ${new Date().toISOString()}\nSesiones revocadas`);
+      }
+    } catch (error) { console.error('Alerta de MFA:', error.message); }
 
     return res.json({
       mensaje: "MFA restablecido. En el próximo inicio de sesión el usuario deberá elegir y configurar nuevamente un método de seguridad.",
