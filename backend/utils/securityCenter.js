@@ -2,6 +2,7 @@ const crypto = require('crypto');
 const db = require('../db');
 const { generateTotp, verifyTotp } = require('./mfaService');
 const { formatTelegramAlert } = require('./telegramAlertFormat');
+const { securityEventLabel } = require('./securityEventLabels');
 const { telegramApi } = require('./telegramApi');
 const telegramServerEnabled = () => String(process.env.SECURITY_TELEGRAM_ALERTS_DISABLED || '').toLowerCase() !== 'true';
 
@@ -182,7 +183,7 @@ async function dailyDigest() {
     const [rows] = await db.query(`SELECT event_type,COUNT(*) n FROM security_events
       WHERE instancia_id=? AND created_at>=DATE_SUB(UTC_TIMESTAMP(), INTERVAL 1 DAY)
       GROUP BY event_type`, [p.instancia_id]);
-    const summary = rows.map(r => `${r.event_type}: ${r.n}`).join('\n') || 'Sin eventos';
+    const summary = rows.map(r => `${securityEventLabel(r.event_type)}: ${r.n}`).join('\n') || 'Sin eventos';
     await queueAlert(db, p.instancia_id, null, `digest:${date}`, `🔐 Resumen de seguridad · ${date}\n${summary}`);
   }
 }

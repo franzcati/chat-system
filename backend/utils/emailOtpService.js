@@ -1,5 +1,6 @@
 const crypto = require("crypto");
 const nodemailer = require("nodemailer");
+const { securityBrand } = require("./securityBrand");
 
 const OTP_DIGITS = 6;
 
@@ -197,10 +198,11 @@ async function sendOtpEmail({ to, code, purpose, account }) {
   const { transporter: mailer, from } = getTransporter();
   const expires = otpExpiresMinutes();
   const isSetup = purpose === "setup" || purpose === "enroll";
+  const brand = securityBrand();
   const subject = isSetup
-    ? "Verifica tu correo alternativo de QuickChat"
-    : "Código de acceso de QuickChat";
-  const accountLine = account ? `Cuenta QuickChat: ${String(account).trim()}` : "Cuenta QuickChat";
+    ? `Verifica tu correo alternativo de ${brand}`
+    : `Código de acceso de ${brand}`;
+  const accountLine = account ? `Cuenta ${brand}: ${String(account).trim()}` : `Cuenta ${brand}`;
 
   const text = [
     subject,
@@ -217,7 +219,7 @@ async function sendOtpEmail({ to, code, purpose, account }) {
   const html = `
     <div style="font-family:Arial,Helvetica,sans-serif;background:#f3f6fb;padding:28px;color:#172033">
       <div style="max-width:560px;margin:auto;background:#fff;border-radius:20px;padding:30px;border:1px solid #e5eaf2">
-        <div style="font-size:24px;font-weight:800;color:#135ee8;margin-bottom:8px">QuickChat</div>
+        <div style="font-size:24px;font-weight:800;color:#135ee8;margin-bottom:8px">${escapeHtml(brand)}</div>
         <h2 style="margin:0 0 12px;font-size:22px;color:#172033">${escapeHtml(subject)}</h2>
         <p style="margin:0 0 20px;color:#667085">${escapeHtml(accountLine)}</p>
         <div style="text-align:center;font-size:36px;font-weight:900;letter-spacing:8px;padding:22px 10px;border-radius:16px;background:#eef4ff;color:#174fc7">${escapeHtml(cleanCode)}</div>

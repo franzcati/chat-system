@@ -10,6 +10,7 @@ const { decryptSecret: decryptMfaSecret } = require('../utils/mfaService');
 const router = express.Router();
 const { formatTelegramAlert } = require('../utils/telegramAlertFormat');
 const { telegramApi } = require('../utils/telegramApi');
+const { securityBrand } = require('../utils/securityBrand');
 router.use(requireAuth, resolveInstance);
 router.use((req, res, next) => {
   if (req.auth.usuario.instancia_id !== req.instanciaActual.id) return res.status(403).json({ error: 'Instancia no autorizada' });
@@ -219,7 +220,7 @@ router.post('/credentials/:id/reveal', async (req, res) => {
         attemptId = await event(db, req, 'CODE_ATTEMPT', 'attempt', credentialId, true,
           { platform: rows[0].plataforma, account: rows[0].cuenta });
         if (policy.alert_offhours) await queueAlert(db, instanceId, attemptId, `offhours-attempt:${attemptId}`,
-          `⚠️ CHATVISTA · Intento de consulta 2FA fuera de horario\nUsuario: ${actorLabel(req)} (${userId})\nPlataforma: ${escapeTelegram(rows[0].plataforma)}\nCuenta: ${escapeTelegram(rows[0].cuenta)}\nFecha: ${new Date().toISOString()}\nIP: ${escapeTelegram(sourceIp(req))}\nDispositivo: ${escapeTelegram(req.headers['user-agent'])}\nResultado: intento registrado; código aún no revelado`);
+          `⚠️ Intento de consulta 2FA fuera de horario\nUsuario: ${actorLabel(req)} (${userId})\nPlataforma: ${escapeTelegram(rows[0].plataforma)}\nCuenta: ${escapeTelegram(rows[0].cuenta)}\nFecha: ${new Date().toISOString()}\nIP: ${escapeTelegram(sourceIp(req))}\nDispositivo: ${escapeTelegram(req.headers['user-agent'])}\nResultado: intento registrado; código aún no revelado`);
       }
     }
     const [limits] = await conn.query('SELECT daily_offhours_limit FROM security_user_limits WHERE instancia_id=? AND usuario_id=?', [instanceId, userId]);
@@ -252,7 +253,7 @@ router.post('/credentials/:id/reveal', async (req, res) => {
     const secret = decryptSecret(item.secret_cipher, instanceId);
     const eventId = await event(conn, req, 'CODE_REVEALED', 'ok', credentialId, outside, { platform: item.plataforma, account: item.cuenta });
     if (outside && policy.alert_offhours) {
-      const msg = `🔐 CHATVISTA · Consulta 2FA fuera de horario\nUsuario: ${actorLabel(req)} (${userId})\nPlataforma: ${escapeTelegram(item.plataforma)}\nCuenta: ${escapeTelegram(item.cuenta)}\nFecha: ${new Date().toISOString()}\nHorario: ${status.description}\nIP: ${escapeTelegram(sourceIp(req))}\nDispositivo: ${escapeTelegram(req.headers['user-agent'])}\nSesión: ${req.auth.session.id}\nResultado: consultado`;
+      const msg = `🔐 Consulta 2FA fuera de horario\nUsuario: ${actorLabel(req)} (${userId})\nPlataforma: ${escapeTelegram(item.plataforma)}\nCuenta: ${escapeTelegram(item.cuenta)}\nFecha: ${new Date().toISOString()}\nHorario: ${status.description}\nIP: ${escapeTelegram(sourceIp(req))}\nDispositivo: ${escapeTelegram(req.headers['user-agent'])}\nSesión: ${req.auth.session.id}\nResultado: consultado`;
       await queueAlert(conn, instanceId, eventId, `offhours:${eventId}`, msg);
     }
     await conn.commit();
@@ -297,7 +298,7 @@ router.get('/policy', async (req, res) => {
     const policy = await policyFor(db, req.instanciaActual.id);
     const [hours] = await db.query('SELECT weekday,enabled,start_time,end_time FROM security_hours WHERE instancia_id=?', [req.instanciaActual.id]);
     const [limits] = await db.query('SELECT max_credentials,daily_offhours_limit FROM security_user_limits WHERE instancia_id=? AND usuario_id=?', [req.instanciaActual.id, req.auth.userId]);
-    res.json({ timezone: policy.timezone, hours: Array.from({ length: 7 }, (_, day) =>
+    res.json({ brand: securityBrand(), timezone: policy.timezone, hours: Array.from({ length: 7 }, (_, day) =>
       ({ weekday: day, ...(hours.find(h => h.weekday === day) || defaultHours(day)) })),
       max_credentials: limits[0]?.max_credentials ?? 1,
       daily_offhours_limit: limits[0]?.daily_offhours_limit ?? policy.daily_offhours_limit,
@@ -433,7 +434,7 @@ router.post('/alerts/test', requirePermission('gestionar_alertas_2fa'), async (r
     if (!policy.telegram_enabled) throw fail('Activa la sincronización antes de enviar una prueba');
     if (!policy.telegram_chat_id) throw fail('Guarda primero el grupo de Telegram');
     const message = await telegramCall('sendMessage', { chat_id: policy.telegram_chat_id, parse_mode: 'HTML',
-      text: formatTelegramAlert(`✅ CHATVISTA · Prueba de alertas de seguridad\nInstancia: ${instanceId}\nFecha: ${new Date().toISOString()}\nEl bot está conectado correctamente. No se envían claves ni códigos 2FA.`, policy.timezone) });
+      text: formatTelegramAlert(`✅ Prueba de alertas de seguridad\nInstancia: ${instanceId}\nFecha: ${new Date().toISOString()}\nEl bot está conectado correctamente. No se envían claves ni códigos 2FA.`, policy.timezone) });
     testSent.set(instanceId, Date.now()); res.json({ ok: true, group: message.chat?.title || String(message.chat?.id || ''), message_id: message.message_id });
   } catch (e) { bad(res, e); }
 });
@@ -452,8 +453,8 @@ router.put('/alerts', requirePermission('gestionar_alertas_2fa'), async (req, re
     if (switched && telegramToken() && telegramServerEnabled()) {
       const previous = before.telegram_enabled && before.telegram_chat_id;
       const transitions = [
-        ...(previous ? [[before.telegram_chat_id, '🔴 QuickChatBot se desconectó de ChatVista']] : []),
-        ...(enabled ? [[chat_id, '🟢 QuickChatBot en línea en ChatVista']] : []),
+        ...(previous ? [[before.telegram_chat_id, `🔴 QuickChatBot se desconectó de ${securityBrand()}`]] : []),
+        ...(enabled ? [[chat_id, `🟢 QuickChatBot en línea en ${securityBrand()}`]] : []),
       ];
       // No impedir guardar la preferencia si Telegram está temporalmente inaccesible.
       for (const [group, message] of transitions) {
@@ -477,7 +478,7 @@ router.get('/alerts', requirePermission('gestionar_alertas_2fa'), async (req, re
     telegram_enabled: !!p.telegram_enabled, server_disabled: !telegramServerEnabled(), last_success_at: p.telegram_last_success_at, last_error_at: p.telegram_last_error_at,
     daily_digest_time: p.daily_digest_time, pending_alerts: Number(outbox[0]?.pending_count || 0), retrying_alerts: Number(outbox[0]?.retry_count || 0),
     undelivered_alerts: Number(outbox[0]?.undelivered_count || 0),
-    bot_configured: !!process.env.SECURITY_TELEGRAM_BOT_TOKEN }); }
+    bot_configured: !!process.env.SECURITY_TELEGRAM_BOT_TOKEN, brand: securityBrand() }); }
   catch (e) { bad(res, e); }
 });
 module.exports = router;

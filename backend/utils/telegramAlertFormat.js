@@ -1,3 +1,5 @@
+const { securityBrand } = require('./securityBrand');
+
 function escapeHtml(value) {
   return String(value ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;')
     .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -18,7 +20,8 @@ function browserSummary(value) {
 
 function formatTelegramAlert(message, timezone = 'America/Lima') {
   const [heading = 'Alerta de seguridad', ...lines] = String(message || '').split(/\r?\n/);
-  const title = heading.replace(/^((?:🚨|⚠️|🔐|✅)\s*)?CHATVISTA\s*·\s*/i, '$1');
+  // También admite avisos que estaban en cola antes de configurar el nombre de esta VPS.
+  const title = heading.replace(/^((?:🚨|⚠️|🔐|✅)\s*)?(?:CHATVISTA|QUICKCHAT|CHATQUICK)\s*·\s*/i, '$1');
   const rows = lines.filter(Boolean).map(line => {
     const match = /^([^:]{1,35}):\s*(.*)$/.exec(line);
     if (!match) return escapeHtml(line);
@@ -34,7 +37,7 @@ function formatTelegramAlert(message, timezone = 'America/Lima') {
     return `<b>${escapeHtml(label)}:</b> ${escapeHtml(value)}`;
   });
   const body = rows.length ? `\n\n<blockquote>${rows.join('\n')}</blockquote>` : '';
-  return `<b>${escapeHtml(title)}</b>${body}\n\n<i>ChatVista · Seguridad 2FA</i>`;
+  return `<b>${escapeHtml(title)}</b>${body}\n\n<i>${escapeHtml(securityBrand())} · Seguridad 2FA</i>`;
 }
 
 module.exports = { formatTelegramAlert };

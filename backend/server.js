@@ -2,6 +2,7 @@
 require('dotenv').config({ path: require('node:path').join(__dirname, '.env') }); // <- Primero
 const db = require("./db"); // 👈 agrega esto
 const { startAlertWorker } = require('./utils/securityCenter');
+const { securityBrand } = require('./utils/securityBrand');
 const { startTelegramCommands } = require('./utils/telegramCommands');
 const { logDev } = require('./utils/logger');
 const app = require('./app');
@@ -65,7 +66,7 @@ async function startServer() {
 
     server.listen(PORT, BIND_HOST, () => {
       logDev(`🚀 Servidor corriendo en puerto ${PORT}`);
-      logDev(`🌐 Accesible desde chatvista.click`);
+      logDev(`🌐 Entorno: ${securityBrand()}`);
     });
     startAlertWorker();
     startTelegramCommands();

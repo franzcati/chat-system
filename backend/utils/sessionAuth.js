@@ -111,7 +111,7 @@ async function setAuthSession(req, res, userId) {
         (instancia_id,usuario_id,session_id,event_type,result,ip,user_agent)
         VALUES (?,?,?,'NEW_DEVICE','ok',?,?)`, [users[0].instancia_id,userId,sessionId,ip,String(req.headers['user-agent'] || '').slice(0,500)]);
       await queueAlert(pool, users[0].instancia_id, evt.insertId, `new-device:${userId}:${deviceHash}`,
-        `🚨 CHATVISTA · Nuevo dispositivo\nUsuario: ${userLabel} (${userId})\nFecha: ${new Date().toISOString()}\nIP: ${escapeTelegram(ip)}\nNavegador: ${escapeTelegram(req.headers['user-agent'])}\nSesión: ${sessionId}`);
+        `🚨 Nuevo dispositivo\nUsuario: ${userLabel} (${userId})\nFecha: ${new Date().toISOString()}\nIP: ${escapeTelegram(ip)}\nNavegador: ${escapeTelegram(req.headers['user-agent'])}\nSesión: ${sessionId}`);
     }
     const [count] = await pool.query(`SELECT COUNT(DISTINCT device_hash) n FROM security_sessions WHERE instancia_id=? AND usuario_id=?
       AND revoked_at IS NULL AND expires_at>UTC_TIMESTAMP(3) AND last_seen_at>DATE_SUB(UTC_TIMESTAMP(3), INTERVAL 5 MINUTE)`, [users[0].instancia_id,userId]);
@@ -128,7 +128,7 @@ async function setAuthSession(req, res, userId) {
       const details = activeDevices.map((device, index) =>
         `${index + 1}. IP: ${escapeTelegram(device.ip)} · ${escapeTelegram(device.user_agent)}`).join('\n');
       await queueAlert(pool, users[0].instancia_id,evt.insertId,`multi:${userId}:${Math.floor(Date.now()/3600000)}`,
-        `⚠️ CHATVISTA · Dispositivos simultáneos\nUsuario: ${userLabel} (${userId})\nDispositivos: ${count[0].n}\nFecha: ${new Date().toISOString()}\n${details}`);
+        `⚠️ Dispositivos simultáneos\nUsuario: ${userLabel} (${userId})\nDispositivos: ${count[0].n}\nFecha: ${new Date().toISOString()}\n${details}`);
     }
   } catch (error) { console.error("No se pudo registrar el dispositivo:", error.message); }
 

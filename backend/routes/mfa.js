@@ -2179,7 +2179,7 @@ router.post("/admin/users/:userId/reset", ...protectedMfa, async (req, res) => {
           VALUES (?,?,'MFA_ADMIN_RESET','ok',?,?,?)`,
           [req.instanciaActual.id,admin.actorUserId,String(req.ip || '').slice(0,64),String(req.headers['user-agent'] || '').slice(0,500),JSON.stringify({ targetUserId })]);
         await queueAlert(pool,req.instanciaActual.id,evt.insertId,`mfa-reset:${evt.insertId}`,
-          `🔐 CHATVISTA · MFA restablecido\nAdministrador: ${admin.actorUserId}\nUsuario: ${targetUserId}\nFecha: ${new Date().toISOString()}\nSesiones revocadas`);
+          `🔐 MFA restablecido\nAdministrador: ${admin.actorUserId}\nUsuario: ${targetUserId}\nFecha: ${new Date().toISOString()}\nSesiones revocadas`);
       }
     } catch (error) { console.error('Alerta de MFA:', error.message); }
 

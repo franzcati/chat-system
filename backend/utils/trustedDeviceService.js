@@ -127,7 +127,7 @@ async function createTrustedDevice(pool, req, res, userId) {
           [instanceId,userId,ip,userAgent,JSON.stringify({ device_id: result.insertId, device_name: name, trusted_count: total })]);
         const user = `${users[0].nombre || ''} ${users[0].apellido || ''}`.trim();
         await queueAlert(pool, instanceId, evt.insertId, `trusted-device:${userId}:${result.insertId}`,
-          `⚠️ CHATVISTA · Otro dispositivo de confianza\nUsuario: ${escapeTelegram(user)} (${escapeTelegram(users[0].correo)})\nDispositivos de confianza: ${total}\nNuevo dispositivo: ${escapeTelegram(name)}\nIP: ${escapeTelegram(ip)}\nNavegador: ${escapeTelegram(userAgent)}\nFecha: ${new Date().toISOString()}`);
+          `⚠️ Otro dispositivo de confianza\nUsuario: ${escapeTelegram(user)} (${escapeTelegram(users[0].correo)})\nDispositivos de confianza: ${total}\nNuevo dispositivo: ${escapeTelegram(name)}\nIP: ${escapeTelegram(ip)}\nNavegador: ${escapeTelegram(userAgent)}\nFecha: ${new Date().toISOString()}`);
       }
     }
   } catch (error) {

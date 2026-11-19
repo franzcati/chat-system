@@ -1,5 +1,7 @@
 const db = require('../db');
 const { telegramApi } = require('./telegramApi');
+const { securityBrand } = require('./securityBrand');
+const { securityEventLabel } = require('./securityEventLabels');
 const { localParts, telegramServerEnabled } = require('./securityCenter');
 
 const html = value => String(value ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -26,11 +28,11 @@ async function report(chatId, instanceId, timezone, date, messageId) {
     if (localParts(timezone, new Date(`${String(row.created_at).replace(' ', 'T')}Z`)).date !== date) continue;
     counts[row.event_type] = (counts[row.event_type] || 0) + 1;
   }
-  const labels = { CODE_ATTEMPT: 'Intentos fuera de horario', CODE_REVEALED: 'Códigos consultados',
-    CREDENTIAL_CREATED: 'Credenciales agregadas', CREDENTIAL_UPDATED: 'Credenciales editadas',
-    CREDENTIAL_DELETED: 'Credenciales eliminadas', NEW_DEVICE: 'Dispositivos nuevos',
-    MULTIPLE_DEVICES: 'Sesiones en varios dispositivos', MFA_ADMIN_RESET: 'MFA restablecidos' };
-  const lines = Object.entries(labels).map(([type, label]) => `• ${html(label)}: <b>${counts[type] || 0}</b>`);
+  const types = ['CODE_ATTEMPT', 'CODE_REVEALED', 'CREDENTIAL_CREATED', 'CREDENTIAL_UPDATED',
+    'CREDENTIAL_DELETED', 'NEW_DEVICE', 'MULTIPLE_DEVICES', 'TRUSTED_DEVICE_ADDED', 'MFA_ADMIN_RESET',
+    'TELEGRAM_MFA_RESET', 'TELEGRAM_TRUST_REVOKED'];
+  const lines = [...new Set([...types, ...Object.keys(counts)])]
+    .map(type => `• ${html(securityEventLabel(type))}: <b>${counts[type] || 0}</b>`);
   await send(chatId, `<b>📊 Resumen de alertas · ${date}</b>\nZona horaria: ${html(timezone)}\n\n${lines.join('\n')}\n\n<i>Los eventos pueden aparecer con retraso si Telegram estuvo sin conexión.</i>`,
     { inline_keyboard: [[{ text: '⬅️ Menú', callback_data: 'qc:menu' }]] }, messageId);
 }
@@ -81,7 +83,7 @@ async function handle(update) {
   const action = callback?.data || message.text?.trim() || '';
   const messageId = callback?.message?.message_id;
   if (action === 'qc:menu' || /^\/cmds(?:@\w+)?$/i.test(action)) {
-    return send(chatId, '<b>🛡️ QuickChatBot · Panel de comandos</b>\nConsulta la actividad de seguridad de ChatVista.\n\n• <code>/alertas AAAA-MM-DD</code> para una fecha\n• <code>/dispositivos</code> para confianza registrada\n• <code>/miid</code> para ver tu ID de Telegram\n\nElige una opción:', menu, messageId);
+    return send(chatId, `<b>🛡️ QuickChatBot · Panel de comandos</b>\nConsulta la actividad de seguridad de ${html(securityBrand())}.\n\n• <code>/alertas AAAA-MM-DD</code> para una fecha\n• <code>/dispositivos</code> para confianza registrada\n• <code>/miid</code> para ver tu ID de Telegram\n\nElige una opción:`, menu, messageId);
   }
   if (/^\/miid(?:@\w+)?$/i.test(action)) return send(chatId, `Tu ID de Telegram es <code>${senderId}</code>. Solo una persona autorizada en el servidor podrá revocar confianza.`);
   if (action === 'qc:today') return report(chatId, policy.instancia_id, policy.timezone, localParts(policy.timezone).date, messageId);
