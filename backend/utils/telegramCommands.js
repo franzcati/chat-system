@@ -22,15 +22,16 @@ async function report(chatId, instanceId, timezone, date, messageId) {
   }
   const [rows] = await db.query(`SELECT event_type,result,created_at FROM security_events
     WHERE instancia_id=? AND created_at>=DATE_SUB(?, INTERVAL 1 DAY)
-      AND created_at<DATE_ADD(?, INTERVAL 2 DAY) ORDER BY id DESC LIMIT 5000`, [instanceId, date, date]);
+      AND created_at<DATE_ADD(?, INTERVAL 2 DAY)
+      AND (event_type='TRUSTED_DEVICE_ADDED' OR
+        (event_type IN ('CODE_ATTEMPT','CODE_REVEALED','CODE_DENIED') AND outside_hours=1))
+      ORDER BY id DESC LIMIT 5000`, [instanceId, date, date]);
   const counts = {};
   for (const row of rows) {
     if (localParts(timezone, new Date(`${String(row.created_at).replace(' ', 'T')}Z`)).date !== date) continue;
     counts[row.event_type] = (counts[row.event_type] || 0) + 1;
   }
-  const types = ['CODE_ATTEMPT', 'CODE_REVEALED', 'CREDENTIAL_CREATED', 'CREDENTIAL_UPDATED',
-    'CREDENTIAL_DELETED', 'NEW_DEVICE', 'MULTIPLE_DEVICES', 'TRUSTED_DEVICE_ADDED', 'MFA_ADMIN_RESET',
-    'TELEGRAM_MFA_RESET', 'TELEGRAM_TRUST_REVOKED'];
+  const types = ['TRUSTED_DEVICE_ADDED', 'CODE_ATTEMPT', 'CODE_REVEALED', 'CODE_DENIED'];
   const lines = [...new Set([...types, ...Object.keys(counts)])]
     .map(type => `• ${html(securityEventLabel(type))}: <b>${counts[type] || 0}</b>`);
   await send(chatId, `<b>📊 Resumen de alertas · ${date}</b>\nZona horaria: ${html(timezone)}\n\n${lines.join('\n')}\n\n<i>Los eventos pueden aparecer con retraso si Telegram estuvo sin conexión.</i>`,

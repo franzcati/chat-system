@@ -95,40 +95,33 @@ async function setAuthSession(req, res, userId) {
   }
 
   try {
-    const { policyFor, queueAlert, escapeTelegram } = require("./securityCenter");
-    const userLabel = escapeTelegram(`${users[0].nombre || ''} ${users[0].apellido || ''}`.trim() || users[0].correo || userId);
+    // El inicio de sesión y el navegador se registran en auditoría, sin generar
+    // avisos de Telegram: un dispositivo de confianza exige registrar el MFA.
     const [device] = await pool.query(`INSERT IGNORE INTO security_devices (instancia_id,usuario_id,device_hash)
       VALUES (?,?,?)`, [users[0].instancia_id, userId, deviceHash]);
     await pool.query(`UPDATE security_devices SET last_seen_at=UTC_TIMESTAMP(3)
       WHERE instancia_id=? AND usuario_id=? AND device_hash=?`, [users[0].instancia_id, userId, deviceHash]);
-    const policy = await policyFor(pool, users[0].instancia_id);
     await pool.query(`INSERT INTO security_events
       (instancia_id,usuario_id,session_id,event_type,result,ip,user_agent)
       VALUES (?,?,?,'LOGIN_SUCCESS','ok',?,?)`,
       [users[0].instancia_id,userId,sessionId,ip,String(req.headers['user-agent'] || '').slice(0,500)]);
-    if (device.affectedRows && policy.alert_new_device) {
-      const [evt] = await pool.query(`INSERT INTO security_events
+    if (device.affectedRows) {
+      await pool.query(`INSERT INTO security_events
         (instancia_id,usuario_id,session_id,event_type,result,ip,user_agent)
         VALUES (?,?,?,'NEW_DEVICE','ok',?,?)`, [users[0].instancia_id,userId,sessionId,ip,String(req.headers['user-agent'] || '').slice(0,500)]);
-      await queueAlert(pool, users[0].instancia_id, evt.insertId, `new-device:${userId}:${deviceHash}`,
-        `🚨 Nuevo dispositivo\nUsuario: ${userLabel} (${userId})\nFecha: ${new Date().toISOString()}\nIP: ${escapeTelegram(ip)}\nNavegador: ${escapeTelegram(req.headers['user-agent'])}\nSesión: ${sessionId}`);
     }
     const [count] = await pool.query(`SELECT COUNT(DISTINCT device_hash) n FROM security_sessions WHERE instancia_id=? AND usuario_id=?
       AND revoked_at IS NULL AND expires_at>UTC_TIMESTAMP(3) AND last_seen_at>DATE_SUB(UTC_TIMESTAMP(3), INTERVAL 5 MINUTE)`, [users[0].instancia_id,userId]);
-    if (Number(count[0].n) > 1 && policy.alert_multiple_devices) {
+    if (Number(count[0].n) > 1) {
       const [activeDevices] = await pool.query(`SELECT ip,user_agent,MAX(last_seen_at) last_seen_at
         FROM security_sessions WHERE instancia_id=? AND usuario_id=?
         AND revoked_at IS NULL AND expires_at>UTC_TIMESTAMP(3)
         AND last_seen_at>DATE_SUB(UTC_TIMESTAMP(3), INTERVAL 5 MINUTE)
         GROUP BY device_hash,ip,user_agent ORDER BY last_seen_at DESC LIMIT 8`,
         [users[0].instancia_id,userId]);
-      const [evt] = await pool.query(`INSERT INTO security_events (instancia_id,usuario_id,session_id,event_type,result,detail_json)
+      await pool.query(`INSERT INTO security_events (instancia_id,usuario_id,session_id,event_type,result,detail_json)
         VALUES (?,?,?,'MULTIPLE_DEVICES','ok',?)`, [users[0].instancia_id,userId,sessionId,
           JSON.stringify({ count: Number(count[0].n), devices: activeDevices.map(({ ip, user_agent }) => ({ ip, user_agent })) })]);
-      const details = activeDevices.map((device, index) =>
-        `${index + 1}. IP: ${escapeTelegram(device.ip)} · ${escapeTelegram(device.user_agent)}`).join('\n');
-      await queueAlert(pool, users[0].instancia_id,evt.insertId,`multi:${userId}:${Math.floor(Date.now()/3600000)}`,
-        `⚠️ Dispositivos simultáneos\nUsuario: ${userLabel} (${userId})\nDispositivos: ${count[0].n}\nFecha: ${new Date().toISOString()}\n${details}`);
     }
   } catch (error) { console.error("No se pudo registrar el dispositivo:", error.message); }
 

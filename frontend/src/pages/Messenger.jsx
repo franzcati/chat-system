@@ -20,6 +20,7 @@ const EditUsers = lazy(() => import("../components/EditUsers"));
 const RoleManagement = lazy(() => import("../components/RoleManagement"));
 const AuditManagement = lazy(() => import("../components/AuditManagement"));
 const SecurityCenter = lazy(() => import("../components/SecurityCenter"));
+const Estados = lazy(() => import("../components/Estados"));
 
 const LazyPanelFallback = () => (
   <div className="flex-1 d-flex align-items-center justify-content-center">
@@ -547,6 +548,9 @@ const Messenger = () => {
           estadosUsuarios={estadosUsuarios}
         />
       )}
+      {activeTab === "states" && <Suspense fallback={<LazyPanelFallback/>}>
+        <Estados usuario={usuario} onOpenGroup={handleSelectChat} onOpenPrivate={handleSelectChat}/>
+      </Suspense>}
       {activeTab === "projects" && (
         <div className="flex-1 wa-admin-stage">
           <Suspense fallback={<LazyPanelFallback />}>

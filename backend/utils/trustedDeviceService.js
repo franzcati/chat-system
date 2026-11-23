@@ -106,10 +106,10 @@ async function createTrustedDevice(pool, req, res, userId) {
 
   setTrustedCookie(res, userId, token);
 
-  // El alta de otro dispositivo de confianza nunca revoca los anteriores.
-  // El evento se guarda una sola vez por dispositivo y el envío queda en cola.
+  // Solo el alta explícita de confianza envía avisos, nunca un simple login.
   try {
     const { policyFor, queueAlert, escapeTelegram, sourceIp } = require("./securityCenter");
+    const { securityProjectLines } = require("./securityProjects");
     const [users] = await pool.query(
       "SELECT instancia_id,nombre,apellido,correo FROM usuario WHERE id=? LIMIT 1", [userId]
     );
@@ -119,15 +119,23 @@ async function createTrustedDevice(pool, req, res, userId) {
         WHERE usuario_id=? AND revoked_at IS NULL AND expires_at>UTC_TIMESTAMP()`, [userId]);
       const total = Number(count[0].n);
       const policy = await policyFor(pool, instanceId);
-      if (total > 1 && policy.alert_multiple_devices) {
-        const ip = safeHeader(sourceIp(req), 64);
-        const [evt] = await pool.query(`INSERT INTO security_events
-          (instancia_id,usuario_id,event_type,result,ip,user_agent,detail_json)
-          VALUES (?,?,'TRUSTED_DEVICE_ADDED','ok',?,?,?)`,
-          [instanceId,userId,ip,userAgent,JSON.stringify({ device_id: result.insertId, device_name: name, trusted_count: total })]);
+      const ip = safeHeader(sourceIp(req), 64);
+      const [evt] = await pool.query(`INSERT INTO security_events
+        (instancia_id,usuario_id,event_type,result,ip,user_agent,detail_json)
+        VALUES (?,?,'TRUSTED_DEVICE_ADDED','ok',?,?,?)`,
+        [instanceId,userId,ip,userAgent,JSON.stringify({ device_id: result.insertId, device_name: name, trusted_count: total })]);
+      if (total === 1 ? policy.alert_new_device : policy.alert_multiple_devices) {
+        const [devices] = await pool.query(`SELECT id,nombre FROM usuario_mfa_dispositivos
+          WHERE usuario_id=? AND revoked_at IS NULL AND expires_at>UTC_TIMESTAMP()
+          ORDER BY created_at DESC,id DESC LIMIT 35`, [userId]);
+        const listed = devices.map((device, index) =>
+          `• ${index + 1}. ${escapeTelegram(device.nombre || 'Dispositivo').slice(0, 70)} (ID ${device.id})`).join('\n');
+        const remainder = total > devices.length ? `\n… y ${total - devices.length} más` : '';
+        const projects = await securityProjectLines(pool, instanceId, userId)
+          .catch(() => 'Proyecto principal: No disponible\nProyectos secundarios: No disponibles');
         const user = `${users[0].nombre || ''} ${users[0].apellido || ''}`.trim();
         await queueAlert(pool, instanceId, evt.insertId, `trusted-device:${userId}:${result.insertId}`,
-          `⚠️ Otro dispositivo de confianza\nUsuario: ${escapeTelegram(user)} (${escapeTelegram(users[0].correo)})\nDispositivos de confianza: ${total}\nNuevo dispositivo: ${escapeTelegram(name)}\nIP: ${escapeTelegram(ip)}\nNavegador: ${escapeTelegram(userAgent)}\nFecha: ${new Date().toISOString()}`);
+          `${total > 1 ? '⚠️ Otro dispositivo de confianza' : '📱 Nuevo dispositivo de confianza'}\nUsuario: ${escapeTelegram(user)} (${escapeTelegram(users[0].correo)})\n${projects}\nDispositivos de confianza: ${total}\nRegistrado ahora: ${escapeTelegram(name)}\nDispositivos vigentes:\n${listed}${remainder}\nIP: ${escapeTelegram(ip)}\nFecha: ${new Date().toISOString()}`);
       }
     }
   } catch (error) {

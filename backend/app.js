@@ -89,6 +89,7 @@ app.use('/api/usuario', require('./routes/usuario'));
 // MFA / AUTENTICACION EN DOS PASOS
 app.use('/api/mfa', require('./routes/mfa'));
 app.use('/api/security', require('./routes/securityCenter'));
+app.use('/api/estados', require('./routes/estados'));
 
 //BUSQUEDA DE CHAT
 const chats = require('./routes/chats');

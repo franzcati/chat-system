@@ -5,12 +5,13 @@ const { requireAuth, requirePermission, requireAnyPermission, hasPermission } = 
 const { resolveInstance } = require('../middleware/resolveInstance');
 const { parseSecret, encryptSecret, decryptSecret, generateTotp, verifyTotp, validTime,
   validTimezone, defaultHours, workStatus, policyFor, event, queueAlert, escapeTelegram, sourceIp, telegramServerEnabled,
-  createViewToken, verifyViewToken } = require('../utils/securityCenter');
+  createViewToken, verifyViewToken, markAttemptAlert, finishAttemptAlert } = require('../utils/securityCenter');
 const { decryptSecret: decryptMfaSecret } = require('../utils/mfaService');
 const router = express.Router();
 const { formatTelegramAlert } = require('../utils/telegramAlertFormat');
 const { telegramApi } = require('../utils/telegramApi');
 const { securityBrand } = require('../utils/securityBrand');
+const { securityProjectLines } = require('../utils/securityProjects');
 router.use(requireAuth, resolveInstance);
 router.use((req, res, next) => {
   if (req.auth.usuario.instancia_id !== req.instanciaActual.id) return res.status(403).json({ error: 'Instancia no autorizada' });
@@ -191,11 +192,15 @@ router.put('/credentials/:id/access/:userId', requirePermission(admin), async (r
 router.post('/credentials/:id/reveal', async (req, res) => {
   const conn = await db.getConnection();
   let credentialId = id(req.params.id), outside = false, attemptId = null;
+  let alertOffhours = false;
+  let attemptPlatform = '', attemptAccount = '';
+  let attemptProjects = 'Proyecto principal: No disponible\nProyectos secundarios: No disponibles';
   try {
     if (!credentialId) throw fail('Credencial inválida');
     await conn.beginTransaction();
     const instanceId = req.instanciaActual.id, userId = req.auth.userId;
     const policy = await policyFor(conn, instanceId);
+    alertOffhours = !!policy.alert_offhours;
     // Serializa los límites por instancia y evita consultas simultáneas que los eludan.
     await conn.query('SELECT instancia_id FROM security_policy WHERE instancia_id=? FOR UPDATE', [instanceId]);
     const [rows] = await conn.query(`SELECT c.id,c.plataforma,c.cuenta,c.secret_cipher FROM security_credentials c
@@ -205,6 +210,8 @@ router.post('/credentials/:id/reveal', async (req, res) => {
       LIMIT 1`, [userId, credentialId, instanceId, userId]);
     if (!rows.length) throw fail('Credencial no autorizada', 404);
     const status = await workStatus(conn, instanceId, userId, policy); outside = status.outside;
+    attemptPlatform = rows[0].plataforma;
+    attemptAccount = rows[0].cuenta;
     // El clic en el ojo queda registrado antes de solicitar MFA o aplicar límites.
     // Se guarda fuera de la transacción para conservarlo aunque se rechace la consulta.
     if (outside) {
@@ -219,8 +226,13 @@ router.post('/credentials/:id/reveal', async (req, res) => {
       if (!attemptId) {
         attemptId = await event(db, req, 'CODE_ATTEMPT', 'attempt', credentialId, true,
           { platform: rows[0].plataforma, account: rows[0].cuenta });
-        if (policy.alert_offhours) await queueAlert(db, instanceId, attemptId, `offhours-attempt:${attemptId}`,
-          `⚠️ Intento de consulta 2FA fuera de horario\nUsuario: ${actorLabel(req)} (${userId})\nPlataforma: ${escapeTelegram(rows[0].plataforma)}\nCuenta: ${escapeTelegram(rows[0].cuenta)}\nFecha: ${new Date().toISOString()}\nIP: ${escapeTelegram(sourceIp(req))}\nDispositivo: ${escapeTelegram(req.headers['user-agent'])}\nResultado: intento registrado; código aún no revelado`);
+        if (alertOffhours) {
+          attemptProjects = await securityProjectLines(db, instanceId, userId)
+            .catch(() => attemptProjects);
+          await queueAlert(db, instanceId, attemptId, `offhours-attempt:${attemptId}`,
+            `⚠️ Intento de consulta 2FA fuera de horario\nIntento: ${attemptId}\nUsuario: ${actorLabel(req)} (${userId})\n${attemptProjects}\nPlataforma: ${escapeTelegram(attemptPlatform)}\nCuenta: ${escapeTelegram(attemptAccount)}\nFecha: ${new Date().toISOString()}\nIP: ${escapeTelegram(sourceIp(req))}\nAcceso: 🟡 En verificación; código no revelado`);
+          await markAttemptAlert(db, instanceId, attemptId);
+        }
       }
     }
     const [limits] = await conn.query('SELECT daily_offhours_limit FROM security_user_limits WHERE instancia_id=? AND usuario_id=?', [instanceId, userId]);
@@ -252,10 +264,8 @@ router.post('/credentials/:id/reveal', async (req, res) => {
     const item = rows[0];
     const secret = decryptSecret(item.secret_cipher, instanceId);
     const eventId = await event(conn, req, 'CODE_REVEALED', 'ok', credentialId, outside, { platform: item.plataforma, account: item.cuenta });
-    if (outside && policy.alert_offhours) {
-      const msg = `🔐 Consulta 2FA fuera de horario\nUsuario: ${actorLabel(req)} (${userId})\nPlataforma: ${escapeTelegram(item.plataforma)}\nCuenta: ${escapeTelegram(item.cuenta)}\nFecha: ${new Date().toISOString()}\nHorario: ${status.description}\nIP: ${escapeTelegram(sourceIp(req))}\nDispositivo: ${escapeTelegram(req.headers['user-agent'])}\nSesión: ${req.auth.session.id}\nResultado: consultado`;
-      await queueAlert(conn, instanceId, eventId, `offhours:${eventId}`, msg);
-    }
+    if (outside && policy.alert_offhours) await finishAttemptAlert(conn, instanceId, attemptId, 'correct',
+      '🟢 Correcto; código revelado');
     await conn.commit();
     const view = createViewToken({ instanceId, userId, sessionId: req.auth.session.id, credentialId, outside });
     const now = Date.now();
@@ -263,10 +273,36 @@ router.post('/credentials/:id/reveal', async (req, res) => {
       view_token: view.token, view_expires_at: view.expiresAt, outside_hours: outside });
   } catch (e) {
     await conn.rollback();
-    if (credentialId && e.status) await event(db, req, 'CODE_DENIED', 'denied', credentialId, outside, { reason: String(e.status) }).catch(() => {});
+    if (credentialId && (e.status || attemptId)) {
+      const deniedId = await event(db, req, 'CODE_DENIED', 'denied', credentialId, outside,
+        { reason: e.status ? String(e.status) : 'error_interno', attempt_id: attemptId }).catch(() => null);
+      if (outside && alertOffhours && attemptId && deniedId) await finishAttemptAlert(db,
+        req.instanciaActual.id, attemptId, 'failed',
+        `🔴 Fallido; código no revelado (${escapeTelegram(e.status ? e.message : 'Error del servidor')})`)
+        .catch(error => console.error('Aviso de consulta fallida:', error.message));
+    }
     if (!e.status) console.error('Error al revelar código 2FA:', e.code || e.name, e.errno || '');
     bad(res, e);
   } finally { conn.release(); }
+});
+
+// El cierre del formulario MFA actualiza el intento que inició este usuario.
+router.post('/credentials/:id/attempts/:attemptId/cancel', async (req, res) => {
+  try {
+    const credentialId = id(req.params.id), attemptId = id(req.params.attemptId);
+    if (!credentialId || !attemptId) throw fail('Intento inválido');
+    const instanceId = req.instanciaActual.id;
+    const [rows] = await db.query(`SELECT id FROM security_events WHERE id=? AND instancia_id=?
+      AND usuario_id=? AND credential_id=? AND session_id=? AND event_type='CODE_ATTEMPT'
+      AND outside_hours=1 AND created_at>DATE_SUB(UTC_TIMESTAMP(3), INTERVAL 5 MINUTE) LIMIT 1`,
+      [attemptId, instanceId, req.auth.userId, credentialId, req.auth.session.id]);
+    if (!rows.length) throw fail('Intento no encontrado', 404);
+    const changed = await finishAttemptAlert(db, instanceId, attemptId, 'failed',
+      '🔴 Fallido; verificación MFA cancelada');
+    if (changed) await event(db, req, 'CODE_DENIED', 'denied', credentialId, true,
+      { reason: 'mfa_cancelado', attempt_id: attemptId });
+    res.json({ ok: true });
+  } catch (e) { bad(res, e); }
 });
 
 // Una visualización autenticada dura cinco minutos. Cada recarga comprueba

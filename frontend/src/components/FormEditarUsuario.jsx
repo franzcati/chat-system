@@ -11,6 +11,7 @@ const DEFAULT_PERMISSIONS = {
   realizar_videollamadas: 0,
   buscar_mensajes: 0,
   eliminar_cualquier_mensaje: 0,
+  publicar_estados: 0,
 };
 
 const parsePermissions = (value) => {
@@ -37,6 +38,7 @@ const parsePermissions = (value) => {
     realizar_videollamadas: Number(parsed.realizar_videollamadas || 0),
     buscar_mensajes: Number(parsed.buscar_mensajes || 0),
     eliminar_cualquier_mensaje: Number(parsed.eliminar_cualquier_mensaje || 0),
+    publicar_estados: Number(parsed.publicar_estados || 0),
   };
 };
 
@@ -1049,6 +1051,7 @@ export default function FormEditarUsuario({
 }
 
 const PERMISOS_UI = [
+  { campo: "publicar_estados", titulo: "Publicar estados", descripcion: "Comparte estados personales y, si administra un grupo, estados grupales", icono: "bi bi-circle-square" },
   {
     campo: "crear_grupos",
     titulo: "Crear grupos",

@@ -20,6 +20,7 @@ const DEFAULT_CHAT_PERMISSIONS = {
   realizar_videollamadas: 0,
   buscar_mensajes: 0,
   eliminar_cualquier_mensaje: 0,
+  publicar_estados: 0,
 };
 
 function normalizarPermisosChat(value) {

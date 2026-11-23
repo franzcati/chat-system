@@ -5,7 +5,7 @@ const labels = Object.freeze({
   LOGIN_SUCCESS: 'Inicios de sesión',
   NEW_DEVICE: 'Dispositivos nuevos',
   MULTIPLE_DEVICES: 'Sesiones en varios dispositivos',
-  TRUSTED_DEVICE_ADDED: 'Dispositivos de confianza adicionales',
+  TRUSTED_DEVICE_ADDED: 'Dispositivos de confianza registrados',
   MFA_ADMIN_RESET: 'MFA restablecidos por un administrador',
   TELEGRAM_MFA_RESET: 'MFA restablecidos desde Telegram',
   TELEGRAM_TRUST_REVOKED: 'Dispositivos de confianza revocados desde Telegram',

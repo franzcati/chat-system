@@ -134,22 +134,75 @@ async function queueAlert(conn, instanceId, eventId, dedupeKey, message) {
   // el intervalo breve garantiza que también se recojan tras el commit.
   setTimeout(() => { void processAlerts(); }, 100).unref();
 }
+async function markAttemptAlert(conn, instanceId, attemptId) {
+  await conn.query(`UPDATE security_alert_outbox
+    SET attempt_outcome='pending',attempt_deadline_at=DATE_ADD(UTC_TIMESTAMP(3),INTERVAL 2 MINUTE)
+    WHERE instancia_id=? AND event_id=? AND dedupe_key=?`,
+    [instanceId,attemptId,`offhours-attempt:${attemptId}`]);
+}
+async function finishAttemptAlert(conn, instanceId, attemptId, outcome, label) {
+  if (!attemptId || !['correct','failed'].includes(outcome)) return;
+  const condition = outcome === 'correct' ? "IN ('pending','failed')" : "='pending'";
+  const [result] = await conn.query(`UPDATE security_alert_outbox
+    SET message=CONCAT(SUBSTRING_INDEX(message, ?, 1), ?, ?),
+      message_revision=message_revision+1,attempt_outcome=?,attempt_deadline_at=NULL,
+      attempts=0,next_attempt_at=UTC_TIMESTAMP(3),
+      status=IF(status='sending','sending',IF(telegram_message_id IS NULL,'pending','failed'))
+    WHERE instancia_id=? AND event_id=? AND dedupe_key=? AND attempt_outcome ${condition}`,
+    ['\nAcceso:','\nAcceso: ',label,outcome,instanceId,attemptId,`offhours-attempt:${attemptId}`]);
+  if (result.affectedRows) setTimeout(() => { void processAlerts(); }, 100).unref();
+  return result.affectedRows;
+}
 function escapeTelegram(value) { return String(value ?? '').replace(/[\r\n\0<>]/g, ' ').slice(0, 190); }
+function trustedDeviceReplyMarkup(eventType, userId) {
+  const id = Number(userId);
+  if (eventType !== 'TRUSTED_DEVICE_ADDED' || !Number.isSafeInteger(id) || id <= 0) return {};
+  return { reply_markup: { inline_keyboard: [
+    [{ text: '🔒 Revocar confianza de todos', callback_data: `qc:revoke:${id}` }],
+    [{ text: '🔑 Restablecer MFA', callback_data: `qc:reset:${id}` }],
+  ] } };
+}
 let workerBusy = false;
+let legacyAlertsDiscarded = false;
 async function processAlerts() {
   if (workerBusy || !telegramServerEnabled() || !process.env.SECURITY_TELEGRAM_BOT_TOKEN) return;
   workerBusy = true;
   try {
+    // Si el navegador cerró sin avisar, el intento no puede quedar indefinidamente en curso.
+    await db.query(`UPDATE security_alert_outbox
+      SET message=REPLACE(message,
+          'Acceso: 🟡 En verificación; código no revelado',
+          'Acceso: 🔴 Fallido; verificación MFA no completada'),
+        message_revision=message_revision+1,attempt_outcome='failed',attempt_deadline_at=NULL,
+        attempts=0,next_attempt_at=UTC_TIMESTAMP(3),
+        status=IF(status='sending','sending',IF(telegram_message_id IS NULL,'pending','failed'))
+      WHERE attempt_outcome='pending' AND attempt_deadline_at<=UTC_TIMESTAMP(3)`);
+    if (!legacyAlertsDiscarded) {
+      // Tras actualizar, no entregar avisos antiguos que eran solo logins
+      // o sesiones simultáneas. Los intentos fuera de horario sí se notifican.
+      await db.query(`DELETE q FROM security_alert_outbox q
+        JOIN security_events e ON e.id=q.event_id AND e.instancia_id=q.instancia_id
+        WHERE q.status IN ('pending','failed','sending')
+          AND e.event_type IN ('NEW_DEVICE','MULTIPLE_DEVICES')`);
+      legacyAlertsDiscarded = true;
+    }
     await db.query(`UPDATE security_alert_outbox SET status='failed'
       WHERE status='sending' AND next_attempt_at<UTC_TIMESTAMP(3)`);
-    const [items] = await db.query(`SELECT q.id,q.instancia_id,q.message,p.telegram_chat_id,p.timezone FROM security_alert_outbox q
+    const [items] = await db.query(`SELECT q.id,q.instancia_id,q.message,q.telegram_message_id,
+      q.message_revision,p.telegram_chat_id,p.timezone,
+      e.event_type,e.usuario_id AS alert_user_id FROM security_alert_outbox q
       JOIN security_policy p ON p.instancia_id=q.instancia_id
-      WHERE q.status IN ('pending','failed') AND q.next_attempt_at<=UTC_TIMESTAMP(3)
+      LEFT JOIN security_events e ON e.id=q.event_id AND e.instancia_id=q.instancia_id
+      WHERE ((q.telegram_message_id IS NULL AND q.status IN ('pending','failed'))
+        OR (q.telegram_message_id IS NOT NULL AND q.message_revision>q.delivered_revision
+          AND q.status IN ('sent','failed')))
+      AND q.next_attempt_at<=UTC_TIMESTAMP(3)
       AND q.attempts<8 AND p.telegram_enabled=1 AND p.telegram_chat_id IS NOT NULL ORDER BY q.id LIMIT 10`);
     for (const item of items) {
       const [lock] = await db.query(`UPDATE security_alert_outbox SET status='sending',attempts=attempts+1
         ,next_attempt_at=DATE_ADD(UTC_TIMESTAMP(3), INTERVAL 2 MINUTE)
-        WHERE id=? AND status IN ('pending','failed')`, [item.id]);
+        WHERE id=? AND message_revision=? AND status IN ('pending','failed','sent')`,
+        [item.id,item.message_revision]);
       if (!lock.affectedRows) continue;
       try {
         const [active] = await db.query('SELECT telegram_enabled FROM security_policy WHERE instancia_id=?', [item.instancia_id]);
@@ -157,11 +210,23 @@ async function processAlerts() {
           await db.query("UPDATE security_alert_outbox SET status='failed' WHERE id=?", [item.id]);
           continue;
         }
-        const response = await telegramApi('sendMessage', { chat_id: item.telegram_chat_id,
+        // Los botones se ven en el grupo; la acción requiere administrador y
+        // SECURITY_TELEGRAM_ADMIN_IDS en el receptor de comandos.
+        const editing = item.telegram_message_id !== null;
+        const response = await telegramApi(editing ? 'editMessageText' : 'sendMessage', { chat_id: item.telegram_chat_id,
+          ...(editing ? { message_id: item.telegram_message_id } : {}),
           text: formatTelegramAlert(item.message, item.timezone), parse_mode: 'HTML',
-          link_preview_options: { is_disabled: true } });
-        if (!response.ok) throw new Error(`Telegram HTTP ${response.status}`);
-        await db.query("UPDATE security_alert_outbox SET status='sent',sent_at=UTC_TIMESTAMP(3) WHERE id=?", [item.id]);
+          link_preview_options: { is_disabled: true },
+          ...trustedDeviceReplyMarkup(item.event_type, item.alert_user_id) });
+        if (!response.ok && !(editing && /message is not modified/i.test(response.description || ''))) {
+          throw new Error(`Telegram HTTP ${response.status}`);
+        }
+        const messageId = editing ? item.telegram_message_id : Number(response.result?.message_id);
+        if (!Number.isSafeInteger(messageId) || messageId <= 0) throw new Error('Telegram no devolvió el ID del mensaje');
+        await db.query(`UPDATE security_alert_outbox SET status='sent',
+          sent_at=COALESCE(sent_at,UTC_TIMESTAMP(3)),telegram_message_id=?,
+          delivered_revision=GREATEST(delivered_revision,?),next_attempt_at=UTC_TIMESTAMP(3)
+          WHERE id=?`, [messageId,item.message_revision,item.id]);
         await db.query('UPDATE security_policy SET telegram_last_success_at=UTC_TIMESTAMP(3) WHERE instancia_id=?', [item.instancia_id]);
       } catch (error) {
         console.warn('Alerta Telegram pendiente de reintento:', item.id, error.name || 'Error', error.message || '');
@@ -182,6 +247,8 @@ async function dailyDigest() {
     const { date } = localParts(p.timezone);
     const [rows] = await db.query(`SELECT event_type,COUNT(*) n FROM security_events
       WHERE instancia_id=? AND created_at>=DATE_SUB(UTC_TIMESTAMP(), INTERVAL 1 DAY)
+      AND (event_type='TRUSTED_DEVICE_ADDED' OR
+        (event_type IN ('CODE_ATTEMPT','CODE_REVEALED','CODE_DENIED') AND outside_hours=1))
       GROUP BY event_type`, [p.instancia_id]);
     const summary = rows.map(r => `${securityEventLabel(r.event_type)}: ${r.n}`).join('\n') || 'Sin eventos';
     await queueAlert(db, p.instancia_id, null, `digest:${date}`, `🔐 Resumen de seguridad · ${date}\n${summary}`);
@@ -210,4 +277,4 @@ function startAlertWorker() {
 }
 module.exports = { parseSecret, encryptSecret, decryptSecret, generateTotp, verifyTotp, validTime, validTimezone,
   localParts, defaultHours, workStatus, policyFor, event, queueAlert, escapeTelegram, sourceIp, telegramServerEnabled, startAlertWorker,
-  createViewToken, verifyViewToken };
+  createViewToken, verifyViewToken, trustedDeviceReplyMarkup, markAttemptAlert, finishAttemptAlert };

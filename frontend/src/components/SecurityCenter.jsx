@@ -109,11 +109,26 @@ export default function SecurityCenter({ usuario }) {
   const [clock, setClock] = useState(Date.now());
   const [query, setQuery] = useState('');
   const [stepUp, setStepUp] = useState(null);
+  const stepUpRef = useRef(null);
+  stepUpRef.current = stepUp;
   const timers = useRef({});
   const activeViews = useRef({});
   const grants = useRef({});
   const revealRequest = useRef(0);
   const telegramErrorAt = useRef(0);
+  const cancelAttempt = ({ item, attemptId } = {}) => {
+    if (!Number.isSafeInteger(Number(item?.id)) || !Number.isSafeInteger(Number(attemptId))) return;
+    void fetch(`/api/security/credentials/${Number(item.id)}/attempts/${Number(attemptId)}/cancel`, {
+      method: 'POST', credentials: 'include', keepalive: true,
+      headers: { 'Content-Type': 'application/json' }, body: '{}',
+    }).catch(() => {});
+  };
+  useEffect(() => {
+    const onPageHide = () => { if (stepUpRef.current) cancelAttempt(stepUpRef.current); };
+    window.addEventListener('pagehide', onPageHide);
+    return () => { window.removeEventListener('pagehide', onPageHide); if (stepUpRef.current) cancelAttempt(stepUpRef.current); };
+  }, []);
+  const closeStepUp = () => { cancelAttempt(stepUp); stepUpRef.current = null; revealRequest.current += 1; setStepUp(null); };
   useEffect(() => { const tick = setInterval(() => setClock(Date.now()), 1000); return () => clearInterval(tick); }, []);
   const clearCodes = useCallback(() => {
     revealRequest.current += 1; Object.values(timers.current).forEach(clearTimeout); timers.current = {}; activeViews.current = {}; grants.current = {}; setRevealed({}); setCodeItem(null); setRefreshing(false);
@@ -410,7 +425,7 @@ export default function SecurityCenter({ usuario }) {
         <label className="sc-check sc-telegram-toggle"><input type="checkbox" checked={!!alerts.telegram_enabled} onChange={e => setAlerts({ ...alerts, telegram_enabled: e.target.checked })}/>Sincronización activa en esta VPS</label>
         <label className="sc-field">ID del grupo privado<input value={alerts.chat_id} placeholder="-100…" onChange={e => setAlerts({ ...alerts, chat_id: e.target.value })}/></label>
         <label className="sc-field">Hora del resumen diario<input type="time" value={alerts.daily_digest_time} onChange={e => setAlerts({ ...alerts, daily_digest_time: e.target.value })}/></label>
-        {[['alert_offhours','Consultas fuera de horario'],['alert_new_device','Dispositivos nuevos'],['alert_multiple_devices','Varios dispositivos']].map(([key,label]) =>
+        {[['alert_offhours','Intentos y consultas 2FA fuera de horario'],['alert_new_device','Primer dispositivo de confianza'],['alert_multiple_devices','Más de un dispositivo de confianza']].map(([key,label]) =>
           <label className="sc-check" key={key}><input type="checkbox" checked={alerts[key]} onChange={e => setAlerts({ ...alerts, [key]: e.target.checked })}/>{label}</label>)}
       </div>
       <div className="sc-telegram-actions">
@@ -581,6 +596,6 @@ export default function SecurityCenter({ usuario }) {
         <div className="sc-modal-foot"><button type="button" className="sc-ghost" onClick={() => setModal(false)}>Cancelar</button><button className="sc-primary" disabled={busy} type="submit">Guardar de forma segura</button></div>
       </form>
     </div>}
-    {stepUp && <div className="sc-overlay"><form className="sc-modal sc-step" onSubmit={e => { e.preventDefault(); if (stepUp.submitting) return; setStepUp(prev => ({ ...prev, submitting: true, error: '' })); void reveal(stepUp.item, stepUp.code, stepUp.attemptId); }}><div className="sc-modal-head"><h2>Confirmar identidad</h2><button type="button" className="sc-icon" onClick={() => { revealRequest.current += 1; setStepUp(null); }} aria-label="Cerrar"><X size={20}/></button></div><p>Esta consulta es fuera de horario. Introduce el código de tu MFA de {policy?.brand || 'ChatVista'}.</p><label className="sc-field">Código de seis dígitos<input inputMode="numeric" pattern="[0-9]{6}" maxLength="6" autoFocus value={stepUp.code} onChange={e => setStepUp({ ...stepUp, code: e.target.value.replace(/\D/g,'').slice(0,6) })}/></label>{stepUp.error && <p className="sc-warning-text" role="alert">{stepUp.error}</p>}<div className="sc-modal-foot"><button type="button" className="sc-ghost" onClick={() => { revealRequest.current += 1; setStepUp(null); }}>Cancelar</button><button type="submit" className="sc-primary" disabled={stepUp.submitting || stepUp.code.length !== 6}>{stepUp.submitting ? 'Verificando…' : 'Consultar código'}</button></div></form></div>}
+    {stepUp && <div className="sc-overlay"><form className="sc-modal sc-step" onSubmit={e => { e.preventDefault(); if (stepUp.submitting) return; setStepUp(prev => ({ ...prev, submitting: true, error: '' })); void reveal(stepUp.item, stepUp.code, stepUp.attemptId); }}><div className="sc-modal-head"><h2>Confirmar identidad</h2><button type="button" className="sc-icon" onClick={closeStepUp} aria-label="Cerrar"><X size={20}/></button></div><p>Esta consulta es fuera de horario. Introduce el código de tu MFA de {policy?.brand || 'ChatVista'}.</p><label className="sc-field">Código de seis dígitos<input inputMode="numeric" pattern="[0-9]{6}" maxLength="6" autoFocus value={stepUp.code} onChange={e => setStepUp({ ...stepUp, code: e.target.value.replace(/\D/g,'').slice(0,6) })}/></label>{stepUp.error && <p className="sc-warning-text" role="alert">{stepUp.error}</p>}<div className="sc-modal-foot"><button type="button" className="sc-ghost" onClick={closeStepUp}>Cancelar</button><button type="submit" className="sc-primary" disabled={stepUp.submitting || stepUp.code.length !== 6}>{stepUp.submitting ? 'Verificando…' : 'Consultar código'}</button></div></form></div>}
   </main>;
 }

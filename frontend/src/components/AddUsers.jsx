@@ -21,6 +21,7 @@ const DEFAULT_PERMISSIONS = {
   realizar_videollamadas: 0,
   buscar_mensajes: 0,
   eliminar_cualquier_mensaje: 0,
+  publicar_estados: 0,
 };
 
 const normalizeCsvHeader = (value) =>
@@ -994,6 +995,7 @@ const AddUsers = ({ onCancel }) => {
           <div className="qc-user-permission-grid">
             {[
               ["crear_grupos", "Crear grupos", "bi bi-people"],
+              ["publicar_estados", "Publicar estados", "bi bi-circle-square"],
               ["editar_mensajes", "Editar mensajes", "bi bi-pencil-square"],
               ["enviar_audios", "Grabar audios", "bi bi-mic"],
               ["realizar_llamadas", "Realizar llamadas", "bi bi-telephone"],

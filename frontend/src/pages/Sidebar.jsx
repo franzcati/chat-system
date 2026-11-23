@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { UserPlus, Edit3, Users, MessageSquare, Sun, Moon, Settings, Folder, Shield, FileText, Lock } from "feather-icons-react";
+import { UserPlus, Edit3, Users, MessageSquare, Sun, Moon, Settings, Folder, Shield, FileText, Lock, Circle } from "feather-icons-react";
 import { logDev } from "../utils/logger";
 import SidebarProfilePanel from "../components/SidebarProfilePanel";
 import { getAvatarUrl } from "../utils/url";
@@ -144,6 +144,7 @@ const Sidebar = ({ usuario, active, setActive, onUsuarioUpdate, unreadTotal = 0,
 
   const icons = [
     { id: "chat", label: "Mensajes", icon: <MessageSquare />, badge: unreadBadge },
+    { id: "states", label: "Estados", icon: <Circle /> },
     { id: "security", label: "Centro de Seguridad", icon: <Lock /> },
     ...(canGestionarUsuarios ? [{ id: "edit-user", label: "Gestión de Usuarios", icon: <Users /> }] : []),
     ...(canCrearUsuarios ? [{ id: "add-user", label: "Nuevo Usuario", icon: <UserPlus /> }] : []),
