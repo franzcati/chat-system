@@ -19,7 +19,7 @@ const GroupAvatar = ({
       className="wa-group-avatar-main-img"
       loading="lazy"
       decoding="async"
-      fetchPriority="low"
+      fetchpriority="low"
     />
   ) : (
     <div className="wa-group-avatar-default" aria-hidden="true">

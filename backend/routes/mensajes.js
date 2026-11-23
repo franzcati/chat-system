@@ -973,7 +973,14 @@ router.post(
     true
   ),
   validateReplyAccess,
-  async (req, res) => {
+  (req, res) => sendPrivateMessage(req, res)
+);
+
+function persistChatMessage(sql, params, options) {
+  return queryWithRetry(db, sql, params, options);
+}
+
+async function sendPrivateMessage(req, res, persist = persistChatMessage) {
   const senderId = Number(req.auth.userId);
   const receiverId = Number(req.body.receiverId);
   const { message, loteId, replyToId, replyToType, replyToGrupoId } = req.body;
@@ -1000,8 +1007,7 @@ router.post(
   try {
     await ensureReplyColumn();
 
-    const [result] = await queryWithRetry(
-      db,
+    const [result] = await persist(
       `INSERT INTO mensajes 
         (usuario_envia_id, usuario_recibe_id, mensaje, lote_id, reply_to_id, reply_to_tipo, reply_to_grupo_id, reenviado, fecha_envio, fijado)
       VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, 0)`,
@@ -1066,10 +1072,11 @@ router.post(
     emitPrivateMessageSafely(enviarEventoAlUsuario, senderId, receiverId, nuevoMensaje);
     return;
   } catch (err) {
+    if (persist !== persistChatMessage && err.status) throw err;
     console.error("❌ Error al insertar mensaje:", err);
     res.status(500).json({ error: "Error al guardar mensaje" });
   }
-});
+}
 
 // =======================
 // Reenviar mensajes a chats privados o grupos
@@ -1846,3 +1853,4 @@ router.post(
 });
 
 module.exports = router;
+module.exports.sendPrivateMessage = sendPrivateMessage;

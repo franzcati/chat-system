@@ -1378,7 +1378,13 @@ router.put(
 
         if (permissionsEnabled) {
           sets.push("permisos_chat = ?");
-          params.push(JSON.stringify(permisosChat));
+          const explicitStatusPermission = Object.hasOwn(
+            changes.chat_permissions.permisos_chat || {}, "publicar_estados"
+          );
+          const statusPermission = explicitStatusPermission
+            ? permisosChat.publicar_estados
+            : normalizarPermisosChatAdmin(user.permisos_chat).publicar_estados;
+          params.push(JSON.stringify({ ...permisosChat, publicar_estados: statusPermission }));
         }
 
         if (sets.length) {

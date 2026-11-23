@@ -870,7 +870,14 @@ router.post(
   "/",
   requireGroupMembershipBody("grupoId"),
   validateGroupReply,
-  async (req, res) => {
+  (req, res) => sendGroupMessage(req, res)
+);
+
+function persistChatMessage(sql, params, options) {
+  return queryWithRetry(db, sql, params, options);
+}
+
+async function sendGroupMessage(req, res, persist = persistChatMessage) {
   const {
     grupoId,
     mensaje,
@@ -894,8 +901,7 @@ router.post(
   try {
     await ensureReplyColumn();
 
-    const [result] = await queryWithRetry(
-      db,
+    const [result] = await persist(
       `INSERT INTO mensajes_grupo (grupo_id, usuario_id, mensaje, fecha_envio, lote_id, reply_to_id, reenviado)
        VALUES (?, ?, ?, UTC_TIMESTAMP(3), ?, ?, 0)`,
       [grupoId, usuarioId, mensaje, loteId || null, replyToIdNum],
@@ -942,12 +948,13 @@ router.post(
     emitGroupMessageAfterResponse(grupoId, enviarEventoAlUsuario, nuevoMensaje);
     return;
   } catch (err) {
+    if (persist !== persistChatMessage && err.status) throw err;
     console.error("❌ Error al enviar mensaje de grupo:", err);
     if (!res.headersSent) {
       return res.status(500).json({ error: "Error en el servidor" });
     }
   }
-});
+}
 
 // =======================
 // Marcar mensajes de grupo como vistos
@@ -1735,3 +1742,4 @@ router.post(
   }
 });
 module.exports = router;
+module.exports.sendGroupMessage = sendGroupMessage;
