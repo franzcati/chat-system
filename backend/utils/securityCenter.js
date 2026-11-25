@@ -80,13 +80,19 @@ function defaultHours(day) {
     day === 6 ? { enabled: true, start_time: '08:00', end_time: '13:00' } :
       { enabled: true, start_time: '08:00', end_time: '18:00' };
 }
-async function workStatus(conn, instanceId, userId, policy) {
+async function workStatus(conn, instanceId, userId, policy, projectId = null) {
   const local = localParts(policy.timezone);
   const [exceptions] = await conn.query(
     `SELECT enabled,start_time,end_time FROM security_exceptions
      WHERE instancia_id=? AND local_date=? AND (usuario_id=? OR usuario_id IS NULL)
-     ORDER BY (usuario_id IS NOT NULL) DESC,id DESC LIMIT 1`, [instanceId, local.date, userId]);
-  const [hours] = await conn.query('SELECT enabled,start_time,end_time FROM security_hours WHERE instancia_id=? AND weekday=?', [instanceId, local.weekday]);
+       AND (proyecto_id=? OR proyecto_id IS NULL)
+     ORDER BY (usuario_id IS NOT NULL) DESC,(proyecto_id IS NOT NULL) DESC,id DESC LIMIT 1`,
+    [instanceId, local.date, userId, projectId]);
+  const [projectHours] = projectId ? await conn.query(
+    'SELECT enabled,start_time,end_time FROM security_project_hours WHERE instancia_id=? AND proyecto_id=? AND weekday=?',
+    [instanceId, projectId, local.weekday]) : [[]];
+  const [hours] = projectHours.length ? [projectHours] : await conn.query(
+    'SELECT enabled,start_time,end_time FROM security_hours WHERE instancia_id=? AND weekday=?', [instanceId, local.weekday]);
   const rule = exceptions[0] || hours[0] || defaultHours(local.weekday);
   return { outside: !rule.enabled || local.time < rule.start_time || local.time >= rule.end_time,
     local, description: rule.enabled ? `${rule.start_time}–${rule.end_time} (${policy.timezone})` : `No laborable (${policy.timezone})` };

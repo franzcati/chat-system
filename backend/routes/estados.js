@@ -75,12 +75,31 @@ async function visible(req, database = db, lock = false) {
   const id = statusId(req.params.id);
   if (!id) return undefined;
   const [[row]] = await database.query(`SELECT CAST(e.id AS CHAR) AS id, e.autor_id,
-      e.grupo_id, e.visible_instancia, e.texto, e.archivo, e.mime
+      e.grupo_id, e.visible_instancia, e.texto, e.archivo, e.mime, e.tipo, e.leyenda, e.apariencia, autor.nombre, autor.apellido
     FROM chat_estados e ${authorJoin}
     WHERE e.id=CAST(? AS UNSIGNED) AND ${active} AND ${audience}
     LIMIT 1 ${lock ? 'FOR UPDATE' : ''}`, [id, req.instanciaActual.id, req.auth.userId]);
   return row;
 }
+
+function replyReference(status) {
+  const type = status.mime === 'image/gif' ? 'GIF' : { imagen: 'Foto', video: 'Video', texto: 'Texto' }[status.tipo];
+  return {
+    id: String(status.id), author: [status.nombre, status.apellido].filter(Boolean).join(' '),
+    medium: type || null, excerpt: (status.texto || '').trim().slice(0, 160),
+    caption: (status.leyenda || '').trim().slice(0, 160),
+    ...(status.tipo === 'texto' && readAppearance(status.apariencia)?.fuente && { fuente: readAppearance(status.apariencia).fuente }),
+  };
+}
+
+router.get('/:id/referencia', async (req, res) => {
+  try {
+    const status = await visible(req);
+    if (!status) fail(404, 'Estado no disponible');
+    res.set('Cache-Control', 'private, no-store');
+    res.json(replyReference(status));
+  } catch (error) { reportError(res, error); }
+});
 
 router.get('/', async (req, res) => {
   try {
@@ -91,23 +110,26 @@ router.get('/', async (req, res) => {
         AND EXISTS (SELECT 1 FROM chat_estado_grupos dest WHERE dest.estado_id=e.id AND dest.grupo_id=g.id)
       ) AS grupos_visibles,
       EXISTS (SELECT 1 FROM chat_estado_reacciones r
-        WHERE r.estado_id=e.id AND r.usuario_id=?) AS reaccion_propia` : '';
+        WHERE r.estado_id=e.id AND r.usuario_id=?) AS reaccion_propia,
+      (e.autor_id=? AND EXISTS (SELECT 1 FROM chat_estado_reacciones likes
+        WHERE likes.estado_id=e.id)) AS tiene_reacciones` : '';
     const [rows] = await db.query(`SELECT ${modern ? 'CAST(e.id AS CHAR) AS id' : 'e.id'},
       e.autor_id, e.grupo_id, e.tipo, e.texto, e.fondo, e.apariencia, e.leyenda, e.creado_at, e.vence_at,
       autor.nombre, autor.apellido, autor.url_imagen, legacy.nombre AS grupo_nombre, legacy.imagen_url AS grupo_imagen_url,
       (v.usuario_id IS NOT NULL) AS visto,
-      (SELECT COUNT(*) FROM chat_estado_vistas cv WHERE cv.estado_id=e.id) AS vistas ${destinations}
+      (SELECT COUNT(*) FROM chat_estado_vistas cv JOIN usuario lector ON lector.id=cv.usuario_id AND lector.instancia_id=e.instancia_id WHERE cv.estado_id=e.id AND cv.usuario_id<>e.autor_id) AS vistas ${destinations}
       FROM chat_estados e ${authorJoin}
       LEFT JOIN grupos legacy ON legacy.id=e.grupo_id
       LEFT JOIN chat_estado_vistas v ON v.estado_id=e.id AND v.usuario_id=?
       WHERE ${active} AND ${audience} ${modern ? '' : 'AND e.visible_instancia IS NULL'}
       ORDER BY e.creado_at DESC, e.id DESC LIMIT 300`,
-    [...(modern ? [req.auth.userId, req.auth.userId] : []), req.auth.userId, req.instanciaActual.id, req.auth.userId]);
-    const estados = rows.map(({ personal: own, grupos_visibles, apariencia, reaccion_propia, ...row }) => ({
+    [...(modern ? [req.auth.userId, req.auth.userId, req.auth.userId] : []), req.auth.userId, req.instanciaActual.id, req.auth.userId]);
+    const estados = rows.map(({ personal: own, grupos_visibles, apariencia, reaccion_propia, tiene_reacciones, ...row }) => ({
       ...row,
       apariencia: readAppearance(apariencia),
       ...(modern && {
         reaccion_propia: Boolean(reaccion_propia),
+        ...(Number(row.autor_id) === req.auth.userId && { tiene_reacciones: Boolean(tiene_reacciones) }),
         destinos: {
           mi_estado: Boolean(own),
           grupos: row.grupo_id
@@ -174,6 +196,24 @@ router.get('/:id/media', async (req, res) => {
     res.set('X-Content-Type-Options', 'nosniff');
     res.set('Cache-Control', 'private, no-store');
     res.sendFile(path.join(mediaDir, path.basename(status.archivo)));
+  } catch (error) { reportError(res, error); }
+});
+
+router.get('/:id/vistas', async (req, res) => {
+  try {
+    const status = await visible(req);
+    if (!status || Number(status.autor_id) !== req.auth.userId) fail(404, 'Estado no disponible');
+    const [personas] = await db.query(`SELECT lector.id, lector.nombre, lector.apellido, lector.url_imagen,
+      v.visto_at, (r.usuario_id IS NOT NULL) AS reaccion
+      FROM chat_estados e ${authorJoin}
+      JOIN chat_estado_vistas v ON v.estado_id=e.id
+      JOIN usuario lector ON lector.id=v.usuario_id AND lector.instancia_id=e.instancia_id
+      LEFT JOIN chat_estado_reacciones r ON r.estado_id=e.id AND r.usuario_id=v.usuario_id
+      WHERE e.id=CAST(? AS UNSIGNED) AND e.autor_id=? AND ${active} AND ${audience}
+        AND lector.id<>e.autor_id ORDER BY v.visto_at DESC, lector.id`,
+      [status.id, req.auth.userId, req.instanciaActual.id, req.auth.userId]);
+    res.set('Cache-Control', 'private, no-store');
+    res.json({ personas });
   } catch (error) { reportError(res, error); }
 });
 
@@ -265,8 +305,7 @@ router.post('/:id/responder', async (req, res) => {
       ? { tipo: 'grupo', grupo_id: status.grupo_id } : null } = req.body || {};
     if (typeof mensaje !== 'string' || !mensaje.trim()) fail(400, 'Escribe una respuesta');
     const group = await assertDestination(req, status, destino);
-    const label = group ? 'Estado del grupo' : 'Estado';
-    const content = `↪ ${label} #${status.id}${status.texto ? ` · ${status.texto.slice(0, 80)}` : ''}\n${mensaje.trim().slice(0, 2000)}`;
+    const content = `↪ Estados ${JSON.stringify(replyReference(status))}\n${mensaje.trim().slice(0, 2000)}`;
     req.body = group ? { grupoId: group, mensaje: content }
       : { receiverId: Number(status.autor_id), message: content };
 

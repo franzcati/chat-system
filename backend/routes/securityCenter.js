@@ -8,6 +8,7 @@ const { parseSecret, encryptSecret, decryptSecret, generateTotp, verifyTotp, val
   createViewToken, verifyViewToken, markAttemptAlert, finishAttemptAlert } = require('../utils/securityCenter');
 const { decryptSecret: decryptMfaSecret } = require('../utils/mfaService');
 const router = express.Router();
+const { getActorPolicy, canAccessUser } = require('../utils/roleAccess');
 const { formatTelegramAlert } = require('../utils/telegramAlertFormat');
 const { telegramApi } = require('../utils/telegramApi');
 const { securityBrand } = require('../utils/securityBrand');
@@ -29,22 +30,64 @@ async function scopedUser(conn, userId, instanceId) {
   const [rows] = await conn.query("SELECT id FROM usuario WHERE id=? AND instancia_id=? AND estado='aprobado' LIMIT 1", [userId, instanceId]);
   return rows.length > 0;
 }
+async function securityScope(req, rawProject = null, conn = db) {
+  const instanceId = req.instanciaActual.id;
+  const role = await getActorPolicy(req, conn);
+  const global = role?.scope === 'organizacion';
+  const [projects] = await conn.query(`SELECT p.id,p.nombre FROM proyecto p WHERE p.instancia_id=?
+    ${global ? '' : 'AND EXISTS (SELECT 1 FROM usuario_proyecto ap WHERE ap.proyecto_id=p.id AND ap.usuario_id=?)'}
+    ORDER BY p.nombre,p.id`, global ? [instanceId] : [instanceId, req.auth.userId]);
+  const projectId = rawProject == null || rawProject === '' ? null : id(rawProject);
+  if (rawProject != null && rawProject !== '' && (!projectId || !projects.some(p => Number(p.id) === projectId))) {
+    throw fail('Proyecto no autorizado', 403);
+  }
+  return { global, projects, projectId, instanceId, basicRole: String(role?.roleName || "").toLowerCase() === "user" };
+}
+
+function userScope(scope) {
+  const projectIds = scope.projectId ? [scope.projectId] : scope.projects.map(p => p.id);
+  if (!scope.projectId && scope.global) return { sql: '', params: [] };
+  return projectIds.length
+    ? { sql: 'AND EXISTS (SELECT 1 FROM usuario_proyecto up WHERE up.usuario_id=u.id AND up.proyecto_id IN (?))', params: [projectIds] }
+    : { sql: 'AND 1=0', params: [] };
+}
+
+router.get('/projects', async (req, res) => {
+  try {
+    const { global, projects, basicRole } = await securityScope(req);
+    const canFilter = !basicRole && hasPermission(req, admin);
+    const canFilterHours = !basicRole && hasPermission(req, 'gestionar_horarios_2fa');
+    res.json({ global, projects: canFilter || canFilterHours ? projects : [], canFilter, canFilterHours });
+  } catch (e) { bad(res, e); }
+});
+
 router.get('/users', requireAnyPermission(admin, 'gestionar_horarios_2fa', 'ver_auditoria_seguridad'), async (req, res) => {
   try {
+    const scope = await securityScope(req, req.query.proyecto_id);
+    const filter = userScope(scope);
     const [rows] = await db.query(`SELECT u.id,u.nombre,u.apellido,u.correo,u.url_imagen,r.nombre rol_nombre
       FROM usuario u LEFT JOIN roles r ON r.id=u.rol_id
-      WHERE u.instancia_id=? AND u.estado='aprobado' ORDER BY u.nombre,u.apellido LIMIT 500`, [req.instanciaActual.id]);
+      WHERE u.instancia_id=? AND u.estado='aprobado' ${filter.sql} ORDER BY u.nombre,u.apellido,u.id`,
+      [scope.instanceId, ...filter.params]);
     res.json({ users: rows });
   } catch (e) { bad(res, e); }
 });
+
+async function credentialScope(req, conn, credential) {
+  const scope = await securityScope(req, credential.proyecto_id, conn);
+  if (!scope.global && !credential.proyecto_id && !await canAccessUser(req, credential.responsable_id, conn)) {
+    throw fail('Credencial no autorizada', 403);
+  }
+}
 
 router.get('/credentials/:id/access', requirePermission(admin), async (req, res) => {
   try {
     const credentialId = id(req.params.id);
     if (!credentialId) throw fail('Credencial inválida');
-    const [credentials] = await db.query('SELECT responsable_id FROM security_credentials WHERE id=? AND instancia_id=? LIMIT 1',
+    const [credentials] = await db.query('SELECT responsable_id,proyecto_id FROM security_credentials WHERE id=? AND instancia_id=? LIMIT 1',
       [credentialId, req.instanciaActual.id]);
     if (!credentials.length) throw fail('Credencial no encontrada', 404);
+    await credentialScope(req, db, credentials[0]);
     const [members] = await db.query(`SELECT u.id,u.nombre,u.apellido,u.correo,u.url_imagen,r.nombre rol_nombre
       FROM security_credential_access a JOIN usuario u ON u.id=a.usuario_id
       LEFT JOIN roles r ON r.id=u.rol_id
@@ -57,18 +100,37 @@ router.get('/credentials/:id/access', requirePermission(admin), async (req, res)
 
 router.get('/credentials', async (req, res) => {
   try {
-    const canAdmin = hasPermission(req, admin);
+    const scope = await securityScope(req, req.query.proyecto_id);
+    const canAdmin = !scope.basicRole && hasPermission(req, admin);
+    if (scope.projectId && !canAdmin) throw fail('Filtro de proyecto no autorizado', 403);
+    const filters = [], extra = [];
+    if (scope.projectId) {
+      filters.push(`AND (c.proyecto_id=? OR (c.proyecto_id IS NULL AND EXISTS (
+        SELECT 1 FROM usuario_proyecto up WHERE up.usuario_id=c.responsable_id AND up.proyecto_id=?)))`);
+      extra.push(scope.projectId, scope.projectId);
+    } else if (canAdmin && !scope.global) {
+      const projects = scope.projects.map(p => p.id);
+      filters.push(projects.length ? `AND (c.proyecto_id IN (?) OR (c.proyecto_id IS NULL AND
+        (c.responsable_id=? OR EXISTS (SELECT 1 FROM usuario_proyecto up WHERE up.usuario_id=c.responsable_id AND up.proyecto_id IN (?)))))`
+        : 'AND c.proyecto_id IS NULL AND c.responsable_id=?');
+      extra.push(...(projects.length ? [projects, req.auth.userId, projects] : [req.auth.userId]));
+    }
     const [rows] = await db.query(`SELECT c.id,c.plataforma,c.cuenta,c.nombre,c.responsable_id,c.creado_por_id,c.estado,c.created_at,c.proyecto_id,
-      EXISTS (SELECT 1 FROM security_credential_access mine WHERE mine.credential_id=c.id AND mine.usuario_id=?) AS can_reveal,
+      (EXISTS (SELECT 1 FROM security_credential_access mine WHERE mine.credential_id=c.id AND mine.usuario_id=?)
+        AND (c.proyecto_id IS NULL OR EXISTS (SELECT 1 FROM usuario_proyecto membership
+          WHERE membership.proyecto_id=c.proyecto_id AND membership.usuario_id=?))) AS can_reveal,
       u.nombre responsable_nombre,u.apellido responsable_apellido,u.url_imagen responsable_imagen,
       (SELECT COUNT(*) FROM security_credential_access assigned
         JOIN usuario member ON member.id=assigned.usuario_id AND member.instancia_id=c.instancia_id AND member.estado='aprobado'
         WHERE assigned.credential_id=c.id) AS assigned_count
-      FROM security_credentials c JOIN usuario u ON u.id=c.responsable_id
-      WHERE c.instancia_id=? AND (${canAdmin ? '1=1' : `EXISTS (SELECT 1 FROM security_credential_access a WHERE a.credential_id=c.id AND a.usuario_id=?)`})
+      FROM security_credentials c JOIN usuario u ON u.id=c.responsable_id AND u.instancia_id=c.instancia_id
+      WHERE c.instancia_id=? AND (${canAdmin ? '1=1' : `c.responsable_id=? OR EXISTS (SELECT 1 FROM security_credential_access a WHERE a.credential_id=c.id AND a.usuario_id=?)`})
       ${canAdmin ? '' : `AND (c.proyecto_id IS NULL OR EXISTS (SELECT 1 FROM usuario_proyecto up WHERE up.proyecto_id=c.proyecto_id AND up.usuario_id=?))`}
-      ORDER BY c.created_at DESC LIMIT 300`, canAdmin ? [req.auth.userId, req.instanciaActual.id] : [req.auth.userId, req.instanciaActual.id, req.auth.userId, req.auth.userId]);
-    res.json({ credentials: rows, can_manage: canAdmin });
+      ${filters.join(" ")} ORDER BY c.created_at DESC LIMIT 300`, [req.auth.userId, req.auth.userId, scope.instanceId,
+      ...(canAdmin ? [] : [req.auth.userId, req.auth.userId, req.auth.userId]), ...extra]);
+    const [[owned]] = await db.query(`SELECT COUNT(*) AS total FROM security_credentials
+      WHERE instancia_id=? AND responsable_id=? AND estado='activo'`, [scope.instanceId, req.auth.userId]);
+    res.json({ credentials: rows, can_manage: canAdmin, own_active: Number(owned.total) });
   } catch (e) { console.error('Lista de credenciales:', e.message); bad(res, e); }
 });
 
@@ -89,7 +151,8 @@ router.post('/credentials', async (req, res) => {
     const max = limits[0]?.max_credentials ?? 1;
     const [counts] = await conn.query('SELECT COUNT(*) n FROM security_credentials WHERE instancia_id=? AND responsable_id=? AND estado=?', [instanceId, ownerId, 'activo']);
     if (Number(counts[0].n) >= Number(max)) throw fail('El responsable alcanzó el límite de credenciales', 409);
-    const projectId = id(req.body.proyecto_id);
+    const { projectId } = await securityScope(req, req.body.proyecto_id, conn);
+    if (ownerId !== req.auth.userId && !await canAccessUser(req, ownerId, conn)) throw fail("Responsable fuera de alcance", 403);
     if (projectId) {
       const [projects] = await conn.query(`SELECT p.id FROM proyecto p JOIN usuario_proyecto up
         ON up.proyecto_id=p.id AND up.usuario_id=? WHERE p.id=? AND p.instancia_id=? LIMIT 1`, [ownerId, projectId, instanceId]);
@@ -118,7 +181,8 @@ router.put('/credentials/:id', requirePermission(admin), async (req, res) => {
     await conn.beginTransaction();
     const [rows] = await conn.query('SELECT responsable_id,proyecto_id FROM security_credentials WHERE id=? AND instancia_id=? FOR UPDATE', [credentialId, instanceId]);
     if (!rows.length) throw fail('Credencial no encontrada', 404);
-    if (!await scopedUser(conn, ownerId, instanceId)) throw fail('Responsable fuera de la instancia', 403);
+    await credentialScope(req, conn, rows[0]);
+    if (!await canAccessUser(req, ownerId, conn) || !await scopedUser(conn, ownerId, instanceId)) throw fail('Responsable fuera de la instancia', 403);
     if (rows[0].proyecto_id) {
       const [membership] = await conn.query('SELECT 1 FROM usuario_proyecto WHERE proyecto_id=? AND usuario_id=? LIMIT 1', [rows[0].proyecto_id, ownerId]);
       if (!membership.length) throw fail('Responsable fuera del proyecto', 403);
@@ -145,8 +209,9 @@ router.delete('/credentials/:id', requirePermission(admin), async (req, res) => 
     const credentialId = id(req.params.id);
     if (!credentialId) throw fail('Credencial inválida');
     await conn.beginTransaction();
-    const [rows] = await conn.query('SELECT plataforma,cuenta,responsable_id FROM security_credentials WHERE id=? AND instancia_id=? FOR UPDATE', [credentialId, req.instanciaActual.id]);
+    const [rows] = await conn.query('SELECT plataforma,cuenta,responsable_id,proyecto_id FROM security_credentials WHERE id=? AND instancia_id=? FOR UPDATE', [credentialId, req.instanciaActual.id]);
     if (!rows.length) throw fail('Credencial no encontrada', 404);
+    await credentialScope(req, conn, rows[0]);
     const item = rows[0];
     await event(conn, req, 'CREDENTIAL_DELETED', 'ok', credentialId, false,
       { platform: item.plataforma, account: item.cuenta, ownerId: item.responsable_id });
@@ -161,6 +226,9 @@ router.patch('/credentials/:id', requirePermission(admin), async (req, res) => {
     const credentialId = id(req.params.id);
     const state = req.body.estado;
     if (!credentialId || !['activo','suspendido'].includes(state)) throw fail('Estado inválido');
+    const [rows] = await db.query('SELECT responsable_id,proyecto_id FROM security_credentials WHERE id=? AND instancia_id=?', [credentialId, req.instanciaActual.id]);
+    if (!rows.length) throw fail('Credencial no encontrada', 404);
+    await credentialScope(req, db, rows[0]);
     const [result] = await db.query('UPDATE security_credentials SET estado=? WHERE id=? AND instancia_id=?', [state, credentialId, req.instanciaActual.id]);
     if (!result.affectedRows) throw fail('Credencial no encontrada', 404);
     await event(db, req, 'CREDENTIAL_STATUS', 'ok', credentialId, false, { state });
@@ -174,6 +242,8 @@ router.put('/credentials/:id/access/:userId', requirePermission(admin), async (r
     if (!credentialId || !targetId) throw fail('Identificador inválido');
     const [rows] = await db.query('SELECT id,responsable_id,proyecto_id FROM security_credentials WHERE id=? AND instancia_id=? LIMIT 1', [credentialId, req.instanciaActual.id]);
     if (!rows.length || !await scopedUser(db, targetId, req.instanciaActual.id)) throw fail('Cuenta o usuario fuera de la instancia', 404);
+    await credentialScope(req, db, rows[0]);
+    if (!await canAccessUser(req, targetId)) throw fail('Usuario fuera de alcance', 403);
     if (rows[0].proyecto_id) {
       const [member] = await db.query('SELECT 1 FROM usuario_proyecto WHERE proyecto_id=? AND usuario_id=? LIMIT 1', [rows[0].proyecto_id, targetId]);
       if (!member.length) throw fail('Usuario fuera del proyecto', 403);
@@ -203,13 +273,13 @@ router.post('/credentials/:id/reveal', async (req, res) => {
     alertOffhours = !!policy.alert_offhours;
     // Serializa los límites por instancia y evita consultas simultáneas que los eludan.
     await conn.query('SELECT instancia_id FROM security_policy WHERE instancia_id=? FOR UPDATE', [instanceId]);
-    const [rows] = await conn.query(`SELECT c.id,c.plataforma,c.cuenta,c.secret_cipher FROM security_credentials c
+    const [rows] = await conn.query(`SELECT c.id,c.plataforma,c.cuenta,c.secret_cipher,c.proyecto_id FROM security_credentials c
       JOIN security_credential_access a ON a.credential_id=c.id AND a.usuario_id=?
       WHERE c.id=? AND c.instancia_id=? AND c.estado='activo'
       AND (c.proyecto_id IS NULL OR EXISTS (SELECT 1 FROM usuario_proyecto up WHERE up.proyecto_id=c.proyecto_id AND up.usuario_id=?))
       LIMIT 1`, [userId, credentialId, instanceId, userId]);
     if (!rows.length) throw fail('Credencial no autorizada', 404);
-    const status = await workStatus(conn, instanceId, userId, policy); outside = status.outside;
+    const status = await workStatus(conn, instanceId, userId, policy, rows[0].proyecto_id); outside = status.outside;
     attemptPlatform = rows[0].plataforma;
     attemptAccount = rows[0].cuenta;
     // El clic en el ojo queda registrado antes de solicitar MFA o aplicar límites.
@@ -313,7 +383,7 @@ router.post('/credentials/:id/current', async (req, res) => {
     const grant = verifyViewToken(req.body?.view_token, { instanceId, userId,
       sessionId: req.auth.session.id, credentialId });
     if (!grant) throw fail('La visualización venció. Pulsa el ojo para continuar.', 403);
-    const [rows] = await db.query(`SELECT c.secret_cipher FROM security_credentials c
+    const [rows] = await db.query(`SELECT c.secret_cipher,c.proyecto_id FROM security_credentials c
       JOIN security_credential_access a ON a.credential_id=c.id AND a.usuario_id=?
       WHERE c.id=? AND c.instancia_id=? AND c.estado='activo'
       AND (c.proyecto_id IS NULL OR EXISTS (SELECT 1 FROM usuario_proyecto up
@@ -321,7 +391,7 @@ router.post('/credentials/:id/current', async (req, res) => {
       [userId, credentialId, instanceId, userId]);
     if (!rows.length) throw fail('Credencial no autorizada', 404);
     const policy = await policyFor(db, instanceId);
-    const currentHours = await workStatus(db, instanceId, userId, policy);
+    const currentHours = await workStatus(db, instanceId, userId, policy, rows[0].proyecto_id);
     if (currentHours.outside && !grant.outside) throw fail('El horario cambió. Pulsa el ojo para continuar.', 403);
     const now = Date.now();
     res.json({ code: generateTotp(decryptSecret(rows[0].secret_cipher, instanceId), now),
@@ -331,13 +401,15 @@ router.post('/credentials/:id/current', async (req, res) => {
 
 router.get('/policy', async (req, res) => {
   try {
-    const policy = await policyFor(db, req.instanciaActual.id);
+    const scope = await securityScope(req, req.query.proyecto_id);
+    const policy = await policyFor(db, scope.instanceId);
+    const [specific] = scope.projectId ? await db.query('SELECT weekday,enabled,start_time,end_time FROM security_project_hours WHERE instancia_id=? AND proyecto_id=?', [scope.instanceId, scope.projectId]) : [[]];
     const [hours] = await db.query('SELECT weekday,enabled,start_time,end_time FROM security_hours WHERE instancia_id=?', [req.instanciaActual.id]);
     const [limits] = await db.query('SELECT max_credentials,daily_offhours_limit FROM security_user_limits WHERE instancia_id=? AND usuario_id=?', [req.instanciaActual.id, req.auth.userId]);
-    res.json({ brand: securityBrand(), timezone: policy.timezone, hours: Array.from({ length: 7 }, (_, day) =>
-      ({ weekday: day, ...(hours.find(h => h.weekday === day) || defaultHours(day)) })),
+    res.json({ brand: securityBrand(), timezone: policy.timezone, proyecto_id: scope.projectId, inherits_global: Boolean(scope.projectId && !specific.length), can_save: scope.global || Boolean(scope.projectId), hours: Array.from({ length: 7 }, (_, day) =>
+      ({ weekday: day, ...(specific.find(h => h.weekday === day) || hours.find(h => h.weekday === day) || defaultHours(day)) })),
       max_credentials: limits[0]?.max_credentials ?? 1,
-      daily_offhours_limit: limits[0]?.daily_offhours_limit ?? policy.daily_offhours_limit,
+      daily_offhours_limit: hasPermission(req, 'gestionar_horarios_2fa') ? policy.daily_offhours_limit : limits[0]?.daily_offhours_limit ?? policy.daily_offhours_limit,
       step_up_offhours: Boolean(policy.step_up_offhours),
       can_manage_hours: hasPermission(req, 'gestionar_horarios_2fa') });
   } catch (e) { bad(res, e); }
@@ -346,10 +418,21 @@ router.put('/policy', requirePermission('gestionar_horarios_2fa'), async (req, r
   const conn = await db.getConnection();
   try {
     const { timezone, hours, daily_offhours_limit, step_up_offhours } = req.body;
-    if (!validTimezone(timezone) || !Array.isArray(hours) || hours.length !== 7 ||
-      !hours.every(h => Number.isInteger(h.weekday) && h.weekday >= 0 && h.weekday < 7 && validTime(h.start_time) && validTime(h.end_time) && h.start_time < h.end_time) ||
+    await conn.beginTransaction();
+    const { instanceId, global, projectId } = await securityScope(req, req.body.proyecto_id, conn);
+    if (!projectId && !global) throw fail('El horario general requiere alcance de organización', 403);
+    if ((!projectId && (typeof timezone !== 'string' || !validTimezone(timezone))) || !Array.isArray(hours) || hours.length !== 7 ||
+      !hours.every(h => h && Number.isInteger(h.weekday) && h.weekday >= 0 && h.weekday < 7 && validTime(h.start_time) && validTime(h.end_time) && h.start_time < h.end_time) ||
       new Set(hours.map(h => h.weekday)).size !== 7 || !Number.isInteger(daily_offhours_limit) || daily_offhours_limit < 0 || daily_offhours_limit > 100) throw fail('Política inválida');
-    await conn.beginTransaction(); await policyFor(conn, req.instanciaActual.id);
+    if (projectId) {
+      for (const h of hours) await conn.query(`INSERT INTO security_project_hours (instancia_id,proyecto_id,weekday,enabled,start_time,end_time)
+        VALUES (?,?,?,?,?,?) ON DUPLICATE KEY UPDATE enabled=VALUES(enabled),start_time=VALUES(start_time),end_time=VALUES(end_time)`,
+        [instanceId,projectId,h.weekday,h.enabled ? 1 : 0,h.start_time,h.end_time]);
+      await event(conn, req, 'POLICY_CHANGED', 'ok', null, false, { proyecto_id: projectId });
+      await conn.commit();
+      return res.json({ ok: true });
+    }
+    await policyFor(conn, instanceId);
     await conn.query('UPDATE security_policy SET timezone=?,daily_offhours_limit=?,step_up_offhours=? WHERE instancia_id=?',
       [timezone, daily_offhours_limit, step_up_offhours ? 1 : 0, req.instanciaActual.id]);
     for (const h of hours) await conn.query(`INSERT INTO security_hours (instancia_id,weekday,enabled,start_time,end_time)
@@ -371,27 +454,75 @@ router.put('/limits/:userId', requirePermission('gestionar_horarios_2fa'), async
   } catch (e) { bad(res, e); }
 });
 router.get('/exceptions', requirePermission('gestionar_horarios_2fa'), async (req, res) => {
-  try { const [rows] = await db.query('SELECT id,usuario_id,local_date,enabled,start_time,end_time,reason FROM security_exceptions WHERE instancia_id=? AND local_date>=CURDATE() ORDER BY local_date,id LIMIT 200', [req.instanciaActual.id]); res.json({ exceptions: rows }); }
-  catch (e) { bad(res, e); }
+  try {
+    const scope = await securityScope(req, req.query.proyecto_id);
+    const projects = scope.projectId ? [scope.projectId] : scope.projects.map(p => p.id);
+    const all = scope.global && !scope.projectId;
+    if (!all && !projects.length) return res.json({ exceptions: [] });
+    const [rows] = await db.query(`SELECT e.id,e.usuario_id,e.proyecto_id,e.local_date,e.enabled,e.start_time,e.end_time,e.reason,
+      p.nombre proyecto_nombre, CONCAT_WS(' ',u.nombre,u.apellido) usuario_nombre
+      FROM security_exceptions e LEFT JOIN proyecto p ON p.id=e.proyecto_id AND p.instancia_id=e.instancia_id
+      LEFT JOIN usuario u ON u.id=e.usuario_id AND u.instancia_id=e.instancia_id
+      WHERE e.instancia_id=? AND e.local_date>=CURDATE() ${all ? '' : 'AND e.proyecto_id IN (?)'} ORDER BY e.local_date,e.id`,
+      all ? [scope.instanceId] : [scope.instanceId, projects]);
+    res.json({ exceptions: rows });
+  } catch (e) { bad(res, e); }
 });
 router.post('/exceptions', requirePermission('gestionar_horarios_2fa'), async (req, res) => {
+  const conn = await db.getConnection();
   try {
-    const { local_date, enabled, start_time, end_time, reason } = req.body, userId = id(req.body.usuario_id);
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(local_date || '') || !short(reason) ||
-       (enabled && (!validTime(start_time) || !validTime(end_time) || start_time >= end_time)) ||
-       (userId && !await scopedUser(db, userId, req.instanciaActual.id))) throw fail('Excepción inválida');
-    await db.query(`INSERT INTO security_exceptions (instancia_id,usuario_id,local_date,enabled,start_time,end_time,reason,approved_by_id)
-      VALUES (?,?,?,?,?,?,?,?)`, [req.instanciaActual.id,userId,local_date,enabled?1:0,enabled?start_time:null,enabled?end_time:null,short(reason),req.auth.userId]);
-    await event(db, req, 'EXCEPTION_CREATED', 'ok'); res.status(201).json({ ok: true });
-  } catch (e) { bad(res, e); }
+    const { local_date, enabled, start_time, end_time, reason } = req.body;
+    const legacyUser = req.body.usuario_id;
+    const target = req.body.scope ?? (legacyUser ? 'users' : 'instance');
+    const users = req.body.usuario_ids ?? (legacyUser ? [legacyUser] : []);
+    const date = /^\d{4}-\d{2}-\d{2}$/.test(local_date || '') && new Date(local_date + 'T00:00:00Z');
+    if (!date || !Number.isFinite(date.getTime()) || date.toISOString().slice(0,10) !== local_date ||
+        !short(reason) || typeof enabled !== 'boolean' || !['instance','project','users'].includes(target) ||
+        (enabled && (!validTime(start_time) || !validTime(end_time) || start_time >= end_time))) throw fail('Excepción inválida');
+    await conn.beginTransaction();
+    const scope = await securityScope(req, req.body.proyecto_id, conn);
+    let targets;
+    if (target === 'instance') {
+      if (!scope.global || scope.projectId) throw fail('Selecciona Todos los proyectos con alcance de organización', 403);
+      targets = [[null, null]];
+    } else if (target === 'project') {
+      if (!scope.projectId) throw fail('Selecciona un proyecto');
+      targets = [[scope.projectId, null]];
+    } else {
+      if (!Array.isArray(users) || !users.length || !users.every(value => id(value))) throw fail('Selecciona usuarios válidos');
+      const ids = [...new Set(users.map(id))];
+      const filter = userScope(scope);
+      const [eligible] = await conn.query(`SELECT u.id FROM usuario u WHERE u.instancia_id=? AND u.estado='aprobado'
+        AND u.id IN (?) ${filter.sql}`, [scope.instanceId, ids, ...filter.params]);
+      if (eligible.length !== ids.length) throw fail('Hay usuarios fuera de tu alcance', 403);
+      if (scope.projectId || scope.global) targets = ids.map(userId => [scope.projectId, userId]);
+      else {
+        const [memberships] = await conn.query('SELECT DISTINCT proyecto_id,usuario_id FROM usuario_proyecto WHERE proyecto_id IN (?) AND usuario_id IN (?)',
+          [scope.projects.map(p => p.id), ids]);
+        if (new Set(memberships.map(row => Number(row.usuario_id))).size !== ids.length) throw fail('Cambió la asignación de proyectos', 403);
+        targets = memberships.map(row => [row.proyecto_id, row.usuario_id]);
+      }
+    }
+    await conn.query(`INSERT INTO security_exceptions (instancia_id,proyecto_id,usuario_id,local_date,enabled,start_time,end_time,reason,approved_by_id)
+      VALUES ?`, [targets.map(([projectId,userId]) => [scope.instanceId,projectId,userId,local_date,enabled?1:0,
+        enabled?start_time:null,enabled?end_time:null,short(reason),req.auth.userId])]);
+    await event(conn, req, 'EXCEPTION_CREATED', 'ok', null, false, { scope: target, proyecto_id: scope.projectId, count: targets.length });
+    await conn.commit();
+    res.status(201).json({ ok: true });
+  } catch (e) { await conn.rollback(); bad(res, e); } finally { conn.release(); }
 });
 router.delete('/exceptions/:id', requirePermission('gestionar_horarios_2fa'), async (req, res) => {
   try {
     const exceptionId = id(req.params.id);
     if (!exceptionId) throw fail('Excepción inválida');
-    const [result] = await db.query('DELETE FROM security_exceptions WHERE id=? AND instancia_id=?', [exceptionId, req.instanciaActual.id]);
+    const [rows] = await db.query('SELECT proyecto_id FROM security_exceptions WHERE id=? AND instancia_id=?', [exceptionId, req.instanciaActual.id]);
+    if (!rows.length) throw fail('Excepción no encontrada', 404);
+    const scope = await securityScope(req, rows[0].proyecto_id);
+    if (!scope.global && !scope.projectId) throw fail('Excepción fuera de tu alcance', 403);
+    const [result] = await db.query('DELETE FROM security_exceptions WHERE id=? AND instancia_id=?', [exceptionId, scope.instanceId]);
     if (!result.affectedRows) throw fail('Excepción no encontrada', 404);
-    await event(db, req, 'EXCEPTION_DELETED', 'ok'); res.json({ ok: true });
+    await event(db, req, 'EXCEPTION_DELETED', 'ok', null, false, { exceptionId, proyecto_id: scope.projectId });
+    res.json({ ok: true });
   } catch (e) { bad(res, e); }
 });
 router.get('/audit', requirePermission('ver_auditoria_seguridad'), async (req, res) => {

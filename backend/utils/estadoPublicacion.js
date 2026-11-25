@@ -73,9 +73,10 @@ function parsePresentation(body, hasFile) {
     || ![style.negrita, style.cursiva, style.subrayado].every(value => typeof value === 'boolean')) {
     fail(400, 'Formato de texto inválido');
   }
-  const { paleta, alineacion, tema, negrita, cursiva, subrayado } = style;
+  const { paleta, alineacion, tema, negrita, cursiva, subrayado, fuente } = style;
+  if (fuente !== undefined && !['predeterminada','moderna','clasica','manuscrita','mono','redondeada'].includes(fuente)) fail(400, 'Fuente inválida');
   return {
-    appearance: JSON.stringify({ paleta, alineacion, tema, negrita, cursiva, subrayado }),
+    appearance: JSON.stringify({ paleta, alineacion, tema, negrita, cursiva, subrayado, ...(fuente !== undefined && { fuente }) }),
     caption: caption.trim() || null,
   };
 }

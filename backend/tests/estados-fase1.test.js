@@ -392,3 +392,70 @@ test('vence en 24 horas y deja de admitir listado, medios, vista, respuesta y re
     ['put', '/:id/reaccion', { reaccion: true }],
   ]) assert.equal((await request(method, route, { ...reader, body })).code, 404);
 });
+
+test('detalle de vistas exclusivo para el autor, deduplicado y con reacción real', async t => {
+  const { request, feed, sql } = fixture(t);
+  const viewers = actor => request('get', '/:id/vistas', { actor, id: 101 });
+  assert.equal((await viewers(1)).data.personas.length, 0);
+  for (const actor of [1, 2, 2]) await request('post', '/:id/vista', { actor, id: 101 });
+  await request('put', '/:id/reaccion', { actor: 2, id: 101, body: { reaccion: true } });
+  const people = (await viewers(1)).data.personas;
+  assert.deepEqual(people.map(p => [p.id, p.reaccion]), [[2, 1]]);
+  assert.equal((await feed(1)).find(x => Number(x.id) === 101).vistas, 1);
+  assert.equal((await viewers(2)).code, 404);
+  assert.equal((await viewers(4)).code, 404);
+  sql.prepare("UPDATE chat_estados SET vence_at='2000-01-01' WHERE id=101").run();
+  assert.equal((await viewers(1)).code, 404);
+});
+
+test('cita autorizada para respuestas nuevas y antiguas, sin URL ni archivo', async t => {
+  const { request, sql } = fixture(t);
+  for (const [tipo, mime, medium] of [['imagen','image/png','Foto'],['imagen','image/gif','GIF'],['video','video/mp4','Video'],['texto',null,'Texto']]) {
+    for (const caption of ['', 'Promoción con "comillas"']) {
+      const text = tipo === 'texto' ? 'Texto original' : caption;
+      sql.prepare('UPDATE chat_estados SET tipo=?, mime=?, texto=?, leyenda=? WHERE id=101')
+        .run(tipo, mime, text, tipo === 'texto' ? caption : '');
+      const options = { actor: 2, id: 101 };
+      const ref = (await request('get', '/:id/referencia', options)).data;
+      assert.deepEqual(ref, { id: '101', author: 'Autor', medium, excerpt: text, caption: tipo === 'texto' ? caption : '' });
+      const result = await request('post','/:id/responder',{ ...options, body: { destino: { tipo:'grupo', grupo_id:10 }, mensaje:'precio' } });
+      assert.equal(result.code, 201);
+      assert.equal(result.data.mensaje, '↪ Estados ' + JSON.stringify(ref) + '\nprecio');
+    }
+  }
+  assert.equal((await request('get','/:id/referencia',{ actor:4,id:101 })).code, 404);
+  sql.prepare("UPDATE chat_estados SET eliminado_at=CURRENT_TIMESTAMP WHERE id=101").run();
+  assert.equal((await request('get','/:id/referencia',{ actor:2,id:101 })).code, 404);
+});
+
+test('solo el autor recibe la señal agregada de corazones al abrir', async t => {
+  const { request, feed } = fixture(t);
+  const item = async actor => (await feed(actor)).find(row => row.id === '101');
+  assert.equal((await item(1)).tiene_reacciones, false);
+  await request('put','/:id/reaccion',{ actor:2,id:101,body:{ reaccion:true } });
+  assert.equal((await item(1)).tiene_reacciones, true);
+  assert.equal((await item(2)).reaccion_propia, true);
+  assert.equal(Object.hasOwn(await item(3), 'tiene_reacciones'), false);
+  await request('put','/:id/reaccion',{ actor:2,id:101,body:{ reaccion:false } });
+  assert.equal((await item(1)).tiene_reacciones, false);
+});
+
+test('fuentes permitidas persisten en apariencia y cita sin ampliar la columna histórica', async t => {
+  const { request, feed } = fixture(t);
+  const base = { paleta: 'aurora', alineacion: 'center', tema: 'dark', negrita: false, cursiva: false, subrayado: false };
+  for (const fuente of ['predeterminada','moderna','clasica','manuscrita','mono','redondeada']) {
+    const appearance = { ...base, fuente };
+    const created = await request('post','/', { headers: {'Idempotency-Key': 'font-'+fuente}, body: {
+      texto:'Texto', destinos:{mi_estado:true, grupos:[10]}, apariencia:JSON.stringify(appearance)
+    } });
+    assert.equal(created.code,201);
+    assert.ok(JSON.stringify(appearance).length <= 160);
+    const row = (await feed(2)).find(item => item.id === created.data.id);
+    assert.deepEqual(row.apariencia, appearance);
+    assert.equal((await request('get','/:id/referencia',{actor:2,id:created.data.id})).data.fuente, fuente);
+  }
+  const invalid = await request('post','/', { headers: {'Idempotency-Key':'font-invalid'}, body: {
+    texto:'Texto', destinos:{mi_estado:true, grupos:[]}, apariencia:JSON.stringify({...base,fuente:'url(fake)'})
+  } });
+  assert.equal(invalid.code,400);
+});
