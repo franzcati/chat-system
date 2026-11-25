@@ -5654,3 +5654,17 @@
 .qc-users-filter-actions .qc-users-select-wrap .qc-users-select {
   padding-left: 10px;
 }
+
+/* El lienzo tiene la altura del área visible. Solo el contenido se desplaza. */
+:root .wa-messenger-root > .wa-admin-stage.qc-admin-backdrop-stage {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden !important;
+  background: var(--qc-users-bg) !important;
+}
+:root .qc-admin-backdrop-stage > .qc-shared-admin-canvas:is(.qa-page,.sc-root) {
+  background: transparent;
+  height: 100%;
+  min-height: 0;
+  overflow: auto;
+}

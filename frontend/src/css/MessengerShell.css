@@ -3348,3 +3348,25 @@ body.dark .wa-chat-header .wa-presence-badge,
   margin: 0 !important;
   line-height: 20px !important;
 }
+
+/* Hit target independiente: el resto de la fila abre la conversación. */
+.wa-chat-list-avatar:has(.wa-status-avatar-trigger) { position: relative; }
+.wa-chat-list-avatar .wa-status-avatar-trigger {
+  position: absolute; inset: -3px; z-index: 3; padding: 0; border: 0;
+  border-radius: 50%; background: transparent; cursor: pointer;
+}
+.wa-status-avatar-trigger::before {
+  content: ""; position: absolute; inset: 0; border-radius: inherit;
+  background: var(--status-ring);
+  mask: radial-gradient(farthest-side, transparent calc(100% - 3px), black calc(100% - 2px));
+}
+
+.wa-app-rail .wa-rail-badge, .wa-app-rail .wa-rail-status-dot {
+  background: linear-gradient(112deg, #069fdf 0%, #0865ed 48%, #7625ee 100%) !important;
+  color: white;
+}
+.wa-app-rail .wa-rail-icon { position: relative; }
+.wa-rail-status-dot { position: absolute; top: -4px; right: -5px; width: 9px; height: 9px; border-radius: 50%; box-shadow: 0 0 0 1.5px var(--rail-border, #cbd9ef); }
+
+.wa-app-rail .wa-rail-icon svg.wa-rail-status-icon { stroke-width: 1.8 !important; }
+.wa-app-rail .wa-rail-item.active .wa-rail-status-icon { color: white; }

@@ -1,12 +1,13 @@
-import { createElement, lazy, Suspense, useEffect, useRef, useState } from 'react';
+import { createElement, lazy, Suspense, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import {
   AlignCenter, AlignLeft, AlignRight, Bold, Check, CirclePlay, Clock, Crop, Image as Picture,
-  Italic, MessageCircle, Palette, Play, Scan, Search, Send, Smile, Type, Underline, Upload, Users, Video, X,
+  Italic, MessageCircleMore, Palette, Play, Scan, Search, Send, Smile, Type, Underline, Upload, Users, Video, X,
 } from 'lucide-react';
+import { createPortal } from 'react-dom';
 import emojiSpanish from '@emoji-mart/data/i18n/es.json';
 import { useTheme } from '../context/ThemeContext';
 import { getAvatarUrl } from '../utils/url';
-import { PALETTE, statusProportion, textPresentation } from '../utils/estadoPresentacion';
+import { PALETTE, STATUS_FONTS, emojiBounds, statusProportion, textPresentation } from '../utils/estadoPresentacion';
 import GroupAvatar from './GroupAvatar';
 
 const EmojiPicker = lazy(() => import('./LazyEmojiPicker'));
@@ -217,6 +218,45 @@ export default function EstadoCompositor({ user, groups, groupsLoading, groupsEr
   const caption = useRef(null);
   const lastField = useRef('editor');
   const selection = useRef({});
+  const emojiButton = useRef(null);
+  const emojiPanel = useRef(null);
+  useLayoutEffect(() => {
+    if (!emojiTarget) return;
+    const button = emojiButton.current;
+    const panel = emojiPanel.current;
+    const viewport = window.visualViewport;
+    function position() {
+      const rect = button.getBoundingClientRect();
+      const bounds = emojiBounds(rect, {
+        left: viewport?.offsetLeft || 0, top: viewport?.offsetTop || 0,
+        width: viewport?.width || document.documentElement.clientWidth,
+        height: viewport?.height || window.innerHeight,
+      });
+      for (const [name, value] of Object.entries(bounds)) panel.style[name] = value + 'px';
+    }
+    function outside(event) {
+      if (!event.composedPath().includes(panel) && !button.contains(event.target)) setEmojiTarget(null);
+    }
+    function escape(event) {
+      if (event.key === 'Escape') { setEmojiTarget(null); button.focus(); }
+    }
+    position();
+    panel.querySelector('button')?.focus({ preventScroll: true });
+    window.addEventListener('resize', position);
+    window.addEventListener('scroll', position, true);
+    viewport?.addEventListener('resize', position);
+    viewport?.addEventListener('scroll', position);
+    document.addEventListener('pointerdown', outside);
+    document.addEventListener('keydown', escape);
+    return () => {
+      window.removeEventListener('resize', position);
+      window.removeEventListener('scroll', position, true);
+      viewport?.removeEventListener('resize', position);
+      viewport?.removeEventListener('scroll', position);
+      document.removeEventListener('pointerdown', outside);
+      document.removeEventListener('keydown', escape);
+    };
+  }, [emojiTarget]);
   const isText = mode === 'text';
   const captionValue = isText ? textCaption : mediaCaption;
   const setCaption = isText ? setTextCaption : setMediaCaption;
@@ -306,14 +346,14 @@ export default function EstadoCompositor({ user, groups, groupsLoading, groupsEr
       <div className="qc-states-editor-pane">
         <div className="qc-states-tabs" role="group" aria-label="Tipo de estado">
           <button type="button" aria-pressed={!isText} onClick={() => switchMode('media')}><Picture size={19} /> Multimedia</button>
-          <button type="button" aria-pressed={isText} onClick={() => switchMode('text')}><Type size={20} /> Texto</button>
+          <button className="qc-states-text-tab" type="button" aria-pressed={isText} onClick={() => switchMode('text')}><Type size={20} /> Texto</button>
         </div>
         <div hidden={isText}>
           <Multimedia active={!isText} file={file} onPick={pick} onError={setError} crop={crop} setCrop={setCrop} valid={valid} setValid={setValid} />
         </div>
         {isText && <>
           <div className="qc-states-text-canvas" style={textPresentation(style)}>
-            <textarea ref={editor} rows="4" aria-label="Texto del estado" maxLength={700}
+            <textarea ref={editor} style={{fontFamily: textPresentation(style).fontFamily, fontStyle: textPresentation(style).fontStyle, fontWeight: textPresentation(style).fontWeight, textAlign: style.alineacion, textDecoration: textPresentation(style).textDecoration}} rows="4" aria-label="Texto del estado" maxLength={700}
               value={text} onChange={event => setText(event.target.value)} placeholder="Escribe tu estado…"
               onSelect={event => remember('editor', event)} onFocus={event => remember('editor', event)} />
           </div>
@@ -322,6 +362,10 @@ export default function EstadoCompositor({ user, groups, groupsLoading, groupsEr
             <span className="qc-states-divider" />
             {alignments.map(([key, Icon, name]) => <button type="button" key={key} aria-label={name} title={name} aria-pressed={appearance.alineacion === key} onClick={() => setAppearance({ ...appearance, alineacion: key })}>{createElement(Icon, { size: 20 })}</button>)}
             <span className="qc-states-divider" />
+            <select className="qc-states-font" aria-label="Fuente de letra" title="Fuente de letra" value={appearance.fuente || 'predeterminada'}
+              onChange={event => setAppearance({ ...appearance, fuente: event.target.value })}>
+              {STATUS_FONTS.map(font => <option key={font.id} value={font.id} style={{ fontFamily: font.family }}>{font.name}</option>)}
+            </select>
             <button type="button" aria-label="Color de fondo" title="Color de fondo" aria-expanded={paletteOpen} onClick={() => setPaletteOpen(!paletteOpen)}><Palette size={21} /></button>
             {paletteOpen && <div className="qc-states-palette" role="group" aria-label="Colores de fondo">
               <header><strong>Color de fondo</strong><small>Cambia el color de tu estado.</small></header>
@@ -335,21 +379,21 @@ export default function EstadoCompositor({ user, groups, groupsLoading, groupsEr
       <div className="qc-states-options">
         <Destinations user={user} groups={groups} personal={personal} setPersonal={setPersonal} selected={selected}
           setSelected={setSelected} loading={groupsLoading} error={groupsError} onRetry={onReloadGroups} />
-        <label className="qc-states-field qc-states-caption"><MessageCircle size={18} />
-          <textarea key={mode} ref={caption} rows="2" aria-label="Leyenda" placeholder="Escribe una leyenda…" maxLength={700} value={captionValue}
+        <label className="qc-states-field qc-states-caption"><MessageCircleMore size={21} />
+          <textarea key={mode} ref={caption} rows="1" aria-label="Leyenda" placeholder="Escribe una leyenda…" maxLength={700} value={captionValue}
             onChange={event => setCaption(event.target.value)} onSelect={event => remember('caption', event)} onFocus={event => remember('caption', event)} />
         </label>
         <div className="qc-states-tools">
           {!isText && <button type="button" onClick={() => switchMode('text')}><Type size={17} /> Texto</button>}
-          <button type="button" aria-expanded={Boolean(emojiTarget)} onClick={() => setEmojiTarget(emojiTarget ? null : isText ? lastField.current : 'caption')}><Smile size={17} /> Emoji</button>
+          <button type="button" ref={emojiButton} aria-haspopup="dialog" aria-expanded={Boolean(emojiTarget)} onClick={() => setEmojiTarget(emojiTarget ? null : isText ? lastField.current : 'caption')}><Smile size={17} /> Emoji</button>
           {!isText && cropSupported && <button type="button" aria-pressed={crop} onClick={() => setCrop(!crop)}><Crop size={17} /> Recortar</button>}
           <small><Clock size={17} /> Visible durante 24 horas</small>
         </div>
-        {emojiTarget && <div className="qc-states-emoji"><button type="button" aria-label="Cerrar emojis" onClick={() => setEmojiTarget(null)}><X size={17} /></button>
+        {emojiTarget && createPortal(<div ref={emojiPanel} className="qc-states-emoji" role="dialog" aria-label="Seleccionar emoji"><button type="button" aria-label="Cerrar emojis" onClick={() => { setEmojiTarget(null); emojiButton.current?.focus(); }}><X size={17} /></button>
           <Suspense fallback={<p role="status">Cargando emojis…</p>}>
-            <EmojiPicker theme={theme} locale="es" i18n={emojiSpanish} perLine={7} previewPosition="none" maxFrequentRows={1} onEmojiSelect={insertEmoji} />
+            <EmojiPicker fixChatScroll dynamicWidth theme={theme} locale="es" i18n={emojiSpanish} perLine={7} previewPosition="none" maxFrequentRows={1} onEmojiSelect={insertEmoji} />
           </Suspense>
-        </div>}
+        </div>, document.body)}
       </div>
     </fieldset>
     <footer className="qc-states-composer-actions">

@@ -1,3 +1,5 @@
+import EstadoCita from './EstadoCita';
+import { statusReplyParts } from "../utils/estadoPresentacion";
 // src/components/Message.jsx
 import React, { useState, useRef, useEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
@@ -2141,6 +2143,8 @@ const Message = ({
   };
 
   const renderFormattedMessageBlocks = (texto = "") => {
+    const status = statusReplyParts(texto);
+    if (status) return <div><EstadoCita key={status.id} reference={status}/><div style={{ whiteSpace: 'pre-wrap' }}>{renderTextoConLinks(status.reply)}</div></div>;
     if (isRichHtmlValue(texto)) {
       const safeHtml = sanitizeRichHtml(decodeRichHtmlValue(texto));
       return (

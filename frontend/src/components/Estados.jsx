@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { CircleDot, Image, Play, Plus, RefreshCw, Send, Sparkle, Type } from 'lucide-react';
+import { Image, Play, Plus, RefreshCw, Send, Sparkle, Type } from 'lucide-react';
 import EstadoCompositor, { EstadoAvatar } from './EstadoCompositor';
 import GroupAvatar from './GroupAvatar';
 import EstadoVisor from './EstadoVisor';
-import { activeStatuses, nextStatusExpiration, statusDate } from '../utils/estadoPresentacion';
+import { activeStatuses, nextStatusExpiration, buildTracks, ringPaint, statusStamp, statusDate } from '../utils/estadoPresentacion';
 import '../css/Estados.css';
 
 async function call(url, options = {}) {
@@ -16,38 +16,6 @@ async function call(url, options = {}) {
 }
 
 const nameOf = user => `${user.nombre || ''} ${user.apellido || ''}`.trim() || 'Usuario';
-const stamp = value => {
-  const date = statusDate(value);
-  return Number.isNaN(date.getTime()) ? '' : date.toLocaleString('es-PE', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
-};
-const relativeTime = new Intl.RelativeTimeFormat('es', { numeric: 'auto' });
-function ago(value) {
-  const seconds = Math.max(0, (Date.now() - statusDate(value).getTime()) / 1000);
-  if (!Number.isFinite(seconds)) return '';
-  if (seconds < 60) return 'Ahora';
-  return seconds < 3600 ? relativeTime.format(-Math.floor(seconds / 60), 'minute')
-    : relativeTime.format(-Math.floor(seconds / 3600), 'hour');
-}
-
-function buildTracks(items) {
-  const tracks = new Map();
-  for (const item of items) {
-    const destinations = item.destinos ?? {
-      mi_estado: !item.grupo_id,
-      grupos: item.grupo_id ? [{ id: item.grupo_id, nombre: item.grupo_nombre, imagen_url: item.grupo_imagen_url }] : [],
-    };
-    const contexts = destinations.grupos.map(group => ({ key: `g:${group.id}`, group, title: group.nombre }));
-    if (destinations.mi_estado) contexts.unshift({ key: `u:${item.autor_id}`, title: nameOf(item) });
-    for (const context of contexts) {
-      if (!tracks.has(context.key)) tracks.set(context.key, { ...context, latest: item, entries: [], unseen: false });
-      const track = tracks.get(context.key);
-      track.entries.push(item);
-      if (!item.visto) track.unseen = true;
-    }
-  }
-  return [...tracks.values()].map(track => ({ ...track, entries: track.entries.reverse() }));
-}
-
 function StatusArt() {
   return <div className="qc-states-art" aria-hidden="true">
     <span className="qc-states-orbit" />
@@ -61,31 +29,32 @@ function StatusArt() {
   </div>;
 }
 
-function TrackList({ title, tracks, onOpen, empty, disabled }) {
+function TrackList({ title, tracks, onOpen, empty, disabled, userId }) {
   if (!tracks.length && !empty) return null;
   return <div className="qc-states-track-section">
     <h2>{title}</h2>
     {tracks.length ? <div className="qc-states-track-list">{tracks.map(track => (
       <button type="button" key={track.key} className="qc-states-person" disabled={disabled}
-        onClick={() => onOpen(track.entries.find(item => !item.visto) || track.entries[0], track)}>
-        <span className={`qc-states-ring ${track.unseen ? 'is-unseen' : ''}`}>
-          {track.group ? <GroupAvatar group={track.group} size={38} /> : <EstadoAvatar user={track.latest} />}
+        onClick={() => onOpen(track.entries.find(item => !Number(item.visto) && String(item.autor_id) !== String(userId)) || track.entries[0], track)}>
+        <span className={track.group ? 'qc-status-group-pair' : undefined}>
+          {track.group && <GroupAvatar group={track.group} size={37} />}
+          <span className="qc-states-ring" style={{ background: ringPaint(track.entries, userId) }}><EstadoAvatar user={track.latest} /></span>
         </span>
-        <span><strong>{track.title}</strong><small>{track.group && `${nameOf(track.latest)} · `}{track.unseen ? ago(track.latest.creado_at) : stamp(track.latest.creado_at)}</small></span>
+        <span><strong>{nameOf(track.latest)}</strong>{track.group && <small>{track.group.nombre}</small>}<small>{statusStamp(track.latest.creado_at)}</small></span>
       </button>
     ))}</div> : <p className="qc-states-note">{empty}</p>}
   </div>;
 }
 
-export default function Estados({ usuario, onOpenGroup, onOpenPrivate }) {
-  const [items, setItems] = useState([]);
+export default function Estados({ usuario, onOpenGroup, onOpenPrivate, direct, onExit, onStatusFeed }) {
+  const [items, setItems] = useState(() => activeStatuses(direct?.items || []));
   const [groups, setGroups] = useState([]);
   const [canPost, setCanPost] = useState(false);
   const [loading, setLoading] = useState(true);
   const [groupsLoading, setGroupsLoading] = useState(false);
   const [feedError, setFeedError] = useState('');
   const [groupsError, setGroupsError] = useState('');
-  const [selected, setSelected] = useState(null);
+  const [selected, setSelected] = useState(direct?.selection || null);
   const [compose, setCompose] = useState(false);
   const [notice, setNotice] = useState('');
   const dismissed = useRef(new Set());
@@ -146,7 +115,11 @@ export default function Estados({ usuario, onOpenGroup, onOpenPrivate }) {
     return () => clearTimeout(timer);
   }, [items]);
 
-  const tracks = useMemo(() => buildTracks(items), [items]);
+  useEffect(() => {
+    if (!loading) onStatusFeed?.(items);
+  }, [items, loading, onStatusFeed]);
+
+  const tracks = useMemo(() => [...buildTracks(items, usuario?.id, !direct).values()], [items, usuario?.id, direct]);
   const own = tracks.find(track => track.key === `u:${usuario?.id}`);
   const other = tracks.filter(track => track !== own);
   const currentTrack = tracks.find(track => track.key === selected?.key);
@@ -157,12 +130,13 @@ export default function Estados({ usuario, onOpenGroup, onOpenPrivate }) {
 
   const close = useCallback(() => {
     setSelected(null);
+    if (onExit) { onExit(); return; }
     requestAnimationFrame(() => {
       const trigger = viewerOpened.current;
       if (trigger?.isConnected) trigger.focus();
       else moduleRoot.current?.focus();
     });
-  }, []);
+  }, [onExit]);
 
   const recordView = useCallback(id => {
     void call(`/api/estados/${id}/vista`, { method: 'POST' })
@@ -245,27 +219,34 @@ export default function Estados({ usuario, onOpenGroup, onOpenPrivate }) {
     void load();
   }
 
+  const viewer = current && <EstadoVisor item={current} sequence={sequence} index={index} group={group}
+        author={nameOf(current)} date={statusDate(current.creado_at)}
+        own={String(current.autor_id) === String(usuario?.id)}
+        onClose={close} onPrevious={previous} onNext={next} onViewed={recordView}
+        onReply={respond} onReact={react} onDelete={remove} />;
+  if (direct) return viewer;
+
   return <section ref={moduleRoot} tabIndex={-1} className={`qc-states ${compose ? 'is-composing' : ''}`} aria-label="Estados">
     <aside className="qc-states-list">
       <header className="qc-states-list-head">
-        <span className="qc-states-tile"><CircleDot size={25} /></span>
+        <span className="qc-states-tile"><i className="qc-states-mark" aria-hidden="true" /></span>
         <div><h1>Estados</h1><p>Comparte fotos, videos, GIFs y textos con tu equipo. Desaparecen después de 24 horas.</p></div>
         <button type="button" className="qc-states-refresh" title="Actualizar estados" aria-label="Actualizar estados" onClick={load}><RefreshCw size={16} /></button>
       </header>
       {canPost && <button type="button" className="qc-states-button is-primary qc-states-side-create" onClick={start} disabled={compose}><Plus size={20} /> Crear estado</button>}
       {(canPost || own) && <div className="qc-states-own">
         <button type="button" className="qc-states-own-main" disabled={compose} onClick={own ? () => open(own.latest, own) : start}>
-          <span className={`qc-states-ring ${own ? 'is-unseen' : ''}`}><EstadoAvatar user={usuario} /></span>
+          <span className="qc-states-ring" style={own && { background: ringPaint(own.entries, usuario?.id) }}><EstadoAvatar user={usuario} /></span>
           <span><strong>Mi estado</strong><small>{own ? `${own.entries.length} ${own.entries.length === 1 ? 'publicación activa' : 'publicaciones activas'}`
             : 'Toca para agregar un estado'}</small></span>
         </button>
-        {canPost && own && <button className="qc-states-own-add" type="button" aria-label="Agregar a Mi estado" disabled={compose} onClick={start}><Plus size={18} /></button>}
+        {canPost && <button className="qc-states-own-add" type="button" aria-label="Agregar a Mi estado" disabled={compose} onClick={start}><Plus size={18} /></button>}
       </div>}
       {loading && <p className="qc-states-note" role="status">Cargando estados…</p>}
       {feedError && <p className="qc-states-feedback is-error" role="alert">{feedError}</p>}
-      <TrackList disabled={compose} title="Actualizaciones recientes" tracks={other.filter(track => track.unseen)} onOpen={open}
+      <TrackList userId={usuario?.id} disabled={compose} title="Actualizaciones recientes" tracks={other.filter(track => track.unseen)} onOpen={open}
         empty={!loading && !feedError && !other.length ? 'No hay actualizaciones recientes.' : ''} />
-      <TrackList disabled={compose} title="Visto" tracks={other.filter(track => !track.unseen)} onOpen={open} />
+      <TrackList userId={usuario?.id} disabled={compose} title="Visto" tracks={other.filter(track => !track.unseen)} onOpen={open} />
     </aside>
     <div className="qc-states-stage">
       {compose ? <EstadoCompositor user={usuario} groups={groups} groupsLoading={groupsLoading} groupsError={groupsError}
@@ -277,11 +258,7 @@ export default function Estados({ usuario, onOpenGroup, onOpenPrivate }) {
         {canPost && <button type="button" className="qc-states-button is-primary" onClick={start}><Send size={21} /> Crear estado</button>}
         {notice && <p className="qc-states-feedback" role="status">{notice}</p>}
       </div>}
-      {!compose && current && <EstadoVisor item={current} sequence={sequence} index={index} group={group}
-        author={nameOf(current)} date={statusDate(current.creado_at)}
-        own={String(current.autor_id) === String(usuario?.id)}
-        onClose={close} onPrevious={previous} onNext={next} onViewed={recordView}
-        onReply={respond} onReact={react} onDelete={remove} />}
+      {!compose && viewer}
     </div>
   </section>;
 }

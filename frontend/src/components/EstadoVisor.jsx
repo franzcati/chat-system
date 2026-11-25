@@ -2,17 +2,51 @@ import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState } from 're
 import { ChevronLeft, ChevronRight, Eye, Heart, MoreHorizontal, Pause, Play, RotateCcw, Send, Smile, Trash2, Volume2, VolumeX, X } from 'lucide-react';
 import emojiSpanish from '@emoji-mart/data/i18n/es.json';
 import { useTheme } from '../context/ThemeContext';
-import { textPresentation } from '../utils/estadoPresentacion';
+import { statusStamp, textPresentation } from '../utils/estadoPresentacion';
 import { EstadoAvatar } from './EstadoCompositor';
 import '../css/EstadoVisor.css';
 
 const EmojiPicker = lazy(() => import('./LazyEmojiPicker'));
 const imageDuration = 6000;
 
-function displayDate(date) {
-  if (!date || Number.isNaN(date.getTime())) return '';
-  const day = date.toDateString() === new Date().toDateString() ? 'Hoy' : date.toLocaleDateString('es-PE', { day: 'numeric', month: 'short' });
-  return `${day}, ${date.toLocaleTimeString('es-PE', { hour: 'numeric', minute: '2-digit' })}`;
+function Viewers({ id, onClose }) {
+  const dialog = useRef(null);
+  const [people, setPeople] = useState(null);
+  const [error, setError] = useState('');
+  useLayoutEffect(() => {
+    const node = dialog.current;
+    node.showModal();
+    return () => node.close();
+  }, []);
+  useEffect(() => {
+    const controller = new AbortController();
+    async function load() {
+      try {
+        const response = await fetch(`/api/estados/${encodeURIComponent(id)}/vistas`, {
+          credentials: 'include', cache: 'no-store', signal: controller.signal,
+        });
+        if (!response.ok) throw new Error('No se pudo consultar quién vio este estado.');
+        const { personas } = await response.json();
+        if (!controller.signal.aborted) setPeople(personas);
+      } catch (cause) {
+        if (!controller.signal.aborted) setError(cause.message);
+      }
+    }
+    load();
+    return () => controller.abort();
+  }, [id]);
+  return <dialog ref={dialog} className="qc-status-viewers" aria-label="Personas que vieron el estado"
+    onKeyDown={event => event.stopPropagation()}
+    onCancel={event => { event.preventDefault(); event.stopPropagation(); onClose(); }}>
+    <header><button type="button" aria-label="Cerrar lista de vistas" onClick={onClose}><X size={20}/></button>
+      <strong>{people ? `Visto por ${people.length}` : 'Visualizaciones'}</strong></header>
+    {error ? <p role="alert">{error}</p> : !people ? <p role="status">Cargando vistas…</p>
+      : !people.length ? <p>Todavía nadie vio este estado.</p>
+      : <ul>{people.map(person => <li key={person.id}>
+        <span className="qc-status-reader"><EstadoAvatar user={person}/>{Boolean(person.reaccion) && <Heart size={15} fill="currentColor"/>}</span>
+        <span><strong>{[person.nombre, person.apellido].filter(Boolean).join(' ')}</strong><small>{statusStamp(person.visto_at)}</small></span>
+      </li>)}</ul>}
+  </dialog>;
 }
 
 function CircleButton({ label, children, buttonRef, className = '', ...props }) {
@@ -39,11 +73,28 @@ export default function EstadoVisor({ onClose, ...props }) {
 function StatusSlide({ item, sequence, index, group, author, date, own, onClose, onPrevious, onNext, onViewed, onReply, onReact, onDelete }) {
   const { theme } = useTheme();
   const [ready, setReady] = useState(item.tipo === 'texto');
-  const [fit, setFit] = useState('contain');
+  const [ratio, setRatio] = useState(.763);
+  const [captionExpanded, setCaptionExpanded] = useState(false);
+  const [captionOverflow, setCaptionOverflow] = useState(false);
+  const captionRef = useRef(null);
   const [progress, setProgress] = useState(0);
   const [manualPause, setManualPause] = useState(false);
   const [hidden, setHidden] = useState(() => document.hidden);
   const [muted, setMuted] = useState(true);
+  const [viewers, setViewers] = useState(false);
+  const [burst, setBurst] = useState(0);
+  const entryReaction = useRef(own ? item.tiene_reacciones : item.reaccion_propia);
+  useEffect(() => {
+    if (ready && entryReaction.current) {
+      entryReaction.current = false;
+      setBurst(value => value + 1);
+    }
+  }, [ready]);
+  useEffect(() => {
+    if (!burst) return;
+    const timer = setTimeout(() => setBurst(0), 2900);
+    return () => clearTimeout(timer);
+  }, [burst]);
   const [menu, setMenu] = useState(false);
   const [emoji, setEmoji] = useState(false);
   const [editing, setEditing] = useState(false);
@@ -67,7 +118,7 @@ function StatusSlide({ item, sequence, index, group, author, date, own, onClose,
   const path = `/api/estados/${encodeURIComponent(item.id)}/media`;
   const style = isText ? textPresentation(item.apariencia, item.fondo || '#1d3e70') : null;
   const blockedNavigation = pending === 'reply' || pending === 'delete';
-  const paused = manualPause || hidden || menu || emoji || editing || Boolean(reply.trim()) || Boolean(pending) || Boolean(error);
+  const paused = captionExpanded || viewers || manualPause || hidden || menu || emoji || editing || Boolean(reply.trim()) || Boolean(pending) || Boolean(error);
 
   useEffect(() => {
     const update = () => setHidden(document.hidden);
@@ -76,10 +127,10 @@ function StatusSlide({ item, sequence, index, group, author, date, own, onClose,
   }, []);
 
   useEffect(() => {
-    if (!ready || seen.current) return;
+    if (own || !ready || seen.current) return;
     seen.current = true;
     onViewed(item.id);
-  }, [item.id, onViewed, ready]);
+  }, [item.id, onViewed, own, ready]);
 
   useEffect(() => {
     if (!ready || mediaError || isVideo || paused) return;
@@ -107,6 +158,16 @@ function StatusSlide({ item, sequence, index, group, author, date, own, onClose,
     }
   }, [isVideo, mediaError, paused, ready]);
 
+  useLayoutEffect(() => {
+    const node = captionRef.current;
+    if (!node || captionExpanded) return;
+    function measure() { setCaptionOverflow(node.scrollHeight > node.clientHeight + 1); }
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [item.texto, item.leyenda, captionExpanded, ratio]);
+
   function drawVideoBackdrop() {
     const player = video.current;
     const canvas = frame.current;
@@ -115,8 +176,7 @@ function StatusSlide({ item, sequence, index, group, author, date, own, onClose,
   }
 
   function mediaReady(width, height) {
-    const ratio = width / height;
-    setFit(ratio >= .68 && ratio <= .95 ? 'cover' : 'contain');
+    if (width > 0 && height > 0) setRatio(width / height);
     setReady(true);
   }
 
@@ -156,7 +216,7 @@ function StatusSlide({ item, sequence, index, group, author, date, own, onClose,
 
   function keyDown(event) {
     if (event.key === 'Escape') {
-      if (emoji || menu) {
+      if (captionExpanded) { event.preventDefault(); setCaptionExpanded(false); } else if (emoji || menu) {
         event.preventDefault();
         (emoji ? emojiButton : menuButton).current?.focus();
         setMenu(false);
@@ -222,7 +282,7 @@ function StatusSlide({ item, sequence, index, group, author, date, own, onClose,
     if (window.confirm('¿Eliminar este estado? Se retirará de todos sus destinos.')) void run('delete', onDelete);
   }
 
-  return <div className="qc-status-shell" onKeyDown={keyDown}>
+  return <div className="qc-status-shell" style={{ '--media-ratio': ratio }} onKeyDown={keyDown}>
     <div className="qc-status-backdrop" aria-hidden="true">
       {!mediaError && ready && !isText && !isVideo && <img src={path} alt="" />}
       {isVideo && <canvas ref={frame} width={80} height={110} hidden={!ready || mediaError} />}
@@ -230,14 +290,14 @@ function StatusSlide({ item, sequence, index, group, author, date, own, onClose,
     </div>
     <CircleButton label="Cerrar" className="qc-status-close" onClick={onClose} disabled={blockedNavigation}><X size={24} /></CircleButton>
     <CircleButton label="Anterior" className="qc-status-prev" onClick={onPrevious} disabled={!index || blockedNavigation}><ChevronLeft /></CircleButton>
-    <article className="qc-status-frame" aria-label={`Estado de ${author}`}>
+    <article className="qc-status-frame" style={isText ? undefined : { height: "min(var(--status-height), max(240px, calc(var(--status-width) / var(--media-ratio))))" }} aria-label={`Estado de ${author}`}>
       <div className="qc-status-media" style={style ? { background: style.background } : undefined}
         onTouchStart={event => { touchStart.current = event.touches.length === 1 ? event.touches[0] : null; }}
         onTouchCancel={() => { touchStart.current = null; }} onTouchEnd={swipe}>
         {!mediaError && (isText
           ? <div className="qc-status-text" style={{ ...style, background: 'transparent' }}>{item.texto}</div>
           : isVideo
-            ? <video ref={video} src={path} playsInline muted={muted} preload="auto" style={{ objectFit: fit }}
+            ? <video ref={video} src={path} playsInline muted={muted} preload="auto" style={{ objectFit: "contain" }}
                 onLoadedData={event => { mediaReady(event.currentTarget.videoWidth, event.currentTarget.videoHeight); drawVideoBackdrop(); }}
                 onTimeUpdate={event => {
                   const player = event.currentTarget;
@@ -246,7 +306,7 @@ function StatusSlide({ item, sequence, index, group, author, date, own, onClose,
                 }}
                 onEnded={() => { if (!paused && !mediaError) onNext(); }}
                 onError={() => setMediaError(true)} aria-label="Video del estado" />
-            : <img src={path} style={{ objectFit: fit }} alt={item.texto ? 'Imagen del estado con leyenda' : 'Imagen del estado'}
+            : <img src={path} style={{ objectFit: "contain" }} alt={item.texto ? 'Imagen del estado con leyenda' : 'Imagen del estado'}
                 onLoad={event => mediaReady(event.currentTarget.naturalWidth, event.currentTarget.naturalHeight)}
                 onError={() => setMediaError(true)} />)}
         {mediaError ? <p className="qc-status-media-message" role="alert">El contenido ya no está disponible.</p>
@@ -263,7 +323,7 @@ function StatusSlide({ item, sequence, index, group, author, date, own, onClose,
           <span className="qc-status-avatar"><EstadoAvatar user={item} /></span>
           <div className="qc-status-byline">
             <strong>{author}</strong>
-            <time dateTime={date && !Number.isNaN(date.getTime()) ? date.toISOString() : undefined}>{displayDate(date)}</time>
+            <time dateTime={date && !Number.isNaN(date.getTime()) ? date.toISOString() : undefined}>{statusStamp(date)}</time>
             {group && <small title={group.nombre}>{group.nombre}</small>}
           </div>
           <div className="qc-status-controls">
@@ -279,9 +339,14 @@ function StatusSlide({ item, sequence, index, group, author, date, own, onClose,
         </div>
       </header>
       <footer className="qc-status-footer">
-        {(isText ? item.leyenda : item.texto) && <p className="qc-status-caption">{isText ? item.leyenda : item.texto}</p>}
+        {(isText ? item.leyenda : item.texto) && <div className="qc-status-caption" data-status-popover>
+          <p ref={captionRef} className={captionExpanded ? 'is-expanded' : 'is-collapsed'}>{isText ? item.leyenda : item.texto}</p>
+          {(captionOverflow || captionExpanded) && <button type="button" aria-expanded={captionExpanded}
+            onClick={() => setCaptionExpanded(value => !value)}>{captionExpanded ? 'Leer menos' : 'Leer más'}</button>}
+        </div>}
         {error && <div className="qc-status-error" role="alert"><span>{error}</span><CircleButton label="Cerrar aviso" onClick={() => setError('')}><X size={16} /></CircleButton></div>}
-        {own ? <div className="qc-status-views"><Eye size={22} /> {item.vistas ?? 0} {Number(item.vistas) === 1 ? 'visualización' : 'visualizaciones'}</div>
+        {own ? <button type="button" className="qc-status-views" aria-label={`Ver personas que vieron el estado (${item.vistas ?? 0})`}
+          onClick={() => setViewers(true)}><Eye size={17}/> {item.vistas ?? 0}</button>
           : <form className="qc-status-reply" onSubmit={event => {
             event.preventDefault();
             if (reply.trim() && !pending) void run('reply', () => onReply(reply.trim()));
@@ -295,7 +360,7 @@ function StatusSlide({ item, sequence, index, group, author, date, own, onClose,
               {reply.trim() && <button type="submit" className="qc-status-send" aria-label="Enviar respuesta" disabled={Boolean(pending)}><Send size={21} /></button>}
             </div>
             <CircleButton label={item.reaccion_propia ? 'Quitar corazón' : 'Enviar corazón'} className="qc-status-heart"
-              aria-pressed={Boolean(item.reaccion_propia)} disabled={Boolean(pending)} onClick={() => void run('reaction', () => onReact(!item.reaccion_propia))}>
+              aria-pressed={Boolean(item.reaccion_propia)} disabled={Boolean(pending)} onClick={() => void run('reaction', async () => { await onReact(!item.reaccion_propia); if (!item.reaccion_propia) setBurst(value => value + 1); })}>
               <Heart fill={item.reaccion_propia ? 'currentColor' : 'none'} />
             </CircleButton>
             {emoji && <div className="qc-status-emoji" data-status-popover>
@@ -304,7 +369,10 @@ function StatusSlide({ item, sequence, index, group, author, date, own, onClose,
               </Suspense>
             </div>}
           </form>}
+        {burst > 0 && <span key={burst} className={`qc-heart-burst ${own ? 'for-author' : ''}`} aria-hidden="true">{[-14,9,-6,16].map((x,i) =>
+          <Heart key={x} size={14 + i % 3 * 3} fill="currentColor" style={{ '--dx': x + 'px', animationDelay: i * 350 + 'ms' }}/>)}</span>}
       </footer>
+      {viewers && <Viewers id={item.id} onClose={() => setViewers(false)}/>}
     </article>
     <CircleButton label="Siguiente" className="qc-status-next" onClick={onNext} disabled={blockedNavigation}><ChevronRight /></CircleButton>
   </div>;

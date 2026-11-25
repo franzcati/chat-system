@@ -18,6 +18,25 @@
   -moz-osx-font-smoothing: grayscale;
 }
 
+/* Inter se carga en estilo normal. Permitir la inclinación cuando la cara
+   cursiva falta, solo en los editores y superficies de texto enriquecido. */
+:where(.qc-states-text-canvas, .qc-status-text, .wa-rich-editor, .wa-rich-message, .wa-rich-html-message) {
+  font-synthesis: style;
+}
+
+:root {
+  --qc-state-start: #069fdf;
+  --qc-state-middle: #0865ed;
+  --qc-state-end: #7625ee;
+  --qc-state-gradient: linear-gradient(112deg, var(--qc-state-start) 0%, var(--qc-state-middle) 48%, var(--qc-state-end) 100%);
+}
+:root[data-theme="dark"] {
+  --qc-state-start: #007dce;
+  --qc-state-middle: #1555e8;
+  --qc-state-end: #8120ed;
+  --qc-state-gradient: linear-gradient(110deg, var(--qc-state-start) 0%, var(--qc-state-middle) 49%, var(--qc-state-end) 100%);
+}
+
 a {
   font-weight: 500;
   color: #646cff;

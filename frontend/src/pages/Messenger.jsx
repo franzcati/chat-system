@@ -1,3 +1,4 @@
+import { activeStatuses, nextStatusExpiration, unseenChatContexts } from '../utils/estadoPresentacion';
 import React, { useState, useEffect, useRef, useCallback, lazy, Suspense } from 'react';
 import toast from "react-hot-toast";
 import { useNavigate } from 'react-router-dom'; // 👈
@@ -12,6 +13,7 @@ import socket, { conectarUsuarioSocket, emitirActividadUsuario } from "../socket
 import { clearAllChatListSnapshots } from "../utils/chatListSnapshot";
 import { clearUserDrafts } from "../utils/chatDrafts";
 
+const AdminBackground = lazy(() => import("../components/AdminBackground"));
 const ChatBox = lazy(() => import('./ChatBox'));
 const CreateChat = lazy(() => import('../components/CreateChat'));
 const ProjectManagement = lazy(() => import('../components/ProjectManagement'));
@@ -48,6 +50,38 @@ const Messenger = () => {
   const [addToListTarget, setAddToListTarget] = useState(null);
   const [unreadTotal, setUnreadTotal] = useState(0);
   const [estadosUsuarios, setEstadosUsuarios] = useState({});
+  const [statusFeed, setStatusFeed] = useState(null);
+  const [directStatusOpen, setDirectStatusOpen] = useState(false);
+  const userId = usuario?.id;
+  const updateStatusFeed = useCallback(items => setStatusFeed({ userId, items }), [userId]);
+  useEffect(() => {
+    if (!userId || activeTab === 'states' || directStatusOpen) return;
+    const controller = new AbortController();
+    let timer;
+    async function refresh() {
+      try {
+        const response = await fetch('/api/estados', { credentials: 'include', cache: 'no-store',
+          headers: { 'X-Estados-Contrato': '2' }, signal: controller.signal });
+        const data = response.ok ? await response.json() : null;
+        if (!controller.signal.aborted) updateStatusFeed(activeStatuses(data?.estados || []));
+      } catch {
+        if (!controller.signal.aborted) updateStatusFeed([]);
+      } finally {
+        if (!controller.signal.aborted) timer = setTimeout(refresh, 20000);
+      }
+    }
+    refresh();
+    return () => { controller.abort(); clearTimeout(timer); };
+  }, [userId, activeTab, directStatusOpen, updateStatusFeed]);
+  useEffect(() => {
+    if (!statusFeed) return;
+    const expiry = nextStatusExpiration(statusFeed.items);
+    if (!Number.isFinite(expiry)) return;
+    const timer = setTimeout(() => setStatusFeed(current => current === statusFeed
+      ? { ...current, items: activeStatuses(current.items) } : current), Math.max(1, expiry - Date.now()));
+    return () => clearTimeout(timer);
+  }, [statusFeed]);
+  const hasPendingStatus = statusFeed?.userId === userId && unseenChatContexts(statusFeed?.items || [], userId).size > 0;
   const navigate = useNavigate();
   const selectedChatRef = useRef(null);
   const callManagerRef = useRef(null);
@@ -533,6 +567,7 @@ const Messenger = () => {
         setActive={setActiveTab}
         onUsuarioUpdate={(nextUsuario) => setUsuario((prev) => ({ ...(prev || {}), ...(nextUsuario || {}) }))}
         unreadTotal={unreadTotal}
+        hasPendingStatus={hasPendingStatus}
         estadosUsuarios={estadosUsuarios}
       />
 
@@ -542,6 +577,9 @@ const Messenger = () => {
           selectedChat={selectedChat}
           setSelectedChat={setSelectedChatFromList}
           userId={usuario?.id}
+          statusFeed={statusFeed}
+          onStatusFeed={updateStatusFeed}
+          onDirectStatusChange={setDirectStatusOpen}
           addToListTarget={addToListTarget}
           onAddToListHandled={() => setAddToListTarget(null)}
           onUnreadTotalChange={setUnreadTotal}
@@ -549,7 +587,7 @@ const Messenger = () => {
         />
       )}
       {activeTab === "states" && <Suspense fallback={<LazyPanelFallback/>}>
-        <Estados usuario={usuario} onOpenGroup={handleSelectChat} onOpenPrivate={handleSelectChat}/>
+        <Estados usuario={usuario} onStatusFeed={updateStatusFeed} onOpenGroup={handleSelectChat} onOpenPrivate={handleSelectChat}/>
       </Suspense>}
       {activeTab === "projects" && (
         <div className="flex-1 wa-admin-stage">
@@ -571,17 +609,21 @@ const Messenger = () => {
       )}
 
       {activeTab === "records" && (
-        <div className="flex-1 wa-admin-stage">
+        <div className="flex-1 wa-admin-stage qc-admin-backdrop-stage">
           <Suspense fallback={<LazyPanelFallback />}>
+            <AdminBackground />
             <AuditManagement usuarioLogueado={usuario} />
           </Suspense>
         </div>
       )}
 
       {activeTab === "security" && (
-        <Suspense fallback={<LazyPanelFallback />}>
-          <SecurityCenter usuario={usuario} />
-        </Suspense>
+        <div className="flex-1 wa-admin-stage qc-admin-backdrop-stage">
+          <Suspense fallback={<LazyPanelFallback />}>
+            <AdminBackground />
+            <SecurityCenter usuario={usuario} />
+          </Suspense>
+        </div>
       )}
 
       {activeTab === "edit" && (

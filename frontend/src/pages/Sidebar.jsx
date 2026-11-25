@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { UserPlus, Edit3, Users, MessageSquare, Sun, Moon, Settings, Folder, Shield, FileText, Lock, Circle } from "feather-icons-react";
+import { UserPlus, Edit3, Users, MessageSquare, Sun, Moon, Settings, Folder, Shield, FileText, Lock } from "feather-icons-react";
 import { logDev } from "../utils/logger";
 import SidebarProfilePanel from "../components/SidebarProfilePanel";
 import { getAvatarUrl } from "../utils/url";
@@ -8,7 +8,7 @@ import socket from "../socket";
 import { clearAllChatListSnapshots } from "../utils/chatListSnapshot";
 import { clearUserDrafts } from "../utils/chatDrafts";
 
-const Sidebar = ({ usuario, active, setActive, onUsuarioUpdate, unreadTotal = 0, estadosUsuarios = {} }) => {
+const Sidebar = ({ usuario, active, setActive, onUsuarioUpdate, unreadTotal = 0, estadosUsuarios = {}, hasPendingStatus = false }) => {
   const [showModal, setShowModal] = useState(false);
   // El rail inicia siempre compacto. En escritorio no se expande
   // automáticamente al entrar a Chats; así mantiene el mismo aspecto
@@ -144,7 +144,7 @@ const Sidebar = ({ usuario, active, setActive, onUsuarioUpdate, unreadTotal = 0,
 
   const icons = [
     { id: "chat", label: "Mensajes", icon: <MessageSquare />, badge: unreadBadge },
-    { id: "states", label: "Estados", icon: <Circle /> },
+    { id: "states", label: "Estados", icon: <svg className="wa-rail-status-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true"><path d="M13.74 2.15 A10 10 0 0 1 21.40 15.42"/><path d="M19.66 18.43 A10 10 0 0 1 4.34 18.43"/><path d="M2.60 15.42 A10 10 0 0 1 10.26 2.15"/><circle cx="12" cy="12" r="5.7" fill={active === "states" ? "currentColor" : "none"}/></svg> },
     { id: "security", label: "Centro de Seguridad", icon: <Lock /> },
     ...(canGestionarUsuarios ? [{ id: "edit-user", label: "Gestión de Usuarios", icon: <Users /> }] : []),
     ...(canCrearUsuarios ? [{ id: "add-user", label: "Nuevo Usuario", icon: <UserPlus /> }] : []),
@@ -244,11 +244,12 @@ const Sidebar = ({ usuario, active, setActive, onUsuarioUpdate, unreadTotal = 0,
                 setSidebarExpanded(false);
               }}
               title={label}
-              aria-label={label}
+              aria-label={id === "states" && hasPendingStatus ? "Estados, novedades sin ver" : label}
             >
               <span className="wa-rail-icon">
                 {icon}
                 {badge && <span className="wa-rail-badge">{badge}</span>}
+                {id === "states" && hasPendingStatus && <span className="wa-rail-status-dot" aria-hidden="true"/>}
               </span>
               <span className="wa-rail-label">{label}</span>
             </button>

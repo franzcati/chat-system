@@ -1,0 +1,9 @@
+.qc-status-quote {
+  display: flex; align-items: stretch; justify-content: space-between; gap: 8px;
+  margin: 0 0 5px; padding: 5px 6px; border-inline-start: 3px solid currentColor;
+  border-radius: 5px; background: rgb(100 140 190 / 13%); max-width: 100%;
+}
+.qc-status-quote-copy { min-width: 0; display: grid; align-content: center; gap: 2px; }
+.qc-status-quote-copy > span { display: flex; align-items: center; gap: 4px; font-size: .87em; }
+.qc-status-quote-copy > small { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
+.qc-status-quote > :is(img,video) { flex: 0 0 auto; width: 48px; height: 48px; align-self: center; object-fit: cover; border-radius: 4px; }

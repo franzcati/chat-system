@@ -18,7 +18,7 @@ html:has(.wa-messenger-root.active-tab-states) {
   --state-field: #f5f7ffbe;
   --state-solid: #f9faff;
   --state-hover: #e7efff;
-  --state-primary: linear-gradient(112deg, #069fdf 0%, #0865ed 48%, #7625ee 100%);
+  --state-primary: var(--qc-state-gradient);
   --state-primary-ink: #fff;
   --state-active: #075db5;
   --state-accent: #6b40d9;
@@ -59,7 +59,6 @@ html:has(.wa-messenger-root.active-tab-states) {
   --state-field: #09213c;
   --state-solid: #0a1b35;
   --state-hover: #102a4d;
-  --state-primary: linear-gradient(110deg, #007dce, #1555e8 49%, #8120ed);
   --state-active: #67deff;
   --state-accent: #ba8aff;
   --state-glow: 0 12px 30px #0109194d;
@@ -160,7 +159,7 @@ html:has(.wa-messenger-root.active-tab-states) {
   background: var(--state-field);
 }
 :root[data-theme="dark"] .qc-states-own { background: linear-gradient(120deg,#071b35,#1c164e); }
-.qc-states-own:has(.qc-states-own-add) { padding-right: 38px; }
+
 .qc-states-own-main, .qc-states-person {
   display: flex;
   align-items: center;
@@ -175,9 +174,11 @@ html:has(.wa-messenger-root.active-tab-states) {
   position: absolute;
   display: grid;
   place-items: center;
-  top: 50%;
-  right: 9px;
-  transform: translateY(-50%);
+  left: 45px;
+  top: calc(50% + 3px);
+  padding: 0;
+  min-width: 0;
+  min-height: 0;
   width: 29px;
   height: 29px;
   border-radius: 50%;
@@ -228,7 +229,7 @@ html:has(.wa-messenger-root.active-tab-states) {
 .qc-states-note { padding: 9px; color: var(--state-muted); font-size: 13px; }
 .qc-states-note button { text-decoration: underline; }
 
-.qc-states-stage { display: grid; grid-template-rows: minmax(0, 1fr); overflow: auto; place-items: center; min-width: 0; min-height: 0; align-self: stretch; }
+.qc-states-stage { container: estado-stage / inline-size; display: grid; grid-template-rows: minmax(0, 1fr); overflow: auto; place-items: center; min-width: 0; min-height: 0; align-self: stretch; }
 .qc-states-placeholder { align-self: safe center; display: grid; justify-items: center; gap: 12px; width: 100%; padding: 12px; text-align: center; }
 .qc-states-placeholder h2 { font-size: clamp(27px, 3.1vw, 52px); line-height: 1.05; font-weight: 800; letter-spacing: -.04em; }
 .qc-states-placeholder p { color: var(--state-muted); font-size: clamp(14px, 1.5vw, 23px); line-height: 1.4; }
@@ -624,19 +625,23 @@ html:has(.wa-messenger-root.active-tab-states) {
 .qc-states-tools { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; font-size: 12px; }
 .qc-states-tools small { display: flex; align-items: center; gap: 5px; color: var(--state-muted); margin-left: auto; }
 .qc-states-emoji {
-  z-index: 4;
-  position: absolute;
-  right: 8px;
-  bottom: 42px;
-  max-width: calc(100% - 16px);
+  position: fixed;
+  z-index: 15000;
+  display: flex;
+  flex-direction: column;
   overflow: auto;
-  background: var(--state-solid);
-  box-shadow: var(--state-glow);
-  border: 1px solid var(--state-border);
-  border-radius: 12px;
+  background: #fafbff;
+  color: #263650;
+  border: 1px solid #cbd9f0;
+  border-radius: 14px;
+  box-shadow: 0 10px 32px #14264d33;
 }
-.qc-states-emoji em-emoji-picker { display: block; }
-.qc-states-emoji > button { display: grid; place-items: center; margin: 3px 3px 3px auto; width: 28px; height: 28px; }
+:root[data-theme="dark"] .qc-states-emoji { background: #0a1b35; color: #ecf4ff; border-color: #254877; }
+.qc-states-emoji > button { display: grid; place-items: center; margin: 2px 4px 2px auto; padding: 0; width: 30px; min-height: 30px; background: transparent; color: inherit; border: 0; border-radius: 8px; }
+.qc-states-emoji .wa-emoji-mart-scroll-host { flex: 1; min-height: 0; }
+.qc-states-emoji .wa-emoji-mart-scroll-host > div { height: 100%; }
+.qc-states-emoji em-emoji-picker { display: block; width: 100%; height: 100%; --border-radius: 0; }
+:root[data-theme="light"] .qc-states-emoji em-emoji-picker { --rgb-color: 30,45,75; --rgb-background: 250,251,255; --rgb-accent: 45,93,219; --color-border-over: #abd0ff; --color-border: #dce4f4; }
 .qc-states-composer-actions {
   display: flex;
   flex-wrap: wrap;
@@ -660,7 +665,7 @@ html:has(.wa-messenger-root.active-tab-states) {
 .qc-states-feedback.is-error { color: var(--state-invalid) !important; background: var(--state-invalid-bg); }
 .qc-states-composer-actions .qc-states-feedback { flex: 1 0 100%; }
 
-@container (max-width: 935px) {
+@container estado-stage (max-width: 650px) {
   .qc-states-compose-grid { grid-template-columns: minmax(0,1fr); grid-auto-rows: max-content; }
   .qc-states-multimedia { height: auto; }
 }
@@ -689,7 +694,7 @@ html:has(.wa-messenger-root.active-tab-states) {
 
 /* Más espacio para destinos y videos en el compositor de escritorio. */
 @media (min-width: 1150px) {
-  .qc-states.is-composing { grid-template-columns: clamp(276px, 23vw, 385px) minmax(0, 1fr); }
+
   .qc-states.is-composing .qc-states-own-main { padding-block: 12px; }
   .qc-states.is-composing .qc-states-person { padding: 7px 10px; }
   .qc-states :is(.qc-states-own-main,.qc-states-person,.qc-states-dest-row) strong { font-size: 15px; }
@@ -703,9 +708,89 @@ html:has(.wa-messenger-root.active-tab-states) {
   box-shadow: 0 3px 12px #2563eb24;
 }
 .qc-states-tools button svg, .qc-states-button svg { stroke-width: 1.8; }
-.qc-states-emoji { max-height: 100%; }
+
 @media (max-height: 340px) {
   /* Con teclado o herramientas acopladas, también se alcanza el pie
      desplazando el formulario si las filas fijas no caben. */
   .qc-states-composer { overflow: auto; grid-template-rows: auto minmax(140px, 1fr) auto; }
 }
+
+@media (min-width: 901px) {
+  .qc-states, .qc-states.is-composing {
+    grid-template-columns: 370px minmax(0, 1fr);
+    gap: 8px;
+    padding: 12px 8px;
+  }
+  .qc-states-list { padding: 20px; border-radius: 24px; }
+}
+@media (min-width: 1400px) {
+  .qc-states, .qc-states.is-composing { grid-template-columns: 408px minmax(0, 1fr); }
+}
+.qc-states-mark {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: var(--state-primary);
+}
+.qc-states-mark::before {
+  content: "";
+  width: 17px;
+  height: 17px;
+  border: 3px solid var(--state-solid);
+  border-radius: 50%;
+}
+.qc-states-own-main { min-height: 78px; gap: 22px; }
+.qc-states-own-main .qc-states-ring { width: 54px; height: 54px; flex-basis: 54px; }
+.qc-states-own-main .qc-states-avatar { width: 50px; height: 50px; }
+.qc-states .qc-states-own-add { box-sizing: border-box; border: 2px solid var(--state-field); }
+.qc-states-person { min-height: 64px; }
+.qc-states-caption { min-height: 48px; padding: 5px 14px; gap: 10px; }
+.qc-states-caption textarea { min-height: 24px; line-height: 20px; padding: 2px 0; resize: vertical; }
+:root[data-theme="light"] .qc-states :is(.qc-states-tools,.qc-states-media-actions,.qc-states-format) button:is(:hover,:focus-visible,[aria-expanded="true"],[aria-pressed="true"]),
+:root[data-theme="light"] .qc-states-emoji > button:is(:hover,:focus-visible) {
+  background: #e5efff !important;
+  border-color: #a7c6fc;
+  color: #2549a2;
+}
+
+.qc-status-group-pair { position: relative; flex: 0 0 58px; height: 54px; }
+.qc-status-group-pair .wa-group-avatar-composite,
+.qc-status-group-pair .wa-group-avatar-default,
+.qc-status-group-pair .wa-group-avatar-main-img { border-radius: 8px !important; overflow: hidden; }
+.qc-status-group-pair .qc-states-ring { position: absolute; right: 0; bottom: 0; width: 37px; height: 37px; }
+.qc-status-group-pair .qc-states-avatar { width: 32px; height: 32px; }
+
+:root[data-theme="dark"] .qc-states .wa-group-avatar-composite:has(.wa-group-avatar-default),
+:root[data-theme="dark"] .qc-states .wa-group-avatar-composite .wa-group-avatar-default {
+  background: linear-gradient(135deg, #0ca7ff 0%, #285fff 50%, #7d45ff 100%) !important;
+  border-color: rgba(78,138,255,.34) !important;
+  color: #fff !important;
+  box-shadow: 0 0 22px rgba(42,110,255,.24), inset 0 1px 0 rgba(255,255,255,.16) !important;
+}
+/* El form global aplica --text-color en hover/focus. Limitar la corrección al editor. */
+.qc-states-text-canvas textarea { font-family: inherit; font-size: inherit; font-style: inherit; font-weight: inherit; }
+.qc-states-format { flex-wrap: wrap; }
+.qc-states-font { max-width: 100px; min-height: 32px; border: 1px solid var(--state-border); border-radius: 8px; background: var(--state-field); color: var(--state-ink); }
+:root[data-theme="light"] .qc-states-tabs button[aria-pressed="false"] {
+  background: var(--state-field);
+  color: var(--state-ink);
+}
+:root[data-theme="light"] .qc-states-tabs button[aria-pressed="false"]:not(:disabled):is(:hover,:focus,:active) {
+  background: var(--state-hover);
+}
+:root[data-theme="light"] .qc-states-tabs button[aria-pressed="true"] {
+  background: var(--state-primary);
+  color: var(--state-primary-ink);
+}
+:root[data-theme="light"] .qc-states-tabs button:focus-visible {
+  outline: 2px solid var(--state-active);
+  outline-offset: 2px;
+}
+:root[data-theme="light"] .qc-states .qc-states-format button:not(:disabled):is(:hover,:focus,:active) {
+  background: var(--state-hover) !important;
+  color: var(--state-active);
+}
+:root[data-theme="light"] .qc-states .qc-states-format .qc-states-palette button { background: var(--swatch) !important; }
+:root[data-theme="light"] .qc-states :is(.qc-states-tabs,.qc-states-format) button:disabled { opacity: .55; background: var(--state-field); color: var(--state-muted); }

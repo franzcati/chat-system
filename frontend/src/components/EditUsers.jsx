@@ -3,7 +3,7 @@ import TablaUsuarios from "./TablaUsuarios";
 import FormEditarUsuario from "./FormEditarUsuario";
 import BatchEditUsers from "./BatchEditUsers";
 import "bootstrap-icons/font/bootstrap-icons.css";
-import "../css/UsersManagement.css";
+import AdminBackground from "./AdminBackground";
 
 const getProjectName = (project) => {
   if (!project) return "";
@@ -305,14 +305,7 @@ const EditUsers = ({ usuarioLogueado, proyectos = [] }) => {
 
   return (
     <main className="qc-users-page">
-      <div className="qc-users-bg-decor" aria-hidden="true">
-        <span className="qc-users-orb qc-users-orb-one" />
-        <span className="qc-users-orb qc-users-orb-two" />
-        <span className="qc-users-chat-line qc-users-chat-line-one" />
-        <span className="qc-users-chat-line qc-users-chat-line-two" />
-        <i className="bi bi-chat-dots qc-users-floating-icon qc-users-floating-icon-one" />
-        <i className="bi bi-chat-left-text qc-users-floating-icon qc-users-floating-icon-two" />
-      </div>
+      <AdminBackground />
 
       <header className="qc-users-topbar">
         <div>

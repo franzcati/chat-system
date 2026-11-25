@@ -12,7 +12,7 @@
   --status-reply-bg: linear-gradient(#eff3ffed,#eff3ffed);
   --status-reply-border: linear-gradient(#ffffffc9,#ffffffc9);
   --status-reply-ink: #22324f;
-  --status-heart: #ffb6d6;
+  --status-heart: #fa4058;
   --status-popover-bg: #f5f7ff;
   --status-popover-ink: #172540;
   position: fixed;
@@ -51,15 +51,15 @@
 .qc-status-dialog::backdrop { background: #090e20; }
 
 .qc-status-shell {
-  --status-height: min(calc(100dvh - 56px), 1050px);
-  --status-width: min(calc(var(--status-height) * .763), calc(100vw - 156px));
+  --status-height: calc(100dvh - 20px);
+  --status-width: min(max(300px, calc(var(--status-height) * var(--media-ratio, .763))), calc(100vw - 120px));
   position: relative;
   isolation: isolate;
   display: grid;
-  grid-template-columns: clamp(44px, 4vw, 62px) minmax(0, var(--status-width)) clamp(44px, 4vw, 62px);
+  grid-template-columns: 38px minmax(0, var(--status-width)) 38px;
   justify-content: center;
   align-items: center;
-  gap: clamp(14px, 3vw, 52px);
+  gap: 10px;
   height: 100%;
 }
 
@@ -93,12 +93,12 @@
   border-radius: clamp(20px, 2vw, 33px);
   border: 1.5px solid var(--status-frame-border);
   box-shadow: var(--status-frame-shadow);
-  background: linear-gradient(157deg,#1b3256,#091327 67%,#172f51);
+  background: #09132730;
   overflow: hidden;
 }
 
 .qc-status-media { position: absolute; inset: 0; display: grid; place-items: center; touch-action: pan-y; }
-.qc-status-media > :is(img,video) { display: block; width: 100%; height: 100%; object-position: center; }
+.qc-status-media > :is(img,video) { display: block; width: 100%; height: 100%; min-width: 0; min-height: 0; object-position: center; }
 .qc-status-text {
   width: 100%;
   max-height: 64%;
@@ -125,7 +125,7 @@
 }
 .qc-status-header {
   top: 0;
-  padding: clamp(12px, 1.35vw, 23px) clamp(14px, 2.1vw, 35px) clamp(21px, 3.6vw, 65px);
+  padding: 12px 16px 24px;
   background: var(--status-header);
   pointer-events: none;
 }
@@ -166,7 +166,7 @@
   display: grid;
   place-items: center;
   flex: 0 0 auto;
-  width: clamp(37px, 3.65vw, 62px);
+  width: 36px;
   aspect-ratio: 1;
   padding: 0;
   border: 1px solid var(--status-control-border);
@@ -174,7 +174,7 @@
   color: #f8faff;
   background: var(--status-control);
 }
-.qc-status-icon svg { width: clamp(18px, 1.8vw, 30px); height: auto; }
+.qc-status-icon svg { width: 20px; height: auto; }
 .qc-status-icon:not(:disabled):hover { filter: brightness(1.2); box-shadow: inset 0 0 0 1px #fff5; }
 .qc-status-dialog .qc-status-close {
   position: absolute;
@@ -186,13 +186,13 @@
 }
 .qc-status-prev, .qc-status-next { transform: translateY(-2vh); }
 .qc-status-header .qc-status-icon {
-  width: clamp(30px, 3vw, 51px);
+  width: 32px;
   border: 0;
   background: transparent;
 }
 .qc-status-header .qc-status-header-prev { width: clamp(22px, 2.1vw, 35px); }
 .qc-status-header .qc-status-playback { border: 1px solid #aabee744; border-radius: clamp(8px, .95vw, 16px); background: #bdc9ff28; }
-.qc-status-header .qc-status-icon svg { width: clamp(18px, 1.61vw, 27px); }
+.qc-status-header .qc-status-icon svg { width: 19px; }
 
 .qc-status-footer {
   z-index: 2;
@@ -203,20 +203,14 @@
 }
 .qc-status-footer > * { pointer-events: auto; }
 .qc-status-caption {
-  width: fit-content;
-  max-width: 100%;
-  max-height: 17vh;
-  overflow: auto;
-  margin: 0 auto 8px;
-  padding: 6px 11px;
-  border-radius: 9px;
-  background: #0a11258c;
-  color: #fff;
-  font-size: clamp(13px, 1.1vw, 18px);
-  text-align: center;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
+  width: min(100%, 620px); margin: 0 auto 6px; color: white;
+  text-align: center; font-size: clamp(13px, 1vw, 16px);
+  text-shadow: 0 1px 4px #000; white-space: pre-wrap; overflow-wrap: anywhere;
 }
+.qc-status-caption p { margin: 0; line-height: 1.4; }
+.qc-status-caption p.is-collapsed { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; max-height: 2.8em; }
+.qc-status-caption p.is-expanded { overflow: auto; max-height: 34dvh; }
+.qc-status-caption button { color: white; background: transparent; border: 0; padding: 3px 8px; font-weight: 700; text-shadow: inherit; }
 .qc-status-reply { position: relative; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: clamp(6px, .75vw, 12px); }
 .qc-status-reply-field {
   min-width: 0;
@@ -236,17 +230,38 @@
 :root[data-theme="dark"] .qc-status-dialog .qc-status-emoji-button { background: var(--status-control); }
 .qc-status-heart[aria-pressed="true"] { color: var(--status-heart); }
 .qc-status-dialog .qc-status-send { display: grid; place-items: center; margin-right: -5px; padding: 4px; background: transparent; color: inherit; border: 0; border-radius: 6px; }
-.qc-status-views {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  padding: 12px;
-  border: 1px solid var(--status-control-border);
-  border-radius: 999px;
-  background: var(--status-control);
-  font-weight: 650;
+.qc-status-dialog .qc-status-views {
+  display: flex; align-items: center; justify-content: center; gap: 5px;
+  width: fit-content; margin: 0 auto; min-height: 36px; padding: 4px 10px;
+  border: 0; color: white; background: transparent; cursor: pointer;
+  filter: drop-shadow(0 2px 3px #000a);
 }
+.qc-status-viewers {
+  width: min(360px, calc(100vw - 32px)); max-height: min(450px, 78dvh); margin: auto;
+  padding: 0 16px 14px; overflow: auto; border: 0; border-radius: 16px;
+  background: var(--status-popover-bg); color: var(--status-popover-ink); box-shadow: 0 14px 50px #0005;
+}
+.qc-status-viewers::backdrop { background: #050b1c66; }
+.qc-status-viewers header, .qc-status-viewers li { display: flex; align-items: center; gap: 12px; }
+.qc-status-viewers header { position: sticky; top: 0; z-index: 1; background: inherit; padding: 12px 0; }
+.qc-status-viewers header button { display: grid; place-items: center; padding: 5px; background: transparent; color: inherit; border: 0; }
+.qc-status-viewers ul { padding: 0; margin: 0; }
+.qc-status-viewers li { padding-block: 8px; }
+.qc-status-viewers small { display: block; opacity: .8; }
+.qc-status-reader { position: relative; }
+.qc-status-reader svg { position: absolute; bottom: -2px; right: -2px; color: var(--status-heart); }
+.qc-heart-burst { position: absolute; right: 36px; bottom: 46px; pointer-events: none; color: var(--status-heart); }
+.qc-status-footer > .qc-heart-burst { pointer-events: none; }
+.qc-heart-burst.for-author { left: 50%; right: auto; }
+.qc-heart-burst svg { position: absolute; opacity: 0; animation: qc-status-float 1.7s ease-out both; }
+@keyframes qc-status-float {
+  0% { opacity: 0; transform: translate(-9px, 0) scale(.65); }
+  16% { opacity: 1; transform: translate(-5px, -14px) scale(.95); }
+  44% { opacity: .95; transform: translate(8px, -40px) scale(1); }
+  70% { opacity: .65; transform: translate(-2px, -67px) scale(.98); }
+  100% { opacity: 0; transform: translate(calc(var(--dx) + 12px), -102px) scale(.88); }
+}
+@media (prefers-reduced-motion: reduce) { .qc-heart-burst { display: none; } }
 .qc-status-menu, .qc-status-emoji {
   position: absolute;
   z-index: 5;
@@ -271,7 +286,7 @@
 @media (max-width: 760px) {
   .qc-status-shell {
     --status-height: calc(100dvh - 48px);
-    --status-width: min(calc(var(--status-height) * .763), calc(100vw - 20px));
+    --status-width: min(max(300px, calc(var(--status-height) * var(--media-ratio, .763))), calc(100vw - 20px));
     grid-template-columns: minmax(0, var(--status-width));
     gap: 0;
   }
@@ -298,3 +313,14 @@
 .qc-status-dialog .qc-status-start-video { position: absolute; }
 .qc-status-shell .qc-status-backdrop > img { object-fit: fill; }
 :root[data-theme="dark"] .qc-status-backdrop > :is(img,canvas) { opacity: .73; }
+
+.qc-status-header, .qc-status-footer { text-shadow: 0 1px 5px #0009; }
+.qc-status-avatar { width: 42px; height: 42px; }
+.qc-status-byline strong { font-size: 16px; }
+.qc-status-byline time { font-size: 12px; }
+.qc-status-frame { min-width: 0; }
+.qc-status-reply { max-width: 760px; margin-inline: auto; }
+@media (pointer: coarse) {
+  .qc-status-dialog .qc-status-icon { width: 44px; }
+  .qc-status-dialog .qc-status-icon svg { width: 20px; }
+}

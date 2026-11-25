@@ -242,3 +242,26 @@
 .sc-telegram-dot{width:10px;height:10px;flex:none;border-radius:50%;background:#10c78c;box-shadow:0 0 0 4px rgba(16,199,140,.15)}.sc-telegram-status.off .sc-telegram-dot{background:#ef6674;box-shadow:0 0 0 4px rgba(239,102,116,.15)}.sc-telegram-status.waiting .sc-telegram-dot{background:#e5a138;box-shadow:0 0 0 4px rgba(229,161,56,.15)}
 .sc-telegram-status strong,.sc-telegram-status small{display:block}.sc-telegram-status strong{font-size:13px}.sc-telegram-status small{margin-top:3px;color:var(--sc-muted);font-size:11px}
 .sc-telegram-unsaved{margin:9px 0 0!important;color:var(--sc-muted);font-size:12px}
+
+.sc-hours { min-width: 0; border: 0; padding: 0; }
+.sc-user-picker { position: fixed; inset: 0; margin: auto; width: min(94vw, 540px); max-height: 92dvh; color: var(--sc-text); }
+.sc-user-picker::backdrop { background: rgba(4,13,36,.67); }
+.sc-picker-list { max-height: 48dvh; overflow: auto; border: 1px solid var(--sc-line); border-radius: 12px; }
+.sc-picker-list > label { display: flex; align-items: center; gap: 12px; padding: 10px; border-bottom: 1px solid var(--sc-line); cursor: pointer; }
+.sc-picker-list small { display: block; color: var(--sc-muted); overflow-wrap: anywhere; }
+.sc-selected-users { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 10px; margin-block: 8px; border: 1px solid var(--sc-line); border-radius: 12px; }
+.sc-selected-users > span { display: inline-flex; gap: 4px; align-items: center; }
+
+.sc-filter-bar { flex-wrap: wrap; }
+.sc-filter-bar select, .sc-schedule-filter select {
+  min-width: 0;
+  max-width: 100%;
+  min-height: 38px;
+  border: 1px solid var(--sc-line);
+  border-radius: 9px;
+  color: var(--sc-text);
+  background: var(--sc-card);
+  padding: 0 12px;
+}
+.sc-filter-bar select { margin-inline-start: auto; }
+.sc-schedule-filter { margin-bottom: 14px; }

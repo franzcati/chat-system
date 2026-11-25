@@ -1,3 +1,4 @@
+import { statusReplyParts } from "./estadoPresentacion";
 import { stripRichTextSyntax } from "./richText.jsx";
 
 const URL_LIKE_RE = /^(https?:\/\/|\/uploads\/|blob:)/i;
@@ -57,6 +58,8 @@ export const getMessagePreview = (message = {}) => {
     return { kind: "deleted", icon: "", text: "Se eliminó este mensaje", label: "Se eliminó este mensaje" };
   }
 
+  const status = statusReplyParts(message.mensaje ?? message.ultimo_mensaje);
+  if (status) return { kind: 'status-reply', text: status.reply, label: status.reply };
   const kind = getMediaKind(message);
   const caption = getMessageCaption(message);
   const fileName = cleanUploadFileName(

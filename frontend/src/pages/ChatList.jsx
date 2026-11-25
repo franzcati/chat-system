@@ -1,6 +1,7 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import axios from "axios";
+import { activeStatuses, buildTracks, ringPaint } from "../utils/estadoPresentacion";
 import socket from "../socket";
 import { logDev } from "../utils/logger";
 import { formatChatTime, parseToDate } from "../utils/date";
@@ -137,7 +138,22 @@ const dedupeMessagesById = (items = []) => {
 
 
 
-const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat, addToListTarget, onAddToListHandled, onUnreadTotalChange, estadosUsuarios = {} }) => {
+const StatusViewerHost = React.lazy(() => import("../components/Estados"));
+
+const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat, addToListTarget, onAddToListHandled, onUnreadTotalChange, estadosUsuarios = {}, statusFeed, onStatusFeed, onDirectStatusChange }) => {
+  const [directStatus, setDirectStatus] = useState(null);
+  const ringTrigger = useRef(null);
+  const closeDirect = React.useCallback(() => {
+    setDirectStatus(null);
+    requestAnimationFrame(() => ringTrigger.current?.focus());
+  }, []);
+  useEffect(() => {
+    onDirectStatusChange?.(Boolean(directStatus));
+    return () => onDirectStatusChange?.(false);
+  }, [directStatus, onDirectStatusChange]);
+  const statusTracks = React.useMemo(() => buildTracks(
+    statusFeed?.userId === userId ? activeStatuses(statusFeed?.items || []) : [], userId), [statusFeed, userId]);
+
   
   const [mensajes, setMensajes] = useState([]);
   const [grupos, setGrupos] = useState([]);
@@ -471,6 +487,13 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat, addToLi
 
     return (
       <span className="wa-preview-line chat-list-preview-line">
+        {preview.kind === 'status-reply' && <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+          strokeWidth="1.8" strokeLinecap="round" role="img" aria-label="Respuesta a un estado" style={{ flexShrink: 0 }}>
+          <path d="M13.74 2.15 A10 10 0 0 1 21.40 15.42" />
+          <path d="M19.66 18.43 A10 10 0 0 1 4.34 18.43" />
+          <path d="M2.60 15.42 A10 10 0 0 1 10.26 2.15" />
+          <circle cx="12" cy="12" r="5.7" />
+        </svg>}
         {preview.iconClass && <i className={`wa-preview-icon ${preview.iconClass}`} aria-hidden="true" />}
         <span className="wa-preview-label">{preview.text}</span>
       </span>
@@ -2446,6 +2469,7 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat, addToLi
     const isMuted = estaSilenciado(chat.tipo, getChatId(chat));
     const previewPrefix = getPreviewPrefix(chat);
     const typingPreview = renderTypingPreview(chat);
+    const statusTrack = statusTracks.get(`${chat.tipo === "grupo" ? "g" : "u"}:${getChatId(chat)}`);
 
     return (
       <a
@@ -2475,6 +2499,16 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat, addToLi
         <div className="card-body wa-chat-list-card-body">
           <div className="wa-chat-list-row">
             <div className="avatar avatar-xl wa-chat-list-avatar">
+              {statusTrack && <button type="button" className="wa-status-avatar-trigger"
+                aria-label={`Ver estados de ${getChatTitle(chat)} (${statusTrack.entries.length})`}
+                style={{ '--status-ring': ringPaint(statusTrack.entries, userId) }}
+                onClick={event => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  ringTrigger.current = event.currentTarget;
+                  const entry = statusTrack.entries.find(item => !Number(item.visto) && String(item.autor_id) !== String(userId)) || statusTrack.entries[0];
+                  setDirectStatus({ items: statusFeed.items, selection: { key: statusTrack.key, id: String(entry.id) } });
+                }} />}
               {renderAvatar(chat)}
             </div>
 
@@ -3169,6 +3203,10 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat, addToLi
         </div>
       </div>
     </aside>
+    {directStatus && <React.Suspense fallback={null}>
+      <StatusViewerHost usuario={{ id: userId }} direct={directStatus} onExit={closeDirect} onStatusFeed={onStatusFeed}
+        onOpenPrivate={onSelectChat} onOpenGroup={onSelectChat} />
+    </React.Suspense>}
     {renderFilterDropdown()}
     {renderCustomListMenu()}
     {renderAddToExistingListModal()}

@@ -10,6 +10,28 @@ function Avatar({ src, name = '' }) {
     ? <img src={getAvatarUrl(src)} alt="" onError={() => setBroken(true)}/>
     : initials}</span>;
 }
+function ExceptionPicker({ users, selected, onSelect, query, onQuery, onCancel, onConfirm }) {
+  const dialog = useRef(null);
+  useEffect(() => {
+    const node = dialog.current;
+    node.showModal();
+    return () => node.close();
+  }, []);
+  const matches = users.filter(u => `${u.nombre} ${u.apellido || ''} ${u.correo || ''}`.toLowerCase().includes(query.trim().toLowerCase()));
+  return <dialog ref={dialog} className="sc-modal sc-user-picker" aria-label="Añadir usuarios"
+    onCancel={event => { event.preventDefault(); onCancel(); }}>
+    <div className="sc-modal-head"><h2>Añadir usuarios</h2><button className="sc-icon" onClick={onCancel} aria-label="Cerrar"><X size={20}/></button></div>
+    <label className="sc-field">Buscar por nombre o correo<input autoFocus value={query} onChange={e => onQuery(e.target.value)}/></label>
+    <div className="sc-picker-list">{matches.length ? matches.map(u => <label key={u.id}>
+      <input type="checkbox" checked={selected.includes(u.id)} onChange={e => onSelect(
+        e.target.checked ? [...selected, u.id] : selected.filter(id => id !== u.id))}/>
+      <Avatar src={u.url_imagen} name={`${u.nombre} ${u.apellido || ''}`}/>
+      <span><strong>{u.nombre} {u.apellido}</strong><small>{u.correo}</small></span>
+    </label>) : <p>No hay usuarios para esta búsqueda.</p>}</div>
+    <div className="sc-modal-foot"><span>{selected.length} seleccionados</span><button className="sc-ghost" onClick={onCancel}>Cancelar</button>
+      <button className="sc-primary" onClick={onConfirm}>Aceptar selección</button></div>
+  </dialog>;
+}
 const clientHintsReady = typeof navigator !== 'undefined' && navigator.userAgentData?.getHighEntropyValues
   ? navigator.userAgentData.getHighEntropyValues(['platformVersion', 'fullVersionList']).catch(() => ({}))
   : Promise.resolve({});
@@ -75,6 +97,20 @@ export default function SecurityCenter({ usuario }) {
   const canAudit = permissions.includes('ver_auditoria_seguridad');
   const canAlerts = permissions.includes('gestionar_alertas_2fa');
   const [tab, setTab] = useState('codes');
+  const [projects, setProjects] = useState([]);
+  const [project, setProject] = useState('');
+  const [projectCapabilities, setProjectCapabilities] = useState({});
+  const [ownActive, setOwnActive] = useState(null);
+  const canFilterCodes = Boolean(projectCapabilities.canFilter);
+  const canFilterHours = Boolean(projectCapabilities.canFilterHours);
+  const [globalScope, setGlobalScope] = useState(false);
+  const [exceptionUsers, setExceptionUsers] = useState([]);
+  const [picker, setPicker] = useState(null);
+  const [pickerQuery, setPickerQuery] = useState('');
+  const activeProject = (canFilterCodes || canFilterHours) ? project : '';
+  const projectQuery = activeProject ? `?proyecto_id=${encodeURIComponent(activeProject)}` : '';
+  const projectName = projects.find(item => String(item.id) === project)?.nombre;
+  const loadRevision = useRef(0);
   const [credentials, setCredentials] = useState([]);
   const [users, setUsers] = useState([]);
   const [policy, setPolicy] = useState(null);
@@ -89,7 +125,7 @@ export default function SecurityCenter({ usuario }) {
   const [form, setForm] = useState(emptyForm);
   const [ownerSearch, setOwnerSearch] = useState('');
   const [copied, setCopied] = useState(false);
-  const [exceptionForm, setExceptionForm] = useState({ local_date: '', enabled: false, start_time: '08:00', end_time: '18:00', reason: '', usuario_id: '' });
+  const [exceptionForm, setExceptionForm] = useState({ local_date: '', enabled: false, start_time: '08:00', end_time: '18:00', reason: '', scope: 'users', usuario_ids: [] });
   const [codeItem, setCodeItem] = useState(null);
   const [detailItem, setDetailItem] = useState(null);
   const [accessInfo, setAccessInfo] = useState(null);
@@ -139,22 +175,54 @@ export default function SecurityCenter({ usuario }) {
     window.addEventListener('blur', clearCodes);
     return () => { document.removeEventListener('visibilitychange', hide); window.removeEventListener('blur', clearCodes); clearCodes(); };
   }, [clearCodes]);
-  useEffect(() => { clearCodes(); }, [tab, clearCodes]);
+  useEffect(() => { clearCodes(); }, [tab, project, clearCodes]);
   useEffect(() => { setError(''); setNotice(''); }, [tab]);
   const load = useCallback(async () => {
+    const revision = ++loadRevision.current;
     try {
-      const [codes, setting] = await Promise.all([api('/credentials'), api('/policy')]);
-      setCredentials(codes.credentials); setPolicy(setting);
-      if (canManage || canHours || canAudit) setUsers((await api('/users')).users);
-    } catch (e) { setError(e.message); }
-  }, [canManage, canHours, canAudit]);
+      const scope = await api('/projects');
+      if (revision !== loadRevision.current) return;
+      const allowedProject = scope.projects.some(item => String(item.id) === project) ? project : '';
+      const suffix = allowedProject ? `?proyecto_id=${encodeURIComponent(allowedProject)}` : '';
+      const [codes, setting] = await Promise.all([
+        api('/credentials' + (scope.canFilter ? suffix : '')),
+        api('/policy' + (scope.canFilterHours ? suffix : '')),
+      ]);
+      if (revision !== loadRevision.current) return;
+      setCredentials(codes.credentials);
+      setOwnActive(codes.own_active);
+      setPolicy(setting);
+      setProjects(scope.projects);
+      setProjectCapabilities(scope);
+      setGlobalScope(scope.global);
+      if (project && !allowedProject) setProject('');
+      if (canManage || canHours || canAudit) {
+        const everyone = await api('/users');
+        if (revision === loadRevision.current) setUsers(everyone.users);
+      }
+    } catch (e) { if (revision === loadRevision.current) setError(e.message); }
+  }, [canManage, canHours, canAudit, project]);
+  useEffect(() => {
+    if (tab !== 'hours' || !canHours) return;
+    let cancelled = false;
+    Promise.all([api('/exceptions' + projectQuery), api('/users' + projectQuery)])
+      .then(([result, people]) => {
+        if (!cancelled) { setExceptions(result.exceptions); setExceptionUsers(people.users); }
+      }).catch(e => { if (!cancelled) setError(e.message); });
+    return () => { cancelled = true; };
+  }, [tab, canHours, projectQuery]);
+  function changeProject(value) {
+    loadRevision.current++;
+    setCredentials([]); setPolicy(null); setExceptions([]); setExceptionUsers([]);
+    setPicker(null); setProject(value);
+    setExceptionForm(form => ({ ...form, scope: value ? 'project' : globalScope ? 'instance' : 'users', usuario_ids: [] }));
+  }
   useEffect(() => { void load(); }, [load]);
   useEffect(() => {
     if (tab === 'audit' && canAudit) {
       const filters = new URLSearchParams({ ...Object.fromEntries(Object.entries(auditFilter).filter(([,v]) => v)), event_type: auditFilter.event_type || 'CODE_CONSULTATIONS' });
       api(`/audit?${filters}`).then(a => setEvents(a.events)).catch(e => setError(e.message));
     }
-    if (tab === 'hours' && canHours) api('/exceptions').then(d => setExceptions(d.exceptions)).catch(e => setError(e.message));
     if (tab === 'alerts' && canAlerts) {
       api('/alerts').then(data => { setAlerts(data); setTelegramStatus(data); }).catch(e => setError(e.message));
       api('/alerts/setup').then(setTelegramSetup).catch(e => setError(e.message));
@@ -302,37 +370,43 @@ export default function SecurityCenter({ usuario }) {
     ...(canAlerts ? [{ id: 'alerts', label: 'Alertas', icon: Bell }] : [])];
   const filtered = credentials.filter(c =>
     `${c.plataforma} ${c.cuenta} ${c.nombre} ${c.responsable_nombre || ''}`.toLowerCase().includes(query.toLowerCase()));
-  const mine = credentials.filter(c => Number(c.responsable_id) === Number(usuario?.id) && c.estado === 'activo').length;
-  const active = credentials.filter(c => c.estado === 'activo').length;
-  return <main className="sc-root">
-    <div className="sc-background" aria-hidden="true"><span/><span/><i className="bi bi-chat-dots sc-float-chat"/><i className="bi bi-chat-left-text sc-float-text"/></div>
+  const mine = ownActive ?? '—';
+  const visibleRows = tab === 'codes' ? filtered : credentials;
+  const active = visibleRows.filter(c => c.estado === 'activo').length;
+  const projectSelect = <select aria-label="Proyecto" value={activeProject} onChange={e => changeProject(e.target.value)} disabled={busy}>
+    <option value="">Todos los proyectos</option>
+    {projects.map(item => <option key={item.id} value={item.id}>{item.nombre}</option>)}
+  </select>;
+  return <main className="sc-root qc-shared-admin-canvas">
     <header className="sc-page-top">
       <div><span className="sc-kicker">SEGURIDAD EMPRESARIAL</span><h1>Centro de Seguridad</h1>
         <p>Consulta los códigos del CRM y administra el acceso de tu equipo.</p></div>
       <div className="sc-top-actions"><button className="sc-ghost" type="button" onClick={load}><RefreshCw size={16}/> Actualizar</button>
         {canRegister && <button className="sc-primary" type="button"
-          disabled={!canManage && mine >= (policy?.max_credentials ?? 1)}
-          onClick={() => { setError(''); setModal(true); }}><Plus size={16}/> Registrar credencial</button>}</div>
+          disabled={!canManage && (ownActive == null || ownActive >= (policy?.max_credentials ?? 1))}
+          onClick={() => { setError(''); setForm({ ...emptyForm, proyecto_id: canFilterCodes ? activeProject : '' }); setModal(true); }}><Plus size={16}/> Registrar credencial</button>}</div>
     </header>
     <div className="sc-dashboard">
       <div className="sc-hero"><div className="sc-hero-main"><div className="sc-hero-mark"><Lock size={36}/></div><div>
-        <div className="sc-hero-heading"><h2>Mis códigos 2FA</h2><span className="sc-count-pill">{credentials.length} {credentials.length === 1 ? 'credencial' : 'credenciales'}</span></div>
+        <div className="sc-hero-heading"><h2>Mis códigos 2FA</h2><span className="sc-count-pill">{visibleRows.length} {visibleRows.length === 1 ? 'credencial' : 'credenciales'}</span></div>
         <p>Códigos temporales para ingresar al CRM. Cada usuario registra su propia clave autorizada.</p>
       </div></div><i className="bi bi-shield-lock-fill sc-watermark" aria-hidden="true"/></div>
       <div className="sc-stat-row">
         <div className="sc-stat sc-stat-blue"><span><Key size={24}/></span><div><strong>{mine} / {policy?.max_credentials ?? 1}</strong><b>Mis credenciales</b><small>El administrador puede ampliar tu límite</small></div></div>
         <div className="sc-stat sc-stat-green"><span><Shield size={24}/></span><div><strong>{active}</strong><b>Disponibles</b><small>{canManage ? 'En esta instancia' : 'Asignadas a tu cuenta'}</small></div></div>
-        <div className="sc-stat sc-stat-purple"><span><Users size={24}/></span><div><strong>{credentials.length}</strong><b>Cuentas visibles</b><small>{canManage ? 'En tu organización' : 'Con acceso asignado'}</small></div></div>
+        <div className="sc-stat sc-stat-purple"><span><Users size={24}/></span><div><strong>{visibleRows.length}</strong><b>Cuentas visibles</b><small>{canManage ? 'En tu organización' : 'Con acceso asignado'}</small></div></div>
         <div className="sc-stat sc-stat-red"><span><Clock size={24}/></span><div><strong>30 s</strong><b>Vigencia del código</b><small>Se actualiza mientras lo visualizas</small></div></div>
       </div>
       <nav className="sc-tabs" aria-label="Secciones de seguridad">{tabs.map(t =>
         <button key={t.id} type="button" className={tab === t.id ? 'is-active' : ''} onClick={() => setTab(t.id)}><t.icon size={16}/>{t.label}</button>)}</nav>
       {error && <div className="sc-message sc-error" role="alert">{error}<button onClick={() => setError('')} aria-label="Cerrar"><X size={14}/></button></div>}
       {notice && <div className="sc-message sc-success" role="status">{notice}<button onClick={() => setNotice('')} aria-label="Cerrar"><X size={14}/></button></div>}
+      {tab === 'hours' && canFilterHours && <div className="sc-schedule-filter">{projectSelect}</div>}
       {tab === 'codes' && <>
         <div className="sc-intro"><div><h3>Credenciales autorizadas</h3><p>Pulsa el ojo para consultar tu código. La visualización termina después de cinco minutos.</p></div>
           <span><Lock size={14}/> La clave nunca vuelve a mostrarse</span></div>
         <div className="sc-filter-bar"><label><i className="bi bi-search"/><input value={query} onChange={e => setQuery(e.target.value)} placeholder="Buscar plataforma, cuenta o usuario…"/></label>
+          {canFilterCodes && projectSelect}
           <span>{filtered.length} {filtered.length === 1 ? 'credencial' : 'credenciales'}</span></div>
         <section className="sc-panel sc-code-panel"><div className="sc-table-wrap"><table className="sc-table"><thead><tr>
           <th>Plataforma</th><th>Cuenta del CRM</th><th>Responsable</th><th>Estado</th><th>Acción</th>
@@ -362,10 +436,37 @@ export default function SecurityCenter({ usuario }) {
           <p>{query ? 'Prueba otra búsqueda.' : 'Registra tu clave del CRM para consultar el código aquí.'}</p></div>}</div></section>
         <div className="sc-info"><Shield size={17}/><span>Cada persona tiene una credencial por defecto. Su límite se cambia en <strong>Gestión de usuarios → Editar usuario → Credenciales del CRM</strong>.</span></div>
       </>}
-    {tab === 'hours' && policy && canHours && <section className="sc-grid"><div className="sc-panel"><div className="sc-panel-head"><div><h2>Horario laboral</h2><p>Fuera de horario se permite consultar con trazabilidad y alerta.</p></div></div><label className="sc-field">Zona horaria<input value={policy.timezone} onChange={e => setPolicy({ ...policy, timezone: e.target.value })}/></label><div className="sc-hours">{policy.hours.map((h,i) => <div className="sc-day" key={i}><label><input type="checkbox" checked={!!h.enabled} onChange={e => setPolicy({ ...policy, hours: policy.hours.map((x,j) => j === i ? { ...x, enabled: e.target.checked } : x) })}/>{days[i]}</label><input type="time" value={h.start_time} disabled={!h.enabled} onChange={e => setPolicy({ ...policy, hours: policy.hours.map((x,j) => j === i ? { ...x, start_time: e.target.value } : x) })}/><span>—</span><input type="time" value={h.end_time} disabled={!h.enabled} onChange={e => setPolicy({ ...policy, hours: policy.hours.map((x,j) => j === i ? { ...x, end_time: e.target.value } : x) })}/></div>)}</div><div className="sc-inline"><label>Consultas fuera de horario / 24 h<input type="number" min="0" max="100" value={policy.daily_offhours_limit} onChange={e => setPolicy({ ...policy, daily_offhours_limit: Number(e.target.value) })}/></label></div><label className="sc-check"><input type="checkbox" checked={policy.step_up_offhours} onChange={e => setPolicy({ ...policy, step_up_offhours: e.target.checked })}/> Solicitar MFA de {policy.brand || 'ChatVista'} fuera de horario cuando esté configurado</label><button className="sc-primary" disabled={busy} onClick={() => act(() => api('/policy', { method: 'PUT', body: JSON.stringify(policy) }), 'Horario guardado')}><Check size={16}/> Guardar horario</button></div>
-      <div className="sc-panel"><h2>Excepciones del calendario</h2><p>Configura feriados o permisos de horario para una fecha.</p><div className="sc-form-grid"><label className="sc-field">Fecha<input type="date" value={exceptionForm.local_date} onChange={e => setExceptionForm({ ...exceptionForm, local_date: e.target.value })}/></label><label className="sc-field">Usuario (opcional)<select value={exceptionForm.usuario_id} onChange={e => setExceptionForm({ ...exceptionForm, usuario_id: e.target.value })}><option value="">Toda la instancia</option>{users.map(u => <option key={u.id} value={u.id}>{u.nombre} {u.apellido}</option>)}</select></label><label className="sc-check sc-exception-toggle"><input type="checkbox" checked={exceptionForm.enabled} onChange={e => setExceptionForm({ ...exceptionForm, enabled: e.target.checked })}/><span>Habilitar acceso normal ese día</span></label>
+    {tab === 'hours' && policy && canHours && <section className="sc-grid"><div className="sc-panel"><div className="sc-panel-head"><div><h2>Horario laboral</h2><p>{projectName ? `${projectName} · ${policy.inherits_global ? 'Hereda el horario general' : 'Horario propio'}` : 'Horario general para toda la instancia'}</p>
+      <p>Fuera de horario se permite consultar con trazabilidad y alerta.</p></div></div><label className="sc-field">Zona horaria<input disabled={Boolean(project) || !policy.can_save} value={policy.timezone} onChange={e => setPolicy({ ...policy, timezone: e.target.value })}/></label><fieldset className="sc-hours" disabled={!policy.can_save}>{policy.hours.map((h,i) => <div className="sc-day" key={i}><label><input type="checkbox" checked={!!h.enabled} onChange={e => setPolicy({ ...policy, hours: policy.hours.map((x,j) => j === i ? { ...x, enabled: e.target.checked } : x) })}/>{days[i]}</label><input type="time" value={h.start_time} disabled={!h.enabled} onChange={e => setPolicy({ ...policy, hours: policy.hours.map((x,j) => j === i ? { ...x, start_time: e.target.value } : x) })}/><span>—</span><input type="time" value={h.end_time} disabled={!h.enabled} onChange={e => setPolicy({ ...policy, hours: policy.hours.map((x,j) => j === i ? { ...x, end_time: e.target.value } : x) })}/></div>)}</fieldset><div className="sc-inline"><label>Consultas fuera de horario / 24 h<input type="number" min="0" max="100" disabled={Boolean(project) || !policy.can_save} value={policy.daily_offhours_limit} onChange={e => setPolicy({ ...policy, daily_offhours_limit: Number(e.target.value) })}/></label></div><label className="sc-check"><input type="checkbox" disabled={Boolean(project) || !policy.can_save} checked={policy.step_up_offhours} onChange={e => setPolicy({ ...policy, step_up_offhours: e.target.checked })}/> Solicitar MFA de {policy.brand || 'ChatVista'} fuera de horario cuando esté configurado</label><button className="sc-primary" disabled={busy || !policy.can_save} onClick={() => act(() => api('/policy', { method: 'PUT', body: JSON.stringify(policy) }), 'Horario guardado')}><Check size={16}/> Guardar horario</button></div>
+      <div className="sc-panel"><h2>Excepciones del calendario</h2><p>Configura feriados o permisos de horario para una fecha.</p><div className="sc-form-grid"><label className="sc-field">Fecha<input type="date" value={exceptionForm.local_date} onChange={e => setExceptionForm({ ...exceptionForm, local_date: e.target.value })}/></label><label className="sc-field">Aplicar a<select value={exceptionForm.scope}
+          onChange={e => setExceptionForm({ ...exceptionForm, scope: e.target.value })}>
+          {globalScope && !project && <option value="instance">Toda la instancia</option>}
+          {project && <option value="project">Todos los usuarios de {projectName}</option>}
+          <option value="users">Usuarios seleccionados</option>
+        </select></label><label className="sc-check sc-exception-toggle"><input type="checkbox" checked={exceptionForm.enabled} onChange={e => setExceptionForm({ ...exceptionForm, enabled: e.target.checked })}/><span>Habilitar acceso normal ese día</span></label>
         {exceptionForm.enabled && <div className="sc-exception-times"><label>Desde<input type="time" value={exceptionForm.start_time} onChange={e => setExceptionForm({ ...exceptionForm, start_time: e.target.value })}/></label><label>Hasta<input type="time" value={exceptionForm.end_time} onChange={e => setExceptionForm({ ...exceptionForm, end_time: e.target.value })}/></label></div>}
-        <label className="sc-field sc-wide">Motivo<input value={exceptionForm.reason} onChange={e => setExceptionForm({ ...exceptionForm, reason: e.target.value })}/></label></div><button className="sc-primary" disabled={busy} onClick={() => act(async () => { await api('/exceptions', { method: 'POST', body: JSON.stringify(exceptionForm) }); setExceptions((await api('/exceptions')).exceptions); }, 'Excepción creada')}>Añadir excepción</button><ul className="sc-exceptions">{exceptions.map(x => <li key={x.id}>{x.local_date} · {x.reason} · {x.enabled ? `${x.start_time}–${x.end_time}` : 'No laborable'} <button className="sc-link" onClick={() => act(async () => { await api(`/exceptions/${x.id}`, { method: 'DELETE' }); setExceptions((await api('/exceptions')).exceptions); }, 'Excepción eliminada')}>Eliminar</button></li>)}</ul></div></section>}
+        <label className="sc-field sc-wide">Motivo<input value={exceptionForm.reason} onChange={e => setExceptionForm({ ...exceptionForm, reason: e.target.value })}/></label></div>
+        {exceptionForm.scope === 'users' && <>
+          <button type="button" className="sc-ghost" onClick={() => { setPickerQuery(''); setPicker(exceptionForm.usuario_ids); }}><UserPlus size={16}/> Añadir usuarios</button>
+          {exceptionForm.usuario_ids.length > 0 && <div className="sc-selected-users">
+            <strong>Usuarios seleccionados</strong>
+            {exceptionUsers.filter(u => exceptionForm.usuario_ids.includes(u.id)).slice(0,5).map(u => <span key={u.id}><Avatar src={u.url_imagen} name={u.nombre}/>{u.nombre} {u.apellido}
+              <button type="button" className="sc-icon" aria-label={`Quitar ${u.nombre}`} onClick={() => setExceptionForm(form => ({...form, usuario_ids: form.usuario_ids.filter(id => id !== u.id)}))}><X size={14}/></button></span>)}
+            {exceptionForm.usuario_ids.length > 5 && <button type="button" className="sc-ghost" onClick={() => { setPickerQuery(''); setPicker(exceptionForm.usuario_ids); }}>+{exceptionForm.usuario_ids.length - 5}</button>}
+          </div>}
+        </>}
+        <button className="sc-primary" disabled={busy || (exceptionForm.scope === 'users' && !exceptionForm.usuario_ids.length)}
+          onClick={() => act(async () => {
+            await api('/exceptions', { method: 'POST', body: JSON.stringify({ ...exceptionForm, proyecto_id: project || null }) });
+            setExceptions((await api('/exceptions' + projectQuery)).exceptions);
+          }, 'Excepción creada')}>Añadir excepción</button>
+        <ul className="sc-exceptions">{exceptions.map(x => <li key={x.id}>{x.local_date} · {x.proyecto_nombre || 'Toda la instancia'}{x.usuario_nombre ? ` · ${x.usuario_nombre}` : ''} · {x.reason} · {x.enabled ? `${x.start_time}–${x.end_time}` : 'No laborable'}
+          <button className="sc-link" disabled={busy} onClick={() => act(async () => {
+            await api(`/exceptions/${x.id}`, { method: 'DELETE' }); setExceptions((await api('/exceptions' + projectQuery)).exceptions);
+          }, 'Excepción eliminada')}>Eliminar</button></li>)}</ul></div></section>}
+    {picker !== null && <ExceptionPicker users={exceptionUsers} selected={picker} onSelect={setPicker}
+      query={pickerQuery} onQuery={setPickerQuery} onCancel={() => setPicker(null)}
+      onConfirm={() => { setExceptionForm(form => ({...form, usuario_ids: picker})); setPicker(null); }}/>}
     {tab === 'audit' && canAudit && <section className="sc-panel sc-audit-panel">
       <div className="sc-panel-head"><div><h2>Auditoría de códigos 2FA</h2><p>Consultas, intentos fuera de horario y cambios de credenciales.</p></div></div>
       <div className="sc-audit-filters">
