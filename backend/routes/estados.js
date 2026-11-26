@@ -55,10 +55,25 @@ const personal = '(e.visible_instancia=1 OR (e.visible_instancia IS NULL AND e.g
 const eligibleGroup = `FROM usuario_grupo ug JOIN grupos g ON g.id=ug.grupo_id
   JOIN usuario owner ON owner.id=g.propietario_id
   WHERE ug.usuario_id=? AND owner.instancia_id=e.instancia_id`;
-const audience = `(${personal} OR EXISTS (SELECT 1 ${eligibleGroup}
+// Un Estado solo puede salir del ámbito de los proyectos que comparte su autor
+// con el lector. EXISTS evita duplicar publicaciones cuando ambos tienen varios
+// proyectos en común. El autor conserva acceso a sus propios Estados.
+const projectAudience = `(e.autor_id=? OR EXISTS (
+  SELECT 1
+  FROM usuario_proyecto autor_project
+  JOIN proyecto shared_project ON shared_project.id=autor_project.proyecto_id
+    AND shared_project.instancia_id=e.instancia_id AND shared_project.estado='activo'
+  JOIN usuario_proyecto reader_project ON reader_project.proyecto_id=shared_project.id
+    AND reader_project.usuario_id=?
+  JOIN usuario reader ON reader.id=reader_project.usuario_id
+    AND reader.instancia_id=e.instancia_id AND reader.estado='aprobado'
+  WHERE autor_project.usuario_id=e.autor_id
+))`;
+const audience = `(${projectAudience} AND (${personal} OR EXISTS (SELECT 1 ${eligibleGroup}
   AND ((e.visible_instancia IS NULL AND e.grupo_id=g.id)
     OR EXISTS (SELECT 1 FROM chat_estado_grupos dest
-      WHERE dest.estado_id=e.id AND dest.grupo_id=g.id))))`;
+      WHERE dest.estado_id=e.id AND dest.grupo_id=g.id)))))`;
+const audienceArgs = userId => [userId, userId, userId];
 const active = `e.instancia_id=? AND e.eliminado_at IS NULL AND e.vence_at>UTC_TIMESTAMP(3)
   AND autor.estado='aprobado'`;
 const authorJoin = 'JOIN usuario autor ON autor.id=e.autor_id AND autor.instancia_id=e.instancia_id';
@@ -78,7 +93,8 @@ async function visible(req, database = db, lock = false) {
       e.grupo_id, e.visible_instancia, e.texto, e.archivo, e.mime, e.tipo, e.leyenda, e.apariencia, autor.nombre, autor.apellido
     FROM chat_estados e ${authorJoin}
     WHERE e.id=CAST(? AS UNSIGNED) AND ${active} AND ${audience}
-    LIMIT 1 ${lock ? 'FOR UPDATE' : ''}`, [id, req.instanciaActual.id, req.auth.userId]);
+    LIMIT 1 ${lock ? 'FOR UPDATE' : ''}`,
+  [id, req.instanciaActual.id, ...audienceArgs(req.auth.userId)]);
   return row;
 }
 
@@ -117,13 +133,23 @@ router.get('/', async (req, res) => {
       e.autor_id, e.grupo_id, e.tipo, e.texto, e.fondo, e.apariencia, e.leyenda, e.creado_at, e.vence_at,
       autor.nombre, autor.apellido, autor.url_imagen, legacy.nombre AS grupo_nombre, legacy.imagen_url AS grupo_imagen_url,
       (v.usuario_id IS NOT NULL) AS visto,
-      (SELECT COUNT(*) FROM chat_estado_vistas cv JOIN usuario lector ON lector.id=cv.usuario_id AND lector.instancia_id=e.instancia_id WHERE cv.estado_id=e.id AND cv.usuario_id<>e.autor_id) AS vistas ${destinations}
+      (SELECT COUNT(*) FROM chat_estado_vistas cv
+        JOIN usuario lector ON lector.id=cv.usuario_id AND lector.instancia_id=e.instancia_id
+          AND lector.estado='aprobado'
+        WHERE cv.estado_id=e.id AND cv.usuario_id<>e.autor_id
+          AND EXISTS (SELECT 1 FROM usuario_proyecto autor_project
+            JOIN proyecto shared_project ON shared_project.id=autor_project.proyecto_id
+              AND shared_project.instancia_id=e.instancia_id AND shared_project.estado='activo'
+            JOIN usuario_proyecto reader_project ON reader_project.proyecto_id=shared_project.id
+              AND reader_project.usuario_id=lector.id
+            WHERE autor_project.usuario_id=e.autor_id)) AS vistas ${destinations}
       FROM chat_estados e ${authorJoin}
       LEFT JOIN grupos legacy ON legacy.id=e.grupo_id
       LEFT JOIN chat_estado_vistas v ON v.estado_id=e.id AND v.usuario_id=?
       WHERE ${active} AND ${audience} ${modern ? '' : 'AND e.visible_instancia IS NULL'}
       ORDER BY e.creado_at DESC, e.id DESC LIMIT 300`,
-    [...(modern ? [req.auth.userId, req.auth.userId, req.auth.userId] : []), req.auth.userId, req.instanciaActual.id, req.auth.userId]);
+     [...(modern ? [req.auth.userId, req.auth.userId, req.auth.userId] : []),
+       req.auth.userId, req.instanciaActual.id, ...audienceArgs(req.auth.userId)]);
     const estados = rows.map(({ personal: own, grupos_visibles, apariencia, reaccion_propia, tiene_reacciones, ...row }) => ({
       ...row,
       apariencia: readAppearance(apariencia),
@@ -208,10 +234,18 @@ router.get('/:id/vistas', async (req, res) => {
       FROM chat_estados e ${authorJoin}
       JOIN chat_estado_vistas v ON v.estado_id=e.id
       JOIN usuario lector ON lector.id=v.usuario_id AND lector.instancia_id=e.instancia_id
+        AND lector.estado='aprobado'
       LEFT JOIN chat_estado_reacciones r ON r.estado_id=e.id AND r.usuario_id=v.usuario_id
       WHERE e.id=CAST(? AS UNSIGNED) AND e.autor_id=? AND ${active} AND ${audience}
-        AND lector.id<>e.autor_id ORDER BY v.visto_at DESC, lector.id`,
-      [status.id, req.auth.userId, req.instanciaActual.id, req.auth.userId]);
+        AND lector.id<>e.autor_id
+        AND EXISTS (SELECT 1 FROM usuario_proyecto autor_project
+          JOIN proyecto shared_project ON shared_project.id=autor_project.proyecto_id
+            AND shared_project.instancia_id=e.instancia_id AND shared_project.estado='activo'
+          JOIN usuario_proyecto reader_project ON reader_project.proyecto_id=shared_project.id
+            AND reader_project.usuario_id=lector.id
+          WHERE autor_project.usuario_id=e.autor_id)
+      ORDER BY v.visto_at DESC, lector.id`,
+      [status.id, req.auth.userId, req.instanciaActual.id, ...audienceArgs(req.auth.userId)]);
     res.set('Cache-Control', 'private, no-store');
     res.json({ personas });
   } catch (error) { reportError(res, error); }
@@ -225,7 +259,7 @@ router.post('/:id/vista', async (req, res) => {
       SELECT e.id, ? FROM chat_estados e ${authorJoin}
       WHERE e.id=CAST(? AS UNSIGNED) AND ${active} AND ${audience}
       ON DUPLICATE KEY UPDATE visto_at=chat_estado_vistas.visto_at`,
-    [req.auth.userId, id, req.instanciaActual.id, req.auth.userId]);
+    [req.auth.userId, id, req.instanciaActual.id, ...audienceArgs(req.auth.userId)]);
     if (!result.affectedRows && !(await visible(req))) fail(404, 'Estado no disponible');
     res.json({ ok: true });
   } catch (error) { reportError(res, error); }
@@ -292,6 +326,33 @@ async function assertDestination(req, status, destination, database = db, lock =
       AND ((e.visible_instancia IS NULL AND e.grupo_id=g.id)
         OR EXISTS (SELECT 1 FROM chat_estado_grupos dest
           WHERE dest.estado_id=e.id AND dest.grupo_id=g.id))
+      AND NOT EXISTS (
+        SELECT 1 FROM usuario_grupo group_member
+        JOIN usuario recipient ON recipient.id=group_member.usuario_id
+          AND recipient.instancia_id=e.instancia_id AND recipient.estado='aprobado'
+        WHERE group_member.grupo_id=g.id
+          AND NOT EXISTS (
+            SELECT 1 FROM usuario_proyecto author_project
+            JOIN proyecto shared_project ON shared_project.id=author_project.proyecto_id
+              AND shared_project.instancia_id=e.instancia_id AND shared_project.estado='activo'
+            JOIN usuario_proyecto recipient_project ON recipient_project.proyecto_id=shared_project.id
+              AND recipient_project.usuario_id=recipient.id
+            WHERE author_project.usuario_id=e.autor_id
+          )
+      )
+      AND NOT EXISTS (
+        SELECT 1 FROM usuario recipient
+        WHERE recipient.id=g.propietario_id AND recipient.instancia_id=e.instancia_id
+          AND recipient.estado='aprobado'
+          AND NOT EXISTS (
+            SELECT 1 FROM usuario_proyecto author_project
+            JOIN proyecto shared_project ON shared_project.id=author_project.proyecto_id
+              AND shared_project.instancia_id=e.instancia_id AND shared_project.estado='activo'
+            JOIN usuario_proyecto recipient_project ON recipient_project.proyecto_id=shared_project.id
+              AND recipient_project.usuario_id=recipient.id
+            WHERE author_project.usuario_id=e.autor_id
+          )
+      )
     LIMIT 1 ${lock ? 'FOR UPDATE' : ''}`, [req.auth.userId, status.id, group]);
   if (!membership) fail(404, 'Estado no disponible en ese destino');
   return group;

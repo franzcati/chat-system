@@ -21,6 +21,8 @@ function fixture(t, { enabled = true } = {}) {
   });
   sql.exec(`
     CREATE TABLE usuario (id INTEGER PRIMARY KEY, instancia_id, estado, permisos_chat, nombre, apellido, url_imagen);
+    CREATE TABLE proyecto (id INTEGER PRIMARY KEY, instancia_id, estado, nombre);
+    CREATE TABLE usuario_proyecto (usuario_id INTEGER, proyecto_id INTEGER, PRIMARY KEY (usuario_id, proyecto_id));
     CREATE TABLE grupos (id INTEGER PRIMARY KEY, propietario_id, nombre, imagen_url);
     CREATE TABLE usuario_grupo (grupo_id, usuario_id, rol, PRIMARY KEY (grupo_id, usuario_id));
     CREATE TABLE chat_estados (
@@ -40,11 +42,21 @@ function fixture(t, { enabled = true } = {}) {
       (2,1,'aprobado','{}','Lector','',''),
       (3,1,'aprobado','{"publicar_estados":1}','Ajeno','',''),
       (4,2,'aprobado','{"publicar_estados":1}','Otra instancia','',''),
-      (5,1,'aprobado','{"publicar_estados":1}','Dueño','','');
-    INSERT INTO grupos VALUES (10,5,'Uno','/uploads/grupo-1.png'),(20,1,'Dos',NULL),(30,4,'Externo',NULL),(40,1,'Otro',NULL);
+      (5,1,'aprobado','{"publicar_estados":1}','Dueño','',''),
+      (6,1,'aprobado','{"publicar_estados":1}','Multiproyecto','',''),
+      (7,1,'aprobado','{}','Proyecto inactivo','','');
+    INSERT INTO proyecto VALUES
+      (1,1,'activo','Mirenta Sale'),(16,1,'activo','Crecervo Sale'),
+      (17,1,'inactivo','Proyecto inactivo'),(30,2,'activo','Proyecto externo');
+    INSERT INTO usuario_proyecto VALUES
+      (1,1),(1,17),(2,1),(3,16),(4,30),(5,1),(6,1),(6,16),(7,17);
+    INSERT INTO grupos VALUES
+      (10,5,'Uno','/uploads/grupo-1.png'),(20,1,'Dos',NULL),(30,4,'Externo',NULL),
+      (40,1,'Otro',NULL),(50,1,'Mixto',NULL);
     INSERT INTO usuario_grupo VALUES
-      (10,1,'admin'),(10,2,'miembro'),(10,3,'miembro'),(20,1,'propietario'),
-      (30,1,'admin'),(30,4,'propietario'),(40,1,'propietario'),(40,2,'miembro');
+      (10,1,'admin'),(10,2,'miembro'),(20,1,'propietario'),
+      (30,1,'admin'),(30,4,'propietario'),(40,1,'propietario'),(40,2,'miembro'),
+      (50,1,'admin'),(50,2,'miembro'),(50,3,'miembro');
     INSERT INTO chat_estados (id, instancia_id, autor_id, grupo_id, texto, vence_at) VALUES
       (100,1,1,NULL,'Personal anterior','2099-01-01'),
       (101,1,1,10,'Grupal anterior','2099-01-01');
@@ -344,7 +356,7 @@ test('el corazón se comparte por estado entre destinos, persiste y se quita sin
   assert.equal(state.reaccion_propia, true);
   assert.equal(state.destinos.mi_estado, true);
   assert.deepEqual(state.destinos.grupos.map(group => group.id), [10]);
-  assert.equal((await feed(3)).find(item => item.id === id).reaccion_propia, false);
+  assert.equal((await feed(3)).some(item => item.id === id), false);
   assert.equal((await react(false)).data.reaccion_propia, false);
   assert.equal((await react(false)).code, 200);
   assert.equal(sql.prepare('SELECT COUNT(*) AS n FROM chat_estado_reacciones').get().n, 0);
@@ -435,7 +447,7 @@ test('solo el autor recibe la señal agregada de corazones al abrir', async t =>
   await request('put','/:id/reaccion',{ actor:2,id:101,body:{ reaccion:true } });
   assert.equal((await item(1)).tiene_reacciones, true);
   assert.equal((await item(2)).reaccion_propia, true);
-  assert.equal(Object.hasOwn(await item(3), 'tiene_reacciones'), false);
+  assert.equal(await item(3), undefined, 'un usuario de otro proyecto no recibe el Estado ni sus indicadores');
   await request('put','/:id/reaccion',{ actor:2,id:101,body:{ reaccion:false } });
   assert.equal((await item(1)).tiene_reacciones, false);
 });
@@ -458,4 +470,76 @@ test('fuentes permitidas persisten en apariencia y cita sin ampliar la columna h
     texto:'Texto', destinos:{mi_estado:true, grupos:[]}, apariencia:JSON.stringify({...base,fuente:'url(fake)'})
   } });
   assert.equal(invalid.code,400);
+});
+
+
+test('aisla Estados por intersección de proyectos y permite lectores multiproyecto', async t => {
+  const { modern, request, feed, sql } = fixture(t);
+  const mirenta = await modern('proyecto-mirenta', true, []);
+  assert.equal(mirenta.code, 201);
+
+  const has = async (actor, id) => (await feed(actor)).some(item => String(item.id) === String(id));
+  assert.equal(await has(2, mirenta.data.id), true, 'otro usuario de Mirenta puede verlo');
+  assert.equal(await has(3, mirenta.data.id), false, 'un usuario solo de Crecervo no puede verlo');
+  assert.equal(await has(6, mirenta.data.id), true, 'un usuario de ambos proyectos puede verlo');
+  assert.equal(await has(7, mirenta.data.id), false, 'un proyecto inactivo no concede acceso');
+  assert.equal((await request('get', '/:id/referencia', { actor: 3, id: mirenta.data.id })).code, 404);
+  const legacyOtherProject = await request('get', '/', { actor: 3 });
+  assert.equal(legacyOtherProject.data.estados.some(item => Number(item.id) === 100), false,
+    'el contrato antiguo también respeta el aislamiento por proyecto');
+
+  assert.equal((await request('get', '/:id/media', { actor: 3, id: mirenta.data.id })).code, 404);
+  assert.equal((await request('post', '/:id/vista', { actor: 3, id: mirenta.data.id })).code, 404);
+  assert.equal((await request('put', '/:id/reaccion', {
+    actor: 3, id: mirenta.data.id, body: { reaccion: true },
+  })).code, 404);
+  assert.equal((await request('post', '/:id/responder', {
+    actor: 3, id: mirenta.data.id, body: { mensaje: 'precio' },
+  })).code, 404);
+
+  const crecervo = await modern('proyecto-crecervo', true, [], { actor: 3 });
+  assert.equal(crecervo.code, 201);
+  assert.equal(await has(2, crecervo.data.id), false, 'un usuario solo de Mirenta no puede verlo');
+  assert.equal(await has(3, crecervo.data.id), true, 'el autor conserva acceso a su Estado');
+  assert.equal(await has(6, crecervo.data.id), true, 'el usuario multiproyecto ve ambos proyectos');
+
+  const multiprojectAuthor = await modern('autor-multiproyecto', true, [], { actor: 6 });
+  assert.equal(multiprojectAuthor.code, 201);
+  assert.equal(await has(2, multiprojectAuthor.data.id), true, 'un autor de ambos proyectos comparte con Mirenta');
+  assert.equal(await has(3, multiprojectAuthor.data.id), true, 'un autor de ambos proyectos comparte con Crecervo');
+  assert.equal((await feed(6)).filter(item => String(item.id) === String(multiprojectAuthor.data.id)).length, 1,
+    'varios proyectos compartidos no duplican el Estado');
+
+  // Una asignación a proyecto inactivo no habilita acceso.
+  sql.prepare("UPDATE proyecto SET estado='inactivo' WHERE id=1").run();
+  assert.equal(await has(2, mirenta.data.id), false);
+  assert.equal(await has(6, mirenta.data.id), false);
+  assert.equal(await has(1, mirenta.data.id), true, 'el autor conserva acceso a su propio Estado');
+});
+
+test('vistas y contadores excluyen lectores de otros proyectos', async t => {
+  const { modern, request, feed, sql } = fixture(t);
+  const { data: { id } } = await modern('vistas-por-proyecto', true, []);
+  assert.equal((await request('post', '/:id/vista', { actor: 2, id })).code, 200);
+  assert.equal((await request('post', '/:id/vista', { actor: 6, id })).code, 200);
+  assert.equal((await request('post', '/:id/vista', { actor: 3, id })).code, 404);
+
+  // Simula un registro histórico que no debería seguir apareciendo tras el aislamiento.
+  sql.prepare('INSERT INTO chat_estado_vistas (estado_id, usuario_id, visto_at) VALUES (?, 3, CURRENT_TIMESTAMP)')
+    .run(Number(id));
+  const state = (await feed(1)).find(item => String(item.id) === String(id));
+  assert.equal(state.vistas, 2);
+  const people = (await request('get', '/:id/vistas', { actor: 1, id })).data.personas;
+  assert.deepEqual(people.map(person => person.id).sort((a, b) => a - b), [2, 6]);
+});
+
+test('una respuesta de Estado a grupo se bloquea si algún destinatario aprobado no comparte proyecto', async t => {
+  const { modern, request, feed } = fixture(t);
+  const { data: { id } } = await modern('respuesta-grupo-mixto', false, [50]);
+  assert.equal((await feed(2)).some(item => item.id === id), true);
+  assert.equal((await feed(3)).some(item => item.id === id), false);
+  const response = await request('post', '/:id/responder', {
+    actor: 2, id, body: { destino: { tipo: 'grupo', grupo_id: 50 }, mensaje: 'precio' },
+  });
+  assert.equal(response.code, 404);
 });
