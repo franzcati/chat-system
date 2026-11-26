@@ -473,19 +473,21 @@ router.get(
     return res.status(400).json({ error: "Usuario inválido" });
   }
 
+  // La apertura de un grupo en común necesita el mismo contrato para un solo grupo.
+  const rawGroupId = req.query.grupo_id;
+  const groupId = rawGroupId === undefined ? null : Number(rawGroupId);
+  if (rawGroupId !== undefined && (typeof rawGroupId !== 'string' || !/^\d+$/.test(rawGroupId)
+      || !Number.isSafeInteger(groupId) || groupId <= 0)) {
+    return res.status(400).json({ error: "Grupo inválido" });
+  }
+
   try {
     const [grupos] = await db.query(
       `WITH
         grupos_usuario AS (
           SELECT ug.grupo_id, ug.rol
           FROM usuario_grupo ug
-          WHERE ug.usuario_id = ?
-        ),
-        ultimos AS (
-          SELECT mg.grupo_id, MAX(mg.id) AS ultimo_id
-          FROM mensajes_grupo mg
-          INNER JOIN grupos_usuario gu ON gu.grupo_id = mg.grupo_id
-          GROUP BY mg.grupo_id
+          WHERE ug.usuario_id = ? ${groupId === null ? "" : "AND ug.grupo_id = ?"}
         ),
         no_leidos AS (
           SELECT mg.grupo_id, COUNT(*) AS total
@@ -516,23 +518,6 @@ router.get(
           INNER JOIN grupos_usuario gu ON gu.grupo_id = ug2.grupo_id
           INNER JOIN usuario u2 ON u2.id = ug2.usuario_id
           GROUP BY ug2.grupo_id
-        ),
-        recibos_ultimo AS (
-          SELECT
-            ult.grupo_id,
-            COUNT(DISTINCT CASE WHEN ugm.usuario_id <> m.usuario_id THEN ugm.usuario_id ELSE NULL END) AS esperados,
-            COUNT(DISTINCT CASE
-              WHEN ugm.usuario_id <> m.usuario_id AND mgv.usuario_id IS NOT NULL
-              THEN ugm.usuario_id
-              ELSE NULL
-            END) AS vistos
-          FROM ultimos ult
-          INNER JOIN mensajes_grupo m ON m.id = ult.ultimo_id
-          INNER JOIN usuario_grupo ugm ON ugm.grupo_id = ult.grupo_id
-          LEFT JOIN mensajes_grupo_vistos mgv
-            ON mgv.mensaje_id = m.id
-           AND mgv.usuario_id = ugm.usuario_id
-          GROUP BY ult.grupo_id
         )
       SELECT
         g.id AS grupo_id,
@@ -562,17 +547,30 @@ router.get(
         CASE WHEN u.id = ? THEN 'enviado' ELSE 'recibido' END AS tipo_mensaje,
         CASE WHEN cf.id IS NOT NULL THEN 1 ELSE 0 END AS es_favorito,
         COALESCE(nl.total, 0) AS mensajes_no_leidos,
-        CASE
-          WHEN m.id IS NULL THEN 1
-          WHEN COALESCE(ru.esperados, 0) <= COALESCE(ru.vistos, 0) THEN 1
-          ELSE 0
-        END AS visto,
+        CASE WHEN NOT EXISTS (
+          SELECT 1
+          FROM usuario_grupo ugm
+          WHERE m.id IS NOT NULL
+            AND ugm.grupo_id = g.id
+            AND ugm.usuario_id <> m.usuario_id
+            AND NOT EXISTS (
+              SELECT 1
+              FROM mensajes_grupo_vistos mgv
+              WHERE mgv.mensaje_id = m.id
+                AND mgv.usuario_id = ugm.usuario_id
+            )
+        ) THEN 1 ELSE 0 END AS visto,
         ma.miembros
 
       FROM grupos_usuario gu
       INNER JOIN grupos g ON g.id = gu.grupo_id
-      LEFT JOIN ultimos ult ON ult.grupo_id = g.id
-      LEFT JOIN mensajes_grupo m ON m.id = ult.ultimo_id
+      LEFT JOIN mensajes_grupo m ON m.id = (
+        SELECT mg.id
+        FROM mensajes_grupo mg
+        WHERE mg.grupo_id = g.id
+        ORDER BY mg.id DESC
+        LIMIT 1
+      )
       LEFT JOIN usuario u ON u.id = m.usuario_id
       LEFT JOIN chats_favoritos cf
         ON cf.chat_id = g.id
@@ -580,7 +578,6 @@ router.get(
        AND cf.tipo = 'grupo'
       LEFT JOIN no_leidos nl ON nl.grupo_id = g.id
       LEFT JOIN miembros_agregados ma ON ma.grupo_id = g.id
-      LEFT JOIN recibos_ultimo ru ON ru.grupo_id = g.id
       LEFT JOIN mensajes_grupo_archivos mga_direct
         ON mga_direct.id = (
           SELECT MIN(mga_d.id)
@@ -598,7 +595,7 @@ router.get(
             AND mga_l.lote_id = m.lote_id
         )
       ORDER BY m.id IS NULL, m.id DESC, g.fecha_creacion DESC`,
-      [userId, userId, userId, userId, userId]
+      [userId, ...(groupId === null ? [] : [groupId]), userId, userId, userId, userId]
     );
 
     const toAbsolute = (url) => toAbsoluteUploadUrl(url, req);

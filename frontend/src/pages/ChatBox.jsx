@@ -4147,7 +4147,7 @@ const ChatBox = ({ chat, user, setChat, onCloseChat, onVerPerfil, onAddToList, e
     setMostrarVerArchivos(false);
 
     try {
-      const res = await fetch(`/api/grupos/usuario-resumen/${user.id}`);
+      const res = await fetch(`/api/grupos/usuario-resumen/${user.id}?grupo_id=${groupId}`);
       const data = await res.json();
 
       if (!res.ok) {

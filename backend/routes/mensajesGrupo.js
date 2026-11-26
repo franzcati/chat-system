@@ -993,41 +993,33 @@ router.put(
 
     const [[ultimoMensaje]] = await queryWithRetry(
       db,
-      `SELECT id, usuario_id AS creadorId 
-       FROM mensajes_grupo 
-       WHERE grupo_id = ? ORDER BY fecha_envio DESC LIMIT 1`,
+      `SELECT ultimo.id,
+         (SELECT COUNT(*)
+          FROM usuario_grupo ug
+          WHERE ug.grupo_id = ultimo.grupo_id
+            AND ug.usuario_id <> ultimo.creadorId) AS totalMiembros,
+         (SELECT COUNT(DISTINCT mgv.usuario_id)
+          FROM mensajes_grupo_vistos mgv
+          WHERE mgv.mensaje_id = ultimo.id
+            AND mgv.usuario_id <> ultimo.creadorId) AS vistos
+       FROM (
+         SELECT id, grupo_id, usuario_id AS creadorId
+         FROM mensajes_grupo
+         WHERE grupo_id = ?
+         ORDER BY fecha_envio DESC
+         LIMIT 1
+       ) ultimo`,
       [grupoId],
-      { attempts: 3, label: "obtener ultimo mensaje de grupo" }
+      { attempts: 3, label: "obtener recibos del ultimo mensaje de grupo" }
     );
 
-    if (ultimoMensaje) {
-      const [[{ totalMiembros }]] = await queryWithRetry(
-        db,
-        `SELECT COUNT(*) AS totalMiembros 
-         FROM usuario_grupo 
-         WHERE grupo_id = ? AND usuario_id != ?`,
-        [grupoId, ultimoMensaje.creadorId],
-        { attempts: 3, label: "contar miembros del grupo" }
-      );
+    if (ultimoMensaje && ultimoMensaje.vistos === ultimoMensaje.totalMiembros) {
+      io.to(`grupo_${grupoId}`).emit("todosMensajesVistosGrupo", {
+        grupoId,
+        mensajeId: ultimoMensaje.id,
+      });
 
-      const [[{ vistos }]] = await queryWithRetry(
-        db,
-        `SELECT COUNT(DISTINCT usuario_id) AS vistos 
-         FROM mensajes_grupo_vistos 
-         WHERE mensaje_id = ?
-           AND usuario_id <> ?`,
-        [ultimoMensaje.id, ultimoMensaje.creadorId],
-        { attempts: 3, label: "contar vistos del ultimo mensaje de grupo" }
-      );
-
-      if (vistos === totalMiembros) {
-        io.to(`grupo_${grupoId}`).emit("todosMensajesVistosGrupo", {
-          grupoId,
-          mensajeId: ultimoMensaje.id,
-        });
-
-        logDev(`✅ Todos los miembros vieron el mensaje ${ultimoMensaje.id} del grupo ${grupoId}`);
-      }
+      logDev(`✅ Todos los miembros vieron el mensaje ${ultimoMensaje.id} del grupo ${grupoId}`);
     }
 
     res.json({ success: true, actualizados: totalActualizados });

@@ -1,3 +1,5 @@
+import { createChatListRefreshScheduler } from "../utils/chatListRefreshScheduler";
+import { getChatSummaryDataset } from "../utils/chatSummaryDataset";
 import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import axios from "axios";
@@ -207,8 +209,6 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat, addToLi
   const processedSocketMessagesRef = useRef(new Set());
   const chatItemRefs = useRef(new Map());
   const previousChatPositionsRef = useRef(new Map());
-  const refreshInFlightRef = useRef(null);
-  const lastRefreshAtRef = useRef(0);
   const stableSnapshotReadyRef = useRef(false);
   // El orden de la lista solo debe animarse cuando cambia por un mensaje nuevo,
   // no al seleccionar un chat, marcarlo como visto o actualizar presencia.
@@ -765,30 +765,10 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat, addToLi
       setIsInitialLoading(true);
     }
 
-    const getCriticalDataset = async (primaryUrl, legacyUrl, label) => {
-      try {
-        const response = await axios.get(primaryUrl);
-        return {
-          available: true,
-          fallback: false,
-          data: Array.isArray(response.data) ? response.data : [],
-        };
-      } catch (primaryError) {
-        console.warn(`⚠️ Falló ${label}; intentando compatibilidad.`, primaryError);
-        try {
-          const legacy = await axios.get(legacyUrl);
-          return {
-            available: true,
-            fallback: true,
-            data: Array.isArray(legacy.data) ? legacy.data : [],
-          };
-        } catch (legacyError) {
-          console.error(`❌ No fue posible cargar ${label}.`, legacyError);
-          return { available: false, fallback: true, data: [] };
-        }
-      }
-    };
+    const getCriticalDataset = (primaryUrl, legacyUrl) =>
+      getChatSummaryDataset(url => axios.get(url), primaryUrl, legacyUrl);
 
+    let refreshInFlight = null;
     let retryTimer = null;
     let retryAttempt = 0;
 
@@ -807,14 +787,12 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat, addToLi
 
       retryTimer = window.setTimeout(() => {
         retryTimer = null;
-        fetchData({ force: true });
+        fetchData();
       }, delay);
     };
 
-    const fetchData = async ({ showLoading = false, force = false } = {}) => {
-      const now = Date.now();
-      if (!force && now - lastRefreshAtRef.current < 1500) return;
-      if (refreshInFlightRef.current) return refreshInFlightRef.current;
+    const fetchData = async ({ showLoading = false } = {}) => {
+      if (refreshInFlight) return refreshInFlight;
 
       if (showLoading && !stableSnapshotReadyRef.current) setIsInitialLoading(true);
 
@@ -823,13 +801,11 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat, addToLi
           const [privadosResult, gruposResult, preferenciasResult] = await Promise.all([
             getCriticalDataset(
               `/api/chats/resumen/${userId}`,
-              `/api/chats/${userId}`,
-              "los chats privados"
+              `/api/chats/${userId}`
             ),
             getCriticalDataset(
               `/api/grupos/usuario-resumen/${userId}`,
-              `/api/grupos/usuario/${userId}`,
-              "los grupos"
+              `/api/grupos/usuario/${userId}`
             ),
             Promise.allSettled([
               axios.get(`/api/chats/favoritos/${userId}`),
@@ -892,7 +868,6 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat, addToLi
           setChats(buildUnifiedChats(nextMensajes, nextGrupos, userId));
 
           stableSnapshotReadyRef.current = true;
-          lastRefreshAtRef.current = Date.now();
           retryAttempt = 0;
           clearRetryTimer();
           setInitialLoadError("");
@@ -928,36 +903,39 @@ const ChatList = ({ onSelectChat, userId, selectedChat, setSelectedChat, addToLi
         }
       })();
 
-      refreshInFlightRef.current = task;
+      refreshInFlight = task;
       try {
         await task;
       } finally {
-        if (refreshInFlightRef.current === task) refreshInFlightRef.current = null;
+        if (refreshInFlight === task) refreshInFlight = null;
       }
     };
 
-    fetchData({ showLoading: !hasFreshCache, force: true });
+    fetchData({ showLoading: !hasFreshCache });
 
-    const handleReconnect = () => fetchData({ force: true });
-    const handleOnline = () => fetchData({ force: true });
-    const handleFocus = () => fetchData({ force: true });
+    const refreshScheduler = createChatListRefreshScheduler({
+      getInFlight: () => refreshInFlight,
+      refresh: fetchData,
+    });
+    const scheduleRefresh = refreshScheduler.schedule;
     const handleVisibilityChange = () => {
       if (document.visibilityState === "visible") {
-        fetchData({ force: true });
+        scheduleRefresh();
       }
     };
 
-    socket.on("connect", handleReconnect);
-    window.addEventListener("online", handleOnline);
-    window.addEventListener("focus", handleFocus);
+    socket.on("connect", scheduleRefresh);
+    window.addEventListener("online", scheduleRefresh);
+    window.addEventListener("focus", scheduleRefresh);
     document.addEventListener("visibilitychange", handleVisibilityChange);
 
     return () => {
       cancelled = true;
+      refreshScheduler.dispose();
       clearRetryTimer();
-      socket.off("connect", handleReconnect);
-      window.removeEventListener("online", handleOnline);
-      window.removeEventListener("focus", handleFocus);
+      socket.off("connect", scheduleRefresh);
+      window.removeEventListener("online", scheduleRefresh);
+      window.removeEventListener("focus", scheduleRefresh);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
   }, [userId]);
